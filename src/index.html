@@ -10,9 +10,17 @@
   <body>
     <header class="titlebar">
       <div class="brand">
-        <img class="brand-logo brand-logo-compact" src="../assets/hanuman-media-mark.png" alt="" aria-hidden="true" />
+        <img class="brand-logo brand-logo-compact brand-orange" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASGSURBVFhH7ZZ/TJVVGMe/773cuwsUgZXQrEg3KxGM6SC2ILjyI0FvrrZrc7ioVq4BtTBLsMGFruXFiC2WhYZlmbPQfid/uPVPrVqtbOuH5ixTUdCk/rHVH8L9tuc958jLOzQqhv/4bN+dc97LPd/P8zzn3BfgYkxSzJiLYSwB3c+nLGq2gf78CwhQvwtMyrlQABYYqAFRjg/dH01F3HHnpiso/c/t9hAlU1kFCzTmSMWJ+rk4gzxwXrZdjckHYQQeApatYiScNU/TZrNw7aKeFCIdRCYIOZTB/wnCMLxDFdj7aym+5bugrQ9A7h7N/ssm8OY0sDOccWZ2M3h5OxTEjSBusChV+U8gdVnp0X25IN8A2QvyTZCf+Mko6CvyMLx5ur0xnwf5HFiQDKa3goHmBE5r1ZXJEnkUxEQjEoHnaCH+sI3fArlrNGtuA9mjshdZXpAxkFvA09VgUex6Tl/jY04smbndl6pWyJnItojSCUD09vZ6+9LxF18DuV1nfixKbgb55+fkTpBtIJvBY49APX9Jj4/ZBgy/Oos5Gy7jgk4f0eYjMi0FIVUoR5fbc0z0LUJKfAvidqaS+UAHeXwD2f+0AhKAt7WhrAX0ZVUBdoOHQqDlAdPWeXnN+kvoaQ0QMT9xnQBY578dcsoHF4J8RZt8nUoOxMjBLrX+Io/sX6vmJutNWrLuAdkO7qtQEAIwQ8zbQERBzNNVOFfEl+FHO/OtuudS/j0a6OSz6jyIPtLmRmJuAJ5U7embryBmPnMl0QBilb6aAiDtcIfc7XgIp20zKec7+vQfDKlWmCsoz7s1pMneKKL1FDhcDe7JB4Ne0KpNI+pSiRYPsdCjKuGO3jC8h+RKSRbS0/e0mYzmNsh8h/5cIEwLZC6S6/iErkIt+HE+2HG1w6wJRKNuhTu+WgDfgUIN4IQQmX6LiQDI/EW9dgLIs0bVAtaBPwfB/SXg0kSsO2skEPPHAZCwy7pRA4iJtMJ50IyRUwZExhd0C9aAXAmOLAdPVoIhH9aPMQrixJi1CdtQ7riYCoTJXEYBMFU4lyT71er3QFrwQxE4chdY5kej22vcsEsnAJKNM3MjJ4CzBTIX4Ec1gIz3gvtvBVkNVnoRdXuNG/Yh7NAbyCgldZs5AYxa9HdWKY0sA78rBPtLwd358j6D1+01bpyqwuqj5SDrQT4MsgFkpz4XImMoIFItOe1No8Ym8+HlqvyS/VI/KO8Wt9e4EQE8O7PVFym/82bjh/RaIB7XYAIokueylrEOHKoCfyoGf3EAuH3OG2uTcNX2ORpipdrU3twAmbmYGtWCXAEeLgMPloDfi/kKZZ4JBNwe/xRWVRIy5ArFBeJuVdaRe/Rcsr4f5H2q1HxA/d2RUvBAicqeDyrzmpuQ6t58wtGQgmmv60r8FgKHbgdPLVYarAQHblM6XgEeDoJHysDfF4Pvz1HmiUCee89/HWHA35KCdgER7cgCP8sHP80Dv7kF3FugJC+erpnKWJc9w/6XdbJCDmcBkFgMBMqBZJkvAZJEsi4GErIAPzDB034xHPE3ItEVHfq9GOgAAAAASUVORK5CYII=" alt="" aria-hidden="true" />
         <span class="brand-name">CHUBA SPRITE LAB</span>
-        <span id="versionBadge" class="version">1.4.1</span>
+        <span id="versionBadge" class="version">1.7.0</span>
+      </div>
+      <div class="workspace-actions hidden" aria-label="Проект">
+        <button id="newProject" type="button">Новый</button>
+        <button id="openProject" type="button">Открыть проект</button>
+        <button id="saveProject" type="button" disabled>Сохранить</button>
+        <button id="undoAction" type="button" disabled aria-label="Отменить действие">↶</button>
+        <button id="redoAction" type="button" disabled aria-label="Повторить действие">↷</button>
+        <button id="openCommands" type="button" aria-label="Открыть список команд">Команды <kbd>Ctrl K</kbd></button>
       </div>
       <div class="window-actions" aria-label="Управление окном">
         <button id="aboutApp" class="window-button help" type="button" aria-label="О программе">?</button>
@@ -22,21 +30,25 @@
       </div>
     </header>
 
-    <nav class="tabs" role="tablist" aria-label="Этапы работы">
-      <button id="sourceTab" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="sourcePanel" data-tab="source"><span>01</span>Источник</button>
-      <button id="processTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="processPanel" data-tab="process"><span>02</span>Обработка</button>
-      <button id="exportTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="exportPanel" data-tab="export"><span>03</span>Экспорт</button>
-      <div class="tab-line" aria-hidden="true"></div>
-    </nav>
-
     <main id="appShell" class="app-shell" aria-busy="false">
       <section class="control-deck">
+        <nav class="tabs" role="tablist" aria-label="Этапы работы">
+          <button id="sourceTab" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="sourcePanel" data-tab="source" data-help="Новый проект: добавьте видео, кадры или откройте файл .cslab"><span>01</span>Источник</button>
+          <button id="processTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="processPanel" data-tab="process" data-help="Удалите фон, выровняйте и проверьте кадры"><span>02</span>Обработка</button>
+          <button id="exportTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="exportPanel" data-tab="export" data-help="Сохраните спрайт-лист, кадры и данные для игры"><span>03</span>Экспорт</button>
+        </nav>
         <div id="sourcePanel" class="panel active" role="tabpanel" aria-labelledby="sourceTab" data-panel="source">
           <div class="panel-heading">
             <p class="eyebrow">ИМПОРТ</p>
             <h1>Добавьте движение</h1>
             <p>Видео или последовательность кадров. Всё обрабатывается только на этом компьютере.</p>
           </div>
+
+          <article id="sessionRestore" class="session-restore hidden">
+            <div><strong>Незавершённая сессия найдена</strong><small id="sessionRestoreHint">Можно продолжить с теми же исходниками и настройками.</small></div>
+            <button id="restoreSession" class="button primary" type="button">Продолжить</button>
+            <button id="discardSession" class="button ghost" type="button">Не сейчас</button>
+          </article>
 
           <div id="dropZone" class="drop-zone" role="button" aria-label="Выбрать видео, изображения или папку с кадрами" tabindex="0">
             <div class="drop-icon" aria-hidden="true">
@@ -49,8 +61,14 @@
           <div class="button-grid">
             <button id="chooseSource" class="button primary" type="button">Выбрать источник</button>
             <button id="chooseFolder" class="button secondary" type="button">Папка с кадрами</button>
+            <button id="chooseImages" class="button secondary span-2 sheet-source-button images-source-button" type="button"><span>Собрать лист из картинок</span><small>JPG · PNG · WEBP вперемешку · разный размер · порядок по имени</small></button>
             <button id="chooseSheet" class="button secondary span-2 sheet-source-button" type="button"><span>Разобрать спрайт-лист</span><small>умно найдёт объекты сложной формы</small></button>
           </div>
+
+          <button id="openProjectImport" class="project-open-card" type="button">
+            <span class="project-open-icon" aria-hidden="true">↗</span>
+            <span><strong>Открыть проект Sprite Lab</strong><small>продолжить сохранённую работу из файла .cslab</small></span>
+          </button>
 
           <article id="sourceCard" class="source-card hidden">
             <div class="source-badge" id="sourceBadge">VIDEO</div>
@@ -75,6 +93,21 @@
             <label class="sheet-fit-row"><span><strong>Подогнать объекты</strong><small>каждый заполняет свою ячейку</small></span><input id="sheetFitEach" type="checkbox" checked /><i></i></label>
             <button id="resliceSheet" class="button ghost" type="button">Перенарезать лист</button>
             <p>Умный режим группирует близкие части одного объекта, поэтому сложная лапа или раздельный эффект останутся одним кадром.</p>
+          </article>
+
+          <article id="imageSheetControls" class="image-sheet-controls hidden" aria-label="Лист из картинок">
+            <header><div><span class="live-dot"></span><strong>ЛИСТ ИЗ КАРТИНОК</strong></div><small id="imageSheetCount">0 файлов</small></header>
+            <p id="imageSheetSummary" class="image-sheet-summary"></p>
+            <div class="section-label"><span>РАЗНЫЙ РАЗМЕР</span><small>общая ячейка по самой большой</small></div>
+            <div id="imageAlignMode" class="segmented three" role="group" aria-label="Выравнивание картинок в ячейке">
+              <button type="button" data-image-align="ground" class="selected" title="Все картинки стоят на нижней линии ячейки">По низу</button>
+              <button type="button" data-image-align="center" title="Картинки по центру ячейки">По центру</button>
+              <button type="button" data-image-align="fit" title="Каждая картинка вписывается в ячейку целиком">Вписать</button>
+            </div>
+            <label class="sheet-fit-row"><span><strong>Удалить фон</strong><small id="imageBackgroundHint">у JPG нет прозрачности — без удаления фон останется</small></span><input id="imageRemoveBackground" type="checkbox" /><i></i></label>
+            <ol id="imageSheetList" class="image-sheet-list"></ol>
+            <p class="image-sheet-note">Порядок — по имени файла с учётом чисел (frame2 раньше frame10). После сборки кадры можно перетаскивать в ленте.</p>
+            <button id="buildImageSheet" class="button primary" type="button">Собрать лист</button>
           </article>
 
           <figure id="sourcePreview" class="source-preview hidden">
@@ -106,6 +139,8 @@
             </div>
           </article>
 
+          <button id="continueToProcess" class="next-action source-next hidden" type="button">Перейти к обработке <span>→</span></button>
+
         </div>
 
         <div id="processPanel" class="panel" role="tabpanel" aria-labelledby="processTab" aria-hidden="true" data-panel="process">
@@ -114,6 +149,16 @@
             <h1>Чистые кадры</h1>
             <p>Настройте фон, якорь и размер ячейки. Предпросмотр не меняет исходники.</p>
           </div>
+
+          <section id="animationBar" class="animation-bar" aria-label="Анимации проекта">
+            <div class="section-label"><span>АНИМАЦИИ ПРОЕКТА</span><small id="animationBarHint">одна анимация</small></div>
+            <div id="animationChips" class="animation-chips"></div>
+            <div id="animationNameRow" class="animation-name-row hidden">
+              <input id="animationNameInput" type="text" maxlength="32" spellcheck="false" placeholder="run" aria-label="Имя новой анимации" />
+              <button id="confirmAnimationName" type="button">Добавить</button>
+              <button id="cancelAnimationName" type="button" aria-label="Отмена">×</button>
+            </div>
+          </section>
 
           <div class="preset-bar" id="processPresets" aria-label="Профили обработки">
             <button type="button" data-preset="character" class="selected">Персонаж</button>
@@ -124,14 +169,20 @@
 
           <div class="form-section">
             <div class="section-label"><span>ФОН</span><small id="detectedBackground">удаление</small></div>
-            <div class="segmented seven" id="keyMode">
+            <div class="segmented four" id="keyMode">
               <button type="button" data-value="auto" class="selected">Авто</button>
-              <button type="button" data-value="alpha" title="Фон уже прозрачный">Alpha</button>
-              <button type="button" data-value="white">Белый</button>
-              <button type="button" data-value="black">Чёрный</button>
-              <button type="button" data-value="green">Зелёный</button>
-              <button type="button" data-value="blue">Синий</button>
+              <button type="button" data-value="alpha" title="Фон уже прозрачный">Прозрачный</button>
+              <button type="button" data-value="solid">Однотонный</button>
               <button type="button" data-value="ai" title="Локальное выделение главного объекта">ИИ</button>
+            </div>
+            <div id="solidKeyPanel" class="solid-key-panel hidden">
+              <div class="section-label"><span>ЦВЕТ ФОНА</span><small>выберите ближайший</small></div>
+              <div id="solidKeyColor" class="segmented four">
+                <button type="button" data-key-color="white">Белый</button>
+                <button type="button" data-key-color="black" class="selected">Чёрный</button>
+                <button type="button" data-key-color="green">Зелёный</button>
+                <button type="button" data-key-color="blue">Синий</button>
+              </div>
             </div>
             <p id="blackKeyNote" class="key-note hidden">Удаляется только чёрный фон от краёв кадра. Защита контура автоматически масштабируется под разрешение исходника.</p>
             <label id="blackOutlineRow" class="range-field hidden">
@@ -160,12 +211,12 @@
             </article>
           </div>
 
-          <div class="form-section finishing-section">
-            <div class="section-label"><span>УМНАЯ ДОВОДКА</span><small>неразрушающие инструменты</small></div>
+          <details class="form-section finishing-section tool-details">
+            <summary><span><strong>Исправить результат</strong><small>объекты · PNG · очистка края</small></span><b id="finishingState">Не применено</b></summary>
             <div id="finishingSummary" class="finishing-summary" aria-live="polite">
-              <span data-summary="object">Лишнее: нет</span>
-              <span data-summary="edge">Контур: нет</span>
-              <span data-summary="overlay">PNG: 0</span>
+              <span data-summary="object">Удаление объектов: не применено</span>
+              <span data-summary="edge">Очистка края: выключена</span>
+              <span data-summary="overlay">Привязанные PNG: 0</span>
             </div>
             <div class="finishing-grid">
               <article class="finishing-card">
@@ -190,7 +241,7 @@
               <span>Сила очистки <output id="fringeStrengthValue">55</output></span>
               <input id="fringeStrength" type="range" min="1" max="100" value="55" />
             </label>
-          </div>
+          </details>
 
           <div class="form-section">
             <div class="section-label"><span>СТАБИЛИЗАЦИЯ</span><small>положение в ячейке</small></div>
@@ -226,12 +277,23 @@
             </div>
           </details>
 
-          <div class="preview-help"><span class="live-dot"></span><span>Первый кадр обновляется автоматически. Кнопка ниже собирает всю анимацию.</span></div>
+          <div class="form-section loop-section">
+            <div class="section-label"><span>ЦИКЛ АНИМАЦИИ</span><small id="loopHint">как в игре</small></div>
+            <div id="loopMode" class="segmented three" role="group" aria-label="Режим цикла">
+              <button type="button" data-loop="loop" class="selected" title="Кадры идут по кругу">Повтор</button>
+              <button type="button" data-loop="pingpong" title="Вперёд, затем назад">Туда-обратно</button>
+              <button type="button" data-loop="range" title="Повторять только выбранные кадры">Диапазон</button>
+            </div>
+            <div id="loopRangeFields" class="loop-range-fields hidden">
+              <label class="field"><span>С кадра</span><input id="loopFrom" type="number" min="1" value="1" /></label>
+              <label class="field"><span>По кадр</span><input id="loopTo" type="number" min="1" placeholder="последний" /></label>
+            </div>
+          </div>
 
-          <button id="buildPreview" class="next-action accent" type="button" disabled>
-            Собрать предпросмотр
-            <span>↗</span>
-          </button>
+          <div class="process-action-dock">
+            <div><span class="live-dot"></span><span id="processActionHint">Первый кадр обновляется автоматически</span></div>
+            <button id="buildPreview" class="next-action accent" type="button" disabled>Собрать анимацию <span>↗</span></button>
+          </div>
         </div>
 
         <div id="exportPanel" class="panel" role="tabpanel" aria-labelledby="exportTab" aria-hidden="true" data-panel="export">
@@ -253,6 +315,11 @@
               <option value="custom">Свой набор</option>
             </select>
           </label>
+          <div class="profile-actions">
+            <button id="saveExportProfile" class="button ghost" type="button">Сохранить текущий профиль</button>
+            <button id="deleteExportProfile" class="button ghost hidden" type="button">Удалить профиль</button>
+            <div id="profileNameRow" class="profile-name-row hidden"><input id="profileName" type="text" maxlength="32" placeholder="Название профиля" /><button id="confirmProfile" type="button">Сохранить</button><button id="cancelProfile" type="button">×</button></div>
+          </div>
 
           <div class="destination-card">
             <div>
@@ -285,19 +352,67 @@
           </div>
           </details>
 
+          <section class="atlas-settings" aria-label="Атлас и движок">
+            <div class="section-label"><span>АТЛАС И ДВИЖОК</span><small>формат JSON · упаковка · лимит</small></div>
+            <div class="atlas-grid">
+              <label class="field"><span>Формат</span>
+                <select id="exportFormat">
+                  <option value="chuba">Chuba JSON</option>
+                  <option value="phaser3">Phaser 3 (multiatlas)</option>
+                  <option value="godot">Godot 4 (SpriteFrames)</option>
+                  <option value="texturepacker">TexturePacker JSON-hash</option>
+                </select>
+              </label>
+              <label class="field"><span>Упаковка</span>
+                <select id="atlasPacking">
+                  <option value="grid">Сетка</option>
+                  <option value="tight">Плотная (обрезка)</option>
+                </select>
+              </label>
+              <label class="field"><span>Макс. лист</span>
+                <select id="atlasMaxSize">
+                  <option value="0">Без лимита</option>
+                  <option value="2048">2048 px</option>
+                  <option value="4096" selected>4096 px</option>
+                  <option value="8192">8192 px</option>
+                </select>
+              </label>
+              <label class="field"><span>Если больше</span>
+                <select id="atlasOverflow">
+                  <option value="warn">Предупредить</option>
+                  <option value="scale">Уменьшить</option>
+                  <option value="columns">Пересчитать столбцы</option>
+                  <option value="split">Разбить на листы</option>
+                </select>
+              </label>
+            </div>
+            <p id="exportFormatHint" class="atlas-hint">Файл движка создаётся вместе с Manifest JSON.</p>
+            <article id="atlasWarning" class="atlas-warning hidden" role="status">
+              <header><span>!</span><strong id="atlasWarningTitle">ЛИСТ БОЛЬШЕ ЛИМИТА</strong></header>
+              <p id="atlasWarningText"></p>
+              <div id="atlasWarningActions" class="atlas-warning-actions">
+                <button type="button" data-overflow="scale">Уменьшить</button>
+                <button type="button" data-overflow="columns">Пересчитать столбцы</button>
+                <button type="button" data-overflow="split">Разбить на листы</button>
+              </div>
+            </article>
+            <p id="animationExportNote" class="animation-export-note hidden"></p>
+          </section>
+
           <label class="toggle-row export-open-row"><span><strong>Открыть папку после экспорта</strong><small>показывает готовый файл в Проводнике</small></span><input id="openAfterExport" type="checkbox" /><i></i></label>
 
-          <button id="exportSprites" class="export-action" type="button" disabled>
-            <span id="exportButtonTitle">ЭКСПОРТИРОВАТЬ</span>
-            <small id="exportHint">Выберите источник и папку</small>
-          </button>
-
-          <div id="completionActions" class="completion-actions hidden">
-            <button id="revealOutput" class="button ghost" type="button">Открыть</button>
-            <button id="copyOutputPath" class="button ghost" type="button">Копировать путь</button>
-            <button id="newSource" class="button ghost" type="button">Новый источник</button>
+          <div class="export-action-dock">
+            <div id="exportSummary" class="export-summary hidden"></div>
+            <div id="completionActions" class="completion-actions hidden">
+              <button id="revealOutput" class="button ghost" type="button">Открыть</button>
+              <button id="copyOutputPath" class="button ghost" type="button">Копировать путь</button>
+              <button id="newSource" class="button ghost" type="button">Новый источник</button>
+            </div>
+            <button id="exportSprites" class="export-action" type="button" disabled>
+              <span id="exportButtonTitle">ЭКСПОРТИРОВАТЬ</span>
+              <small id="exportHint">Выберите источник и папку</small>
+            </button>
           </div>
-          <div id="exportSummary" class="export-summary hidden"></div>
         </div>
       </section>
 
@@ -317,6 +432,7 @@
             <div id="resultPreviewTabs" class="preview-group hidden"><span>РЕЗУЛЬТАТ</span><div class="preview-tabs">
               <button type="button" data-preview="animation">Движение</button>
               <button type="button" data-preview="sheet">Лист</button>
+              <button type="button" data-preview="game" title="Масштаб 1×/2×/0,5× на фоне уровня">В игре</button>
             </div></div>
           </div>
         </header>
@@ -328,6 +444,21 @@
             <span>Сначала добавьте видео или кадры,<br />затем соберите предпросмотр.</span>
           </div>
           <img id="previewImage" class="preview-image hidden" alt="Предпросмотр анимации" />
+          <canvas id="playerCanvas" class="player-canvas hidden" aria-label="Проигрыватель анимации"></canvas>
+          <div id="playerBar" class="player-bar hidden" role="toolbar" aria-label="Управление проигрыванием">
+            <button id="playerPrev" type="button" title="Предыдущий кадр ( , )" aria-label="Предыдущий кадр">‹</button>
+            <button id="playerPlay" type="button" title="Пауза / воспроизведение (P)" aria-label="Пауза">❚❚</button>
+            <button id="playerNext" type="button" title="Следующий кадр ( . )" aria-label="Следующий кадр">›</button>
+            <span id="playerCounter">1 / 1</span>
+            <button id="onionToggle" type="button" title="Калька: соседние кадры полупрозрачно (O)" aria-pressed="false">Калька</button>
+            <input id="onionOpacity" type="range" min="10" max="80" value="35" aria-label="Прозрачность кальки" title="Прозрачность кальки" />
+            <span id="gameScaleGroup" class="game-scale hidden" role="group" aria-label="Масштаб в игре">
+              <button type="button" data-game-scale="0.5">0,5×</button>
+              <button type="button" data-game-scale="1" class="selected">1×</button>
+              <button type="button" data-game-scale="2">2×</button>
+            </span>
+            <button id="hitboxToggle" class="hidden" type="button" title="Хитбокс по непрозрачным пикселям и точка опоры" aria-pressed="true">Хитбокс</button>
+          </div>
           <div id="compareView" class="compare-view hidden">
             <img id="compareBefore" alt="Исходный кадр" />
             <div id="compareAfterWrap"><img id="compareAfter" alt="Обработанный кадр" /></div>
@@ -339,7 +470,20 @@
             <strong>Не удалось выполнить операцию</strong><span id="errorText"></span>
             <div><button id="showErrorFrame" type="button">Показать кадр</button><button id="safeSettings" type="button">Безопасные настройки</button><button id="closeError" type="button">×</button></div>
           </aside>
+          <section id="transformPanel" class="transform-panel hidden" aria-label="Трансформация объекта">
+            <header><div><strong>ОБЪЕКТ В КАДРЕ</strong><small id="transformFrameLabel">кадр 1 · выделен по прозрачности</small></div><button id="closeTransform" type="button" aria-label="Закрыть">×</button></header>
+            <div id="transformScope" class="transform-scope"><button type="button" data-scope="frame" class="selected">Этот кадр</button><button type="button" data-scope="all">Вся анимация</button></div>
+            <label class="transform-lock"><input id="transformLock" type="checkbox" checked /><span>Сохранять пропорции</span></label>
+            <label><span>Ширина <output id="transformWidthValue">100%</output></span><input id="transformWidth" type="range" min="25" max="250" value="100" /></label>
+            <label><span>Высота <output id="transformHeightValue">100%</output></span><input id="transformHeight" type="range" min="25" max="250" value="100" /></label>
+            <label><span>Наклон перспективы <output id="transformSkewValue">0°</output></span><input id="transformSkew" type="range" min="-35" max="35" value="0" /></label>
+            <div class="transform-offsets"><label><span>По X</span><input id="transformOffsetX" type="number" min="-100" max="100" value="0" /></label><label><span>По Y</span><input id="transformOffsetY" type="number" min="-100" max="100" value="0" /></label></div>
+            <div class="transform-actions"><button id="transformFill" type="button">До краёв</button><button id="transformShrink" type="button">Уменьшить</button><button id="transformReset" type="button">Сбросить</button></div>
+            <p>Значения X/Y — проценты от размера ячейки. Инструмент меняет итоговый спрайт, а «Рука» двигает только обзор.</p>
+          </section>
           <div class="stage-tools">
+            <button id="handTool" type="button" title="Рука: удерживайте Пробел и перетаскивайте" aria-label="Инструмент Рука" aria-pressed="false">✋</button>
+            <button id="transformTool" type="button" title="Выделить и изменить объект" aria-label="Трансформация объекта" aria-pressed="false">⌗</button>
             <button id="zoomOut" type="button" title="Уменьшить">−</button>
             <span id="zoomValue">100%</span>
             <button id="zoomIn" type="button" title="Увеличить">+</button>
@@ -352,21 +496,31 @@
         <div id="filmstripBar" class="filmstrip-bar hidden">
           <div id="filmstrip" class="filmstrip"></div>
           <div class="filmstrip-actions">
-            <button id="editFrame" class="filmstrip-action edit" type="button">Редактировать кадр</button>
+            <label class="frame-duration" title="Длительность выбранного кадра; пусто — по FPS"><span>Длительность</span><input id="frameDuration" type="number" min="10" max="10000" step="10" placeholder="по FPS" /><small>мс</small></label>
+            <div id="filmstripNote" class="filmstrip-note hidden"></div>
+            <button id="duplicateFrame" class="filmstrip-action" type="button" title="Повторить кадр в таймлайне (Ctrl+D)">Дублировать</button>
             <button id="excludeFrame" class="filmstrip-action" type="button">Исключить кадр</button>
+            <button id="editFrame" class="filmstrip-action edit" type="button">Редактировать кадр</button>
           </div>
         </div>
-        <div id="filmstripNote" class="filmstrip-note hidden"></div>
+
+        <section id="batchQueue" class="batch-queue hidden" aria-label="Очередь пакетной обработки">
+          <header><div><span class="live-dot"></span><strong>ОЧЕРЕДЬ ВИДЕО</strong></div><small id="batchQueueProgress">0 / 0</small></header>
+          <div id="batchQueueList"></div>
+          <footer><button id="stopAfterCurrent" class="button ghost hidden" type="button">Остановить после текущего</button><button id="retryBatch" class="button secondary hidden" type="button">Повторить ошибки</button></footer>
+        </section>
 
         <div class="preview-meta">
           <div><span>КАДРЫ</span><strong id="metaFrames">—</strong></div>
           <div><span>ЯЧЕЙКА</span><strong id="metaCell">—</strong></div>
           <div><span>СЕТКА</span><strong id="metaGrid">—</strong></div>
           <div><span>ЯКОРЬ</span><strong id="metaAnchor">—</strong></div>
+          <div id="metaAtlasCell"><span>ЛИСТ</span><strong id="metaAtlas">—</strong></div>
         </div>
 
         <aside id="warningBox" class="warning-box hidden">
           <header><span>!</span><strong>ПРОВЕРЬТЕ КАДРЫ</strong><small id="warningCount">0</small></header>
+          <div class="warning-navigation"><button id="previousWarning" type="button">← Предыдущая</button><strong id="warningPosition">1 / 1</strong><button id="nextWarning" type="button">Следующая →</button></div>
           <ul id="warningList"></ul>
         </aside>
       </section>
@@ -374,9 +528,9 @@
 
     <footer class="statusbar">
       <div class="status-copy" role="status" aria-live="polite"><span id="statusLed"></span><strong id="statusText">Готов к работе</strong></div>
-      <div class="progress-track"><i id="progressBar"></i></div>
+      <div id="progressTrack" class="progress-track hidden"><i id="progressBar"></i></div>
       <button id="cancelJob" class="cancel-job hidden" type="button">Остановить</button>
-      <span id="statusPercent">0%</span>
+      <span id="statusPercent" class="hidden">0%</span>
     </footer>
 
     <div id="aboutModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
@@ -388,13 +542,26 @@
         </div>
         <p class="eyebrow">О ПРОГРАММЕ</p>
         <h2 id="aboutTitle">Chuba Sprite Lab</h2>
-        <p class="about-version">Версия <strong id="aboutVersion">1.4.1</strong></p>
+        <p class="about-version">Версия <strong id="aboutVersion">1.7.0</strong></p>
         <p class="about-lead">Локальный инструмент подготовки видео и последовательностей кадров в игровые спрайт-листы.</p>
         <dl class="about-meta">
           <div><dt>Автор и правообладатель</dt><dd>Hanuman Media Company<br />Demidenko Dmitriy</dd></div>
           <div><dt>Год</dt><dd>2026</dd></div>
           <div><dt>Технологии</dt><dd>Electron · Sharp · FFmpeg · ONNX</dd></div>
         </dl>
+        <details class="about-hotkeys">
+          <summary>Горячие клавиши</summary>
+          <div class="hotkey-list">
+            <span><kbd>Ctrl O</kbd> источник</span><span><kbd>Ctrl S</kbd> сохранить проект</span>
+            <span><kbd>Ctrl Enter</kbd> собрать</span><span><kbd>Ctrl K</kbd> команды</span>
+            <span><kbd>Ctrl Z / Y</kbd> отмена / повтор</span><span><kbd>Ctrl 1–3</kbd> этапы</span>
+            <span><kbd>← →</kbd> кадр в ленте</span><span><kbd>Alt ← →</kbd> передвинуть кадр</span>
+            <span><kbd>Del</kbd> исключить кадр</span><span><kbd>Ctrl D</kbd> дублировать кадр</span>
+            <span><kbd>, .</kbd> шаг назад / вперёд</span><span><kbd>P</kbd> пауза</span>
+            <span><kbd>O</kbd> калька</span><span><kbd>G</kbd> «В игре»</span>
+            <span><kbd>[ ]</kbd> размер кисти</span><span><kbd>Пробел</kbd> рука</span>
+          </div>
+        </details>
         <p class="about-copyright">© 2026 Hanuman Media Company — Demidenko Dmitriy. Все права защищены.</p>
         <div class="about-actions">
           <button id="checkUpdates" class="button primary" type="button">Проверить обновления</button>
@@ -434,6 +601,12 @@
               <span>Размер кисти <output id="maskBrushSizeValue">36 px</output></span>
               <input id="maskBrushSize" type="range" min="8" max="160" value="36" />
             </label>
+            <label class="toggle-row mask-onion-row"><span><strong>Калька</strong><small>соседние кадры поверх текущего</small></span><input id="maskOnion" type="checkbox" /><i></i></label>
+            <label id="maskOnionOpacityRow" class="range-field hidden">
+              <span>Прозрачность кальки <output id="maskOnionOpacityValue">35%</output></span>
+              <input id="maskOnionOpacity" type="range" min="10" max="80" value="35" />
+            </label>
+            <p class="mask-tip"><kbd>[</kbd> <kbd>]</kbd> — размер кисти или чувствительность области.</p>
             <label class="toggle-row mask-apply-row"><span><strong id="maskApplyTitle">Искать во всей серии</strong><small id="maskApplyHint">слежение за цветом, размером и формой</small></span><input id="maskApplyAll" type="checkbox" checked /><i></i></label>
             <p id="maskToolTip" class="mask-tip">Щёлкните по стене, пятну или просвету. Область будет найдена заново в каждом кадре.</p>
             <div class="mask-history-actions">
@@ -512,16 +685,22 @@
           </section>
 
           <section class="editor-route online">
-            <header><strong>Онлайн-редактор</strong><small>путь к рабочему PNG скопируется</small></header>
-            <div class="online-editor-grid">
-              <button type="button" data-online-editor="photopea"><strong>Photopea</strong><small>быстрый PSD‑редактор</small></button>
-              <button type="button" data-online-editor="canva"><strong>Canva</strong><small>макеты и эффекты</small></button>
-              <button type="button" data-online-editor="pixlr"><strong>Pixlr E</strong><small>точная правка в браузере</small></button>
-              <button type="button" data-online-editor="figma"><strong>Figma</strong><small>совместная правка макета</small></button>
-              <button type="button" data-online-editor="pixlr-x"><strong>Pixlr X</strong><small>быстрые правки · Express</small></button>
+            <header><strong>Онлайн-редактор</strong><small>предпочтительный сервис запоминается</small></header>
+            <div class="preferred-editor-row">
+              <label><span>Редактор</span><select id="preferredEditor"><option value="photopea">Photopea</option><option value="pixlr">Pixlr E</option><option value="pixlr-x">Pixlr X</option><option value="figma">Figma</option><option value="canva">Canva</option></select></label>
+              <button id="openPreferredEditor" class="button primary" type="button">Открыть</button>
             </div>
-            <p>Откройте скопированный файл в редакторе, скачайте PNG и нажмите «Заменить из файла».</p>
+            <ol class="online-steps"><li>Откройте редактор</li><li>Перетащите рабочий PNG</li><li>Скачайте результат и верните его сюда</li></ol>
+            <details class="all-editors"><summary>Другие онлайн-редакторы</summary><div class="online-editor-grid">
+              <button type="button" data-online-editor="photopea"><strong>Photopea</strong><small>пиксели · PSD</small></button>
+              <button type="button" data-online-editor="pixlr"><strong>Pixlr E</strong><small>точная правка</small></button>
+              <button type="button" data-online-editor="pixlr-x"><strong>Pixlr X</strong><small>быстрые правки</small></button>
+              <button type="button" data-online-editor="figma"><strong>Figma</strong><small>макет · команда</small></button>
+              <button type="button" data-online-editor="canva"><strong>Canva</strong><small>макет · эффекты</small></button>
+            </div></details>
           </section>
+
+          <div id="editedFrameDrop" class="edited-frame-drop" tabindex="0" role="button"><strong>Верните готовый PNG сюда</strong><small>перетащите файл или выберите его вручную</small></div>
 
           <div id="frameEditorStatus" class="frame-editor-status"><span></span><strong>Рабочая копия готова</strong><small id="frameEditorPath"></small></div>
           <div class="frame-editor-footer-actions">
@@ -532,6 +711,41 @@
       </article>
     </div>
 
+    <div id="commandModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="commandTitle">
+      <article class="command-card">
+        <header><div><p class="eyebrow">БЫСТРЫЕ ДЕЙСТВИЯ</p><h2 id="commandTitle">Команды</h2></div><button id="closeCommands" class="about-close" type="button" aria-label="Закрыть">×</button></header>
+        <div class="command-search"><input id="commandSearch" type="search" placeholder="Найти действие…" autocomplete="off" /></div>
+        <div id="commandList" class="command-list">
+          <button type="button" data-command="source"><span>Выбрать источник</span><kbd>Ctrl O</kbd></button>
+          <button type="button" data-command="open-project"><span>Открыть проект</span><kbd>Ctrl Shift O</kbd></button>
+          <button type="button" data-command="save-project"><span>Сохранить проект</span><kbd>Ctrl S</kbd></button>
+          <button type="button" data-command="undo"><span>Отменить изменение</span><kbd>Ctrl Z</kbd></button>
+          <button type="button" data-command="redo"><span>Повторить изменение</span><kbd>Ctrl Y</kbd></button>
+          <button type="button" data-command="build"><span>Собрать анимацию</span><kbd>Ctrl Enter</kbd></button>
+          <button type="button" data-command="export"><span>Перейти к экспорту</span><kbd>Ctrl 3</kbd></button>
+          <button type="button" data-command="play"><span>Пауза / воспроизведение</span><kbd>P</kbd></button>
+          <button type="button" data-command="onion"><span>Калька (onion skin)</span><kbd>O</kbd></button>
+          <button type="button" data-command="duplicate"><span>Дублировать кадр</span><kbd>Ctrl D</kbd></button>
+          <button type="button" data-command="game"><span>Показать «В игре»</span><kbd>G</kbd></button>
+          <button type="button" data-command="help"><span>Справка и горячие клавиши</span><kbd>F1</kbd></button>
+          <p class="command-section">ГОРЯЧИЕ КЛАВИШИ</p>
+          <div class="hotkey-list">
+            <span><kbd>← →</kbd> выбрать кадр в ленте</span>
+            <span><kbd>Alt ← →</kbd> передвинуть кадр</span>
+            <span><kbd>Del</kbd> исключить / убрать повтор</span>
+            <span><kbd>, .</kbd> шаг проигрывателя</span>
+            <span><kbd>[ ]</kbd> размер кисти маски</span>
+            <span><kbd>Пробел</kbd> рука (перемещение)</span>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <div id="windowDropOverlay" class="window-drop-overlay hidden" aria-hidden="true">
+      <div><span class="drop-icon"><span></span><span></span><span></span></span><strong>Отпустите файлы</strong><small>видео, кадры, GIF или папка — в любом месте окна</small></div>
+    </div>
+
     <script src="./renderer.js"></script>
+    <script src="./studio.js"></script>
   </body>
 </html>

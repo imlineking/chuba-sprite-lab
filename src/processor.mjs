@@ -243,6 +243,29 @@ async function recommendSource(samplePaths, video = {}) {
   };
 }
 
+// Per-file info for the "sprite sheet from images" workflow (JPG/PNG/WEBP, any size).
+export async function describeImageFiles(paths) {
+  const images = [];
+  for (const filePath of paths.slice(0, 1000)) {
+    try {
+      const meta = await sharp(filePath).metadata();
+      images.push({ name: path.basename(filePath), format: String(meta.format || path.extname(filePath).slice(1)).toLowerCase(), width: meta.width || 0, height: meta.height || 0, hasAlpha: Boolean(meta.hasAlpha) });
+    } catch {
+      throw new Error(`Не удалось прочитать изображение: ${path.basename(filePath)}`);
+    }
+  }
+  return images;
+}
+
+function describeImageFormats(images) {
+  const counts = new Map();
+  for (const image of images) {
+    const label = image.format === "jpeg" ? "JPG" : image.format.toUpperCase();
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+  return [...counts.entries()].map(([label, count]) => `${label} ${count}`).join(" · ");
+}
+
 export async function inspectSource({ kind, paths, appRoot }) {
   const orderedPaths = [...paths].sort(naturalCompare);
   if (!orderedPaths.length) throw new Error("В выбранном источнике нет поддерживаемых кадров.");
@@ -269,11 +292,20 @@ export async function inspectSource({ kind, paths, appRoot }) {
   const metadata = await sharp(first).metadata();
   const samplePaths = await makeSourceSamples(first, kind, 0, 0, orderedPaths, appRoot);
   const recommendations = await recommendSource(samplePaths, {});
+  const images = await describeImageFiles(orderedPaths);
+  const sizes = new Set(images.map((image) => `${image.width}×${image.height}`));
+  const formats = describeImageFormats(images);
+  const sizeText = sizes.size > 1
+    ? `разные размеры ${Math.min(...images.map((image) => image.width))}–${Math.max(...images.map((image) => image.width))} × ${Math.min(...images.map((image) => image.height))}–${Math.max(...images.map((image) => image.height))}`
+    : `${metadata.width || 0}×${metadata.height || 0}`;
   return {
     kind: "frames",
     paths: orderedPaths,
     title: orderedPaths.length === 1 ? path.basename(first) : `${path.basename(path.dirname(first))} · ${orderedPaths.length} кадров`,
-    detail: `${metadata.width || 0}×${metadata.height || 0} · ${orderedPaths.length} файлов`,
+    detail: `${sizeText} · ${orderedPaths.length} файлов${formats ? ` · ${formats}` : ""}`,
+    images,
+    mixedSizes: sizes.size > 1,
+    opaqueImages: images.filter((image) => !image.hasAlpha).length,
     sizeBytes: fileStats.size,
     previewPath: first,
     suggestedKeyMode: recommendations.keyMode,
@@ -635,6 +667,54 @@ function makeReport(frames, skipped, keyMode) {
   };
 }
 
+function resolveFrameTransform(options, sourceIndex) {
+  const transforms = options.frameTransforms;
+  if (!transforms || typeof transforms !== "object") return null;
+  const value = transforms[sourceIndex] || transforms[String(sourceIndex)] || transforms["*"];
+  if (!value || typeof value !== "object") return null;
+  return {
+    scaleX: clamp(Number(value.scaleX) || 1, 0.25, 2.5),
+    scaleY: clamp(Number(value.scaleY) || 1, 0.25, 2.5),
+    offsetX: clamp(Number(value.offsetX) || 0, -100, 100),
+    offsetY: clamp(Number(value.offsetY) || 0, -100, 100),
+    skewX: clamp(Number(value.skewX) || 0, -35, 35),
+    fill: value.fill === "stretch" ? "stretch" : null,
+  };
+}
+
+async function placeTransformedSprite({ sprite, width, height, left, top, canvasWidth, canvasHeight, transform, kernel, background }) {
+  let targetWidth = transform.fill === "stretch" ? canvasWidth : Math.max(1, Math.round(width * transform.scaleX));
+  let targetHeight = transform.fill === "stretch" ? canvasHeight : Math.max(1, Math.round(height * transform.scaleY));
+  let transformed = await sharp(sprite).resize({ width: targetWidth, height: targetHeight, fit: "fill", kernel }).png().toBuffer();
+  if (transform.skewX && transform.fill !== "stretch") {
+    transformed = await sharp(transformed).affine([
+      [1, Math.tan(transform.skewX * Math.PI / 180)],
+      [0, 1],
+    ], { background: { r: 0, g: 0, b: 0, alpha: 0 }, interpolator: "bicubic" }).png().toBuffer();
+    const metadata = await sharp(transformed).metadata();
+    targetWidth = metadata.width || targetWidth; targetHeight = metadata.height || targetHeight;
+  }
+  let targetLeft = transform.fill === "stretch"
+    ? 0
+    : Math.round(left + width / 2 - targetWidth / 2 + transform.offsetX / 100 * canvasWidth);
+  let targetTop = transform.fill === "stretch"
+    ? 0
+    : Math.round(top + height / 2 - targetHeight / 2 + transform.offsetY / 100 * canvasHeight);
+  const cropLeft = Math.max(0, -targetLeft); const cropTop = Math.max(0, -targetTop);
+  const visibleWidth = Math.min(targetWidth - cropLeft, canvasWidth - Math.max(0, targetLeft));
+  const visibleHeight = Math.min(targetHeight - cropTop, canvasHeight - Math.max(0, targetTop));
+  const canvas = sharp({ create: { width: canvasWidth, height: canvasHeight, channels: 4, background } });
+  if (visibleWidth <= 0 || visibleHeight <= 0) return { buffer: await canvas.png().toBuffer(), left: targetLeft, top: targetTop, width: targetWidth, height: targetHeight };
+  if (cropLeft || cropTop || visibleWidth !== targetWidth || visibleHeight !== targetHeight) {
+    transformed = await sharp(transformed).extract({ left: cropLeft, top: cropTop, width: visibleWidth, height: visibleHeight }).png().toBuffer();
+  }
+  targetLeft = Math.max(0, targetLeft); targetTop = Math.max(0, targetTop);
+  return {
+    buffer: await canvas.composite([{ input: transformed, left: targetLeft, top: targetTop }]).png().toBuffer(),
+    left: targetLeft, top: targetTop, width: visibleWidth, height: visibleHeight,
+  };
+}
+
 async function renderFrames(frames, options) {
   const maxWidth = Math.max(...frames.map((frame) => frame.bounds.width));
   const maxHeight = Math.max(...frames.map((frame) => frame.bounds.height));
@@ -688,10 +768,19 @@ async function renderFrames(frames, options) {
         : Math.round((cellHeight - spriteHeight) / 2);
     }
 
-    const output = await sharp({ create: { width: cellWidth, height: cellHeight, channels: 4, background } })
-      .composite([{ input: sprite, left, top }])
-      .png().toBuffer();
-    rendered.push({ buffer: output, left, top, width: spriteWidth, height: spriteHeight });
+    const transform = resolveFrameTransform(options, frame.sourceIndex);
+    if (transform) {
+      const transformed = await placeTransformedSprite({
+        sprite, width: spriteWidth, height: spriteHeight, left, top,
+        canvasWidth: cellWidth, canvasHeight: cellHeight, transform, kernel, background,
+      });
+      rendered.push(transformed);
+    } else {
+      const output = await sharp({ create: { width: cellWidth, height: cellHeight, channels: 4, background } })
+        .composite([{ input: sprite, left, top }])
+        .png().toBuffer();
+      rendered.push({ buffer: output, left, top, width: spriteWidth, height: spriteHeight });
+    }
   }
   return { rendered, cellWidth, cellHeight, padding, anchor };
 }
@@ -716,49 +805,78 @@ async function makeAnimatedPreview(framePattern, outputPath, fps, appRoot, signa
   }
 }
 
-export async function processSprites({ source, outputDir, name, options = {}, previewOnly = false, appRoot, onProgress, signal }) {
-  if (!source?.paths?.length) throw new Error("Сначала выберите видео или кадры.");
-  throwIfAborted(signal);
-  const spriteName = safeName(name || path.parse(source.title || source.paths[0]).name);
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-lab-"));
-  const extractedDir = path.join(tempRoot, "source");
-  const requestedExports = {
-    sheet: options.exports?.sheet !== false,
-    frames: options.exports?.frames !== false,
-    metadata: options.exports?.metadata !== false,
-    preview: options.exports?.preview !== false,
-  };
-  if (!previewOnly && !Object.values(requestedExports).some(Boolean)) throw new Error("Выберите хотя бы один формат экспорта.");
-  // Manifest references the sheet, so exporting metadata also guarantees a usable sheet.
-  const exportSheet = requestedExports.sheet || requestedExports.metadata;
-  const finalRoot = previewOnly
-    ? path.join(tempRoot, "preview")
-    : path.join(outputDir || path.dirname(source.paths[0]), spriteName);
-  const workingRoot = previewOnly ? finalRoot : path.join(tempRoot, "working");
-  if (!previewOnly && options.cleanOutput) {
-    const knownTargets = [
-      path.join(finalRoot, "frames"),
-      path.join(finalRoot, `${spriteName}.sheet.png`),
-      path.join(finalRoot, `${spriteName}.json`),
-      path.join(finalRoot, `${spriteName}.report.json`),
-      path.join(finalRoot, `${spriteName}.preview.webp`),
-    ];
-    for (const target of knownTargets) await fs.rm(target, { recursive: true, force: true });
-  }
-  const framesDir = previewOnly || requestedExports.frames || requestedExports.preview
-    ? path.join(requestedExports.frames || previewOnly ? finalRoot : workingRoot, "frames")
-    : path.join(workingRoot, "frames");
-  await fs.mkdir(finalRoot, { recursive: true });
-  await fs.mkdir(workingRoot, { recursive: true });
-  await fs.mkdir(framesDir, { recursive: true });
+// ---------------------------------------------------------------------------
+// 1.7: render cache, frame timeline, loop modes, atlas planning and exporters.
+// ---------------------------------------------------------------------------
 
+const renderCache = new Map();
+const RENDER_CACHE_LIMIT = 4;
+const RENDER_CACHE_MAX_BYTES = 700 * 1024 * 1024;
+const postRenderOptionKeys = new Set([
+  "exports", "cleanOutput", "previewFrameIndex", "attachmentPlacements", "columns", "autoColumns",
+  "atlasMaxSize", "atlasOverflow", "packing", "exportFormat", "timeline", "loopMode", "loopRange", "animationName",
+]);
+export const exportFormats = ["chuba", "phaser3", "godot", "texturepacker"];
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+async function fileSignature(filePath) {
+  try {
+    const stats = await fs.stat(filePath);
+    return `${filePath}|${stats.size}|${Math.round(stats.mtimeMs)}`;
+  } catch {
+    return `${filePath}|missing`;
+  }
+}
+
+async function renderCacheKey(source, options = {}) {
+  const relevant = Object.fromEntries(Object.entries(options).filter(([key]) => !postRenderOptionKeys.has(key)));
+  if (source.kind !== "video") delete relevant.fps;
+  const files = await Promise.all([
+    ...(source.paths || []),
+    ...Object.values(options.frameOverrides || {}),
+  ].map((item) => fileSignature(String(item))));
+  return stableStringify({ kind: source.kind, files, options: relevant });
+}
+
+function rememberRender(key, built) {
+  renderCache.delete(key);
+  renderCache.set(key, built);
+  let total = [...renderCache.values()].reduce((sum, entry) => sum + entry.bytes, 0);
+  while (renderCache.size > RENDER_CACHE_LIMIT || (total > RENDER_CACHE_MAX_BYTES && renderCache.size > 1)) {
+    const oldest = renderCache.keys().next().value;
+    total -= renderCache.get(oldest).bytes;
+    renderCache.delete(oldest);
+  }
+}
+
+export function clearRenderCache() {
+  renderCache.clear();
+}
+
+async function buildAnimation({ source, options = {}, appRoot, onProgress, signal, tempRoot }) {
+  if (!source?.paths?.length) throw new Error("Сначала выберите видео или кадры.");
+  const key = await renderCacheKey(source, options);
+  const cached = renderCache.get(key);
+  if (cached) {
+    rememberRender(key, cached);
+    onProgress?.({ stage: "reuse", value: 0.7, message: "Использую готовый результат предпросмотра…" });
+    return { ...cached, reused: true };
+  }
+  const extractedDir = path.join(tempRoot, "source");
   onProgress?.({ stage: "prepare", value: 0.03, message: "Подготавливаю источник…" });
   let inputFrames;
   if (source.kind === "video") {
     const cacheKey = `${source.paths[0]}|${options.fps}|${options.maxFrames}|${options.trimStart || 0}|${options.trimEnd || 0}`;
-    const cached = videoFrameCache.get(cacheKey);
-    inputFrames = cached?.length && await exists(cached[0])
-      ? cached
+    const cachedFrames = videoFrameCache.get(cacheKey);
+    inputFrames = cachedFrames?.length && await exists(cachedFrames[0])
+      ? cachedFrames
       : await extractVideoFrames(source.paths[0], extractedDir, options.fps, options.maxFrames, appRoot, onProgress, options.trimStart, options.trimEnd, signal);
     videoFrameCache.set(cacheKey, inputFrames);
     if (videoFrameCache.size > 6) videoFrameCache.delete(videoFrameCache.keys().next().value);
@@ -831,106 +949,658 @@ export async function processSprites({ source, outputDir, name, options = {}, pr
     }
   }
   report.warnings = [...new Set(report.warnings)].slice(0, 100);
+  onProgress?.({ stage: "normalize", value: 0.55, message: "Выравниваю кадры…" });
   const normalized = await renderFrames(prepared, options);
-  const framePaths = [];
-  for (let index = 0; index < normalized.rendered.length; index += 1) {
-    throwIfAborted(signal);
-    const framePath = path.join(framesDir, `${String(index).padStart(4, "0")}.png`);
-    await fs.writeFile(framePath, normalized.rendered[index].buffer);
-    framePaths.push(framePath);
-    onProgress?.({
-      stage: "normalize",
-      value: 0.52 + (index + 1) / normalized.rendered.length * 0.2,
-      message: `Выравниваю кадры · ${index + 1}/${normalized.rendered.length}`,
+  const built = {
+    key,
+    inputFrames,
+    skipped,
+    attachmentPlacements,
+    prepared: prepared.map(({ sourcePath, sourceIndex, bounds }) => ({ sourcePath, sourceIndex, bounds })),
+    report,
+    normalized,
+    bytes: normalized.rendered.reduce((sum, frame) => sum + frame.buffer.length, 0),
+  };
+  rememberRender(key, built);
+  return { ...built, reused: false };
+}
+
+export function buildSequence(prepared, options = {}) {
+  const fps = clamp(Number(options.fps) || 8, 1, 60);
+  const baseDurationMs = Math.round(1000 / fps);
+  const byIndex = new Map(prepared.map((frame, index) => [frame.sourceIndex, index]));
+  const sequence = [];
+  const used = new Set();
+  if (Array.isArray(options.timeline) && options.timeline.length) {
+    for (const entry of options.timeline) {
+      const image = byIndex.get(Number(entry?.src));
+      if (image == null) continue;
+      used.add(image);
+      const custom = Number(entry.durationMs);
+      const hasCustom = Number.isFinite(custom) && custom > 0;
+      sequence.push({ image, durationMs: hasCustom ? clamp(Math.round(custom), 10, 10000) : baseDurationMs, custom: hasCustom });
+    }
+  }
+  prepared.forEach((_frame, image) => {
+    if (!used.has(image)) sequence.push({ image, durationMs: baseDurationMs, custom: false });
+  });
+  return { sequence, fps, baseDurationMs };
+}
+
+export function resolveLoop(options = {}, length = 1) {
+  const mode = ["loop", "pingpong", "range"].includes(options.loopMode) ? options.loopMode : "loop";
+  const last = Math.max(0, length - 1);
+  let from = 0;
+  let to = last;
+  if (mode === "range") {
+    from = clamp(Math.round(Number(options.loopRange?.from) || 0), 0, last);
+    const requestedTo = options.loopRange?.to == null ? last : Math.round(Number(options.loopRange.to));
+    to = clamp(Number.isFinite(requestedTo) ? requestedTo : last, from, last);
+  }
+  return { mode, from, to };
+}
+
+export function playbackOrder(length, loop) {
+  const range = [];
+  for (let index = loop.from; index <= loop.to && index < length; index += 1) range.push(index);
+  if (loop.mode === "pingpong" && range.length > 2) return [...range, ...range.slice(1, -1).reverse()];
+  return range;
+}
+
+function layoutAtlas(groups, { packing, limitW = 0, limitH = 0, columnsOverride = null, gap = 2 }) {
+  const pages = [];
+  let page = { width: 0, height: 0, rects: [] };
+  const pushPage = () => { if (page.rects.length) pages.push(page); page = { width: 0, height: 0, rects: [] }; };
+  if (packing === "tight") {
+    const items = groups.flatMap((group) => group.items);
+    const totalArea = items.reduce((sum, item) => sum + (item.width + gap) * (item.height + gap), 0);
+    const widest = Math.max(1, ...items.map((item) => item.width));
+    const pageWidth = limitW || Math.max(widest, Math.ceil(Math.sqrt(totalArea * 1.15)));
+    const ordered = [...items].sort((a, b) => b.height - a.height || b.width - a.width);
+    let x = 0; let y = 0; let shelf = 0;
+    for (const item of ordered) {
+      if (x > 0 && x + item.width > pageWidth) { y += shelf + gap; x = 0; shelf = 0; }
+      if (limitH && y + item.height > limitH && page.rects.length) { pushPage(); x = 0; y = 0; shelf = 0; }
+      page.rects.push({ item, x, y });
+      x += item.width + gap;
+      shelf = Math.max(shelf, item.height);
+      page.width = Math.max(page.width, x - gap);
+      page.height = Math.max(page.height, y + item.height);
+    }
+    pushPage();
+    return pages;
+  }
+  let y = 0;
+  for (const group of groups) {
+    let columns = columnsOverride?.(group) ?? group.columns;
+    if (limitW) columns = Math.max(1, Math.min(columns, Math.floor(limitW / group.cellWidth)));
+    for (let start = 0; start < group.items.length; start += columns) {
+      if (limitH && y + group.cellHeight > limitH && page.rects.length) { pushPage(); y = 0; }
+      group.items.slice(start, start + columns).forEach((item, column) => {
+        page.rects.push({ item, x: column * group.cellWidth, y });
+        page.width = Math.max(page.width, (column + 1) * group.cellWidth);
+      });
+      y += group.cellHeight;
+      page.height = Math.max(page.height, y);
+    }
+    group.layoutColumns = columns;
+  }
+  pushPage();
+  return pages;
+}
+
+function scaleGroups(groups, scale) {
+  return groups.map((group) => ({
+    ...group,
+    cellWidth: Math.max(1, Math.floor(group.cellWidth * scale)),
+    cellHeight: Math.max(1, Math.floor(group.cellHeight * scale)),
+    items: group.items.map((item) => ({ ...item, width: Math.max(1, Math.floor(item.width * scale)), height: Math.max(1, Math.floor(item.height * scale)) })),
+  }));
+}
+
+function pagesExceed(pages, limit) {
+  return Boolean(limit) && pages.some((page) => page.width > limit || page.height > limit);
+}
+
+export function planAtlas(groups, { packing = "grid", maxSize = 0, overflow = "warn" } = {}) {
+  const limit = Number(maxSize) > 0 ? Number(maxSize) : 0;
+  const tight = packing === "tight";
+  const natural = layoutAtlas(groups, { packing, limitW: tight ? limit : 0 });
+  const naturalWidth = Math.max(...natural.map((page) => page.width));
+  const naturalHeight = natural.reduce((sum, page) => Math.max(sum, page.height), 0);
+  const exceeds = pagesExceed(natural, limit);
+  const base = { exceeds, limit, naturalWidth, naturalHeight, requested: overflow };
+  if (!exceeds || !limit || overflow === "warn") {
+    return { ...base, pages: natural, groups, scale: 1, applied: exceeds ? "warn" : "none", note: exceeds ? `Лист ${naturalWidth}×${naturalHeight} больше ${limit} px` : "" };
+  }
+  const largestItem = Math.max(...groups.flatMap((group) => group.items.map((item) => Math.max(item.width, item.height))));
+  if (overflow === "columns" && !tight) {
+    const pages = layoutAtlas(groups, { packing, columnsOverride: (group) => Math.max(1, Math.floor(limit / group.cellWidth)) });
+    if (!pagesExceed(pages, limit)) return { ...base, pages, groups, scale: 1, applied: "columns", note: "Столбцы пересчитаны под лимит" };
+  }
+  if (overflow === "scale") {
+    let scale = Math.min(1, limit / Math.max(1, naturalWidth), limit / Math.max(1, naturalHeight));
+    if (tight) scale = Math.min(1, Math.sqrt((limit * limit) / Math.max(1, naturalWidth * naturalHeight)));
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const scaledGroups = scaleGroups(groups, scale);
+      const pages = layoutAtlas(scaledGroups, { packing, limitW: tight ? limit : 0 });
+      if (!pagesExceed(pages, limit) && pages.length === 1) {
+        return { ...base, pages, groups: scaledGroups, scale, applied: "scale", note: `Кадры уменьшены до ${Math.round(scale * 100)}%` };
+      }
+      scale *= 0.94;
+    }
+  }
+  // Split into several pages; a single frame larger than the limit is scaled down first.
+  const scale = largestItem > limit ? limit / largestItem : 1;
+  const scaledGroups = scale < 1 ? scaleGroups(groups, scale) : groups;
+  const pages = layoutAtlas(scaledGroups, { packing, limitW: limit, limitH: limit });
+  const note = overflow === "columns" && !tight ? "Столбцы не помогли — лист разбит на страницы" : `Разбито на листов: ${pages.length}`;
+  return { ...base, pages, groups: scaledGroups, scale, applied: "split", note: scale < 1 ? `${note} · кадры уменьшены до ${Math.round(scale * 100)}%` : note };
+}
+
+async function trimRendered(buffer) {
+  const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const bounds = alphaBounds(data, info, 0) || { left: 0, top: 0, width: 1, height: 1 };
+  const trimmed = await sharp(buffer).extract(bounds).png().toBuffer();
+  return { buffer: trimmed, bounds, sourceWidth: info.width, sourceHeight: info.height };
+}
+
+async function makeSequencePreview(imagePaths, order, sequence, outputPath, fps, appRoot, signal) {
+  if (!order.length) return null;
+  const listDir = path.dirname(imagePaths[0]);
+  const listPath = path.join(listDir, `.sequence-${crypto.randomUUID()}.ffconcat`);
+  const lines = ["ffconcat version 1.0"];
+  for (const position of order) {
+    const entry = sequence[position];
+    lines.push(`file '${path.relative(listDir, imagePaths[entry.image]).replace(/\\/g, "/").replace(/'/g, "")}'`);
+    lines.push(`duration ${(entry.durationMs / 1000).toFixed(3)}`);
+  }
+  lines.push(`file '${path.relative(listDir, imagePaths[sequence[order.at(-1)].image]).replace(/\\/g, "/").replace(/'/g, "")}'`);
+  await fs.writeFile(listPath, `${lines.join("\n")}\n`, "utf8");
+  const ffmpeg = await resolveBinary("ffmpeg", appRoot);
+  try {
+    await runProcess(ffmpeg, [
+      "-hide_banner", "-loglevel", "error", "-y",
+      "-f", "concat", "-safe", "0", "-i", listPath,
+      "-fps_mode", "vfr",
+      "-loop", "0", "-c:v", "libwebp_anim", "-lossless", "1", "-compression_level", "4",
+      outputPath,
+    ], { signal });
+    return outputPath;
+  } catch {
+    if (signal?.aborted) throw new Error("Обработка отменена.");
+    // Older FFmpeg builds: fall back to a constant-rate preview of the ordered frames.
+    const fallbackDir = path.join(listDir, `.ordered-${crypto.randomUUID()}`);
+    await fs.mkdir(fallbackDir, { recursive: true });
+    for (const [index, position] of order.entries()) {
+      await fs.copyFile(imagePaths[sequence[position].image], path.join(fallbackDir, `${String(index).padStart(4, "0")}.png`));
+    }
+    return makeAnimatedPreview(path.join(fallbackDir, "%04d.png"), outputPath, fps, appRoot, signal);
+  } finally {
+    await fs.rm(listPath, { force: true }).catch(() => {});
+  }
+}
+
+function frameName(prefix, index) {
+  return `${prefix}_${String(index).padStart(4, "0")}`;
+}
+
+function describeFrames(animations, atlas, pageFiles) {
+  const rectByItem = new Map();
+  atlas.pages.forEach((page, pageIndex) => page.rects.forEach((rect) => rectByItem.set(rect.item, { ...rect, page: pageIndex })));
+  const frames = [];
+  const tags = [];
+  for (const animation of animations) {
+    const from = frames.length;
+    const group = atlas.groups[animation.groupIndex];
+    animation.sequence.forEach((entry, position) => {
+      const item = group.items[entry.image];
+      const rect = rectByItem.get(item);
+      frames.push({
+        name: frameName(animation.prefix, position),
+        animation: animation.name,
+        position,
+        sourceFrameIndex: animation.prepared[entry.image].sourceIndex,
+        page: rect.page,
+        image: pageFiles[rect.page],
+        x: rect.x, y: rect.y, width: item.width, height: item.height,
+        trimmed: Boolean(item.trimmed),
+        spriteSourceSize: { x: item.offsetX, y: item.offsetY, w: item.width, h: item.height },
+        sourceSize: { w: group.cellWidth, h: group.cellHeight },
+        durationMs: entry.durationMs,
+        pivot: animation.pivot,
+        transform: resolveFrameTransform(animation.options, animation.prepared[entry.image].sourceIndex),
+      });
+    });
+    tags.push({
+      name: animation.name,
+      from,
+      to: frames.length - 1,
+      direction: animation.loop.mode === "pingpong" ? "pingpong" : "forward",
+      loop: animation.loop,
+      fps: animation.fps,
+      frameCount: animation.sequence.length,
+      cellWidth: group.cellWidth,
+      cellHeight: group.cellHeight,
+      pivot: animation.pivot,
+      anchor: animation.anchor,
+    });
+  }
+  return { frames, tags };
+}
+
+function tagFrames(frames, tag) {
+  const list = frames.slice(tag.from, tag.to + 1);
+  const order = playbackOrder(list.length, tag.loop);
+  return order.map((position) => list[position]);
+}
+
+function phaserFiles(spriteName, frames, tags, atlas, pageFiles) {
+  const textures = atlas.pages.map((page, pageIndex) => ({
+    image: pageFiles[pageIndex],
+    format: "RGBA8888",
+    size: { w: page.width, h: page.height },
+    scale: 1,
+    frames: frames.filter((frame) => frame.page === pageIndex).map((frame) => ({
+      filename: frame.name,
+      rotated: false,
+      trimmed: frame.trimmed,
+      sourceSize: frame.sourceSize,
+      spriteSourceSize: frame.spriteSourceSize,
+      frame: { x: frame.x, y: frame.y, w: frame.width, h: frame.height },
+      pivot: frame.pivot,
+    })),
+  }));
+  const anims = tags.map((tag) => {
+    const base = Math.round(1000 / tag.fps);
+    return {
+      key: tag.name,
+      type: "frame",
+      frames: tagFrames(frames, tag).map((frame) => ({ key: spriteName, frame: frame.name, duration: Math.max(0, frame.durationMs - base) })),
+      frameRate: tag.fps,
+      repeat: -1,
+      yoyo: false,
+    };
+  });
+  return [
+    { file: `${spriteName}.phaser.json`, content: { textures, meta: { app: "Chuba Sprite Lab", version: "1.7.0", note: `this.load.multiatlas('${spriteName}', '${spriteName}.phaser.json')` } } },
+    { file: `${spriteName}.phaser-anims.json`, content: { anims } },
+  ];
+}
+
+function texturePackerFiles(spriteName, frames, tags, atlas, pageFiles) {
+  return atlas.pages.map((page, pageIndex) => {
+    const pageFrames = {};
+    frames.filter((frame) => frame.page === pageIndex).forEach((frame) => {
+      pageFrames[`${frame.name}.png`] = {
+        frame: { x: frame.x, y: frame.y, w: frame.width, h: frame.height },
+        rotated: false,
+        trimmed: frame.trimmed,
+        spriteSourceSize: frame.spriteSourceSize,
+        sourceSize: frame.sourceSize,
+        duration: frame.durationMs,
+        pivot: frame.pivot,
+      };
+    });
+    return {
+      file: atlas.pages.length === 1 ? `${spriteName}.texturepacker.json` : `${spriteName}-${pageIndex}.texturepacker.json`,
+      content: {
+        frames: pageFrames,
+        meta: {
+          app: "Chuba Sprite Lab",
+          version: "1.7.0",
+          image: pageFiles[pageIndex],
+          format: "RGBA8888",
+          size: { w: page.width, h: page.height },
+          scale: String(atlas.scale || 1),
+          frameTags: pageIndex === 0 ? tags.map((tag) => ({ name: tag.name, from: tag.from, to: tag.to, direction: tag.direction })) : [],
+        },
+      },
+    };
+  });
+}
+
+function godotFile(spriteName, frames, tags, atlas, pageFiles) {
+  const lines = [];
+  const subResources = [];
+  const subIds = new Map();
+  const animationBlocks = tags.map((tag) => {
+    const base = 1000 / tag.fps;
+    const entries = tagFrames(frames, tag).map((frame) => {
+      if (!subIds.has(frame.name)) {
+        const id = `AtlasTexture_${subIds.size}`;
+        subIds.set(frame.name, id);
+        const marginW = frame.sourceSize.w - frame.width;
+        const marginH = frame.sourceSize.h - frame.height;
+        subResources.push([
+          `[sub_resource type="AtlasTexture" id="${id}"]`,
+          `atlas = ExtResource("${frame.page + 1}_sheet")`,
+          `region = Rect2(${frame.x}, ${frame.y}, ${frame.width}, ${frame.height})`,
+          frame.trimmed ? `margin = Rect2(${frame.spriteSourceSize.x}, ${frame.spriteSourceSize.y}, ${marginW}, ${marginH})` : null,
+          "",
+        ].filter((line) => line !== null).join("\n"));
+      }
+      return `{\n"duration": ${(frame.durationMs / base).toFixed(3)},\n"texture": SubResource("${subIds.get(frame.name)}")\n}`;
+    });
+    return `{\n"frames": [${entries.join(", ")}],\n"loop": true,\n"name": &"${tag.name.replace(/"/g, "")}",\n"speed": ${tag.fps.toFixed(1)}\n}`;
+  });
+  lines.push(`[gd_resource type="SpriteFrames" load_steps=${atlas.pages.length + subResources.length + 1} format=3]`, "");
+  pageFiles.forEach((file, index) => lines.push(`[ext_resource type="Texture2D" path="res://${file}" id="${index + 1}_sheet"]`));
+  lines.push("", ...subResources, "[resource]", `animations = [${animationBlocks.join(", ")}]`, "");
+  return { file: `${spriteName}.tres`, text: lines.join("\n") };
+}
+
+async function runAtlasJob({ animations: animationInputs, outputDir, name, options = {}, previewOnly = false, appRoot, onProgress, signal }) {
+  if (!animationInputs?.length) throw new Error("Сначала выберите видео или кадры.");
+  throwIfAborted(signal);
+  const multi = animationInputs.length > 1;
+  const firstSource = animationInputs[0].source;
+  if (!firstSource?.paths?.length) throw new Error("Сначала выберите видео или кадры.");
+  const spriteName = safeName(name || path.parse(firstSource.title || firstSource.paths[0]).name);
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-lab-"));
+  const requestedExports = {
+    sheet: options.exports?.sheet !== false,
+    frames: options.exports?.frames !== false,
+    metadata: options.exports?.metadata !== false,
+    preview: options.exports?.preview !== false,
+  };
+  if (!previewOnly && !Object.values(requestedExports).some(Boolean)) throw new Error("Выберите хотя бы один формат экспорта.");
+  const exportSheet = requestedExports.sheet || requestedExports.metadata;
+  const exportFormat = exportFormats.includes(options.exportFormat) ? options.exportFormat : "chuba";
+  const finalRoot = previewOnly
+    ? path.join(tempRoot, "preview")
+    : path.join(outputDir || path.dirname(firstSource.paths[0]), spriteName);
+  const workingRoot = previewOnly ? finalRoot : path.join(tempRoot, "working");
+  if (!previewOnly && options.cleanOutput) {
+    const existing = await fs.readdir(finalRoot).catch(() => []);
+    const generated = existing.filter((file) => file === "frames" || (file.startsWith(`${spriteName}.`) || file.startsWith(`${spriteName}-`)) && /\.(png|json|webp|tres)$/i.test(file));
+    for (const file of generated) await fs.rm(path.join(finalRoot, file), { recursive: true, force: true });
+  }
+  await fs.mkdir(finalRoot, { recursive: true });
+  await fs.mkdir(workingRoot, { recursive: true });
+
+  const animations = [];
+  const usedNames = new Set();
+  for (const [animationIndex, input] of animationInputs.entries()) {
+    const animOptions = input.options || options;
+    const scaleProgress = (progress) => onProgress?.({
+      ...progress,
+      value: ((animationIndex + Math.max(0, Math.min(1, Number(progress.value) || 0)) * 0.8) / animationInputs.length),
+      message: multi ? `Анимация «${input.name}» · ${progress.message || "обработка"}` : progress.message,
+    });
+    const built = await buildAnimation({ source: input.source, options: animOptions, appRoot, onProgress: scaleProgress, signal, tempRoot: path.join(tempRoot, `anim-${animationIndex}`) });
+    const { sequence, fps, baseDurationMs } = buildSequence(built.prepared, animOptions);
+    const loop = resolveLoop(animOptions, sequence.length);
+    let animName = safeName(input.name || animOptions.animationName || spriteName) || `anim-${animationIndex + 1}`;
+    while (usedNames.has(animName)) animName = `${animName}-2`;
+    usedNames.add(animName);
+    const normalized = built.normalized;
+    animations.push({
+      name: animName,
+      prefix: multi ? animName : spriteName,
+      source: input.source,
+      options: animOptions,
+      built,
+      prepared: built.prepared,
+      normalized,
+      sequence,
+      fps,
+      baseDurationMs,
+      loop,
+      anchor: normalized.anchor,
+      pivot: normalized.anchor === "ground" ? { x: 0.5, y: 1 - normalized.padding / normalized.cellHeight } : { x: 0.5, y: 0.5 },
     });
   }
 
-  const columns = options.autoColumns
-    ? Math.max(1, Math.ceil(Math.sqrt(framePaths.length)))
-    : clamp(Math.round(Number(options.columns) || Math.ceil(Math.sqrt(framePaths.length))), 1, Math.max(1, framePaths.length));
-  const rows = Math.ceil(framePaths.length / columns);
-  const sheetWidth = columns * normalized.cellWidth;
-  const sheetHeight = rows * normalized.cellHeight;
-  const sheetBackground = options.outputBackground === "white"
-    ? { r: 255, g: 255, b: 255, alpha: 1 }
-    : { r: 0, g: 0, b: 0, alpha: 0 };
-  const composites = normalized.rendered.map((frame, index) => ({
-    input: frame.buffer,
-    left: (index % columns) * normalized.cellWidth,
-    top: Math.floor(index / columns) * normalized.cellHeight,
-  }));
-  const sheetPath = path.join(previewOnly || exportSheet ? finalRoot : workingRoot, `${spriteName}.sheet.png`);
-  await sharp({ create: { width: sheetWidth, height: sheetHeight, channels: 4, background: sheetBackground } })
-    .composite(composites)
-    .png({ compressionLevel: 9 })
-    .toFile(sheetPath);
+  // Unique rendered images (one per prepared frame) — used by the UI and the preview.
+  onProgress?.({ stage: "images", value: 0.8, message: "Сохраняю кадры…" });
+  for (const [animationIndex, animation] of animations.entries()) {
+    const imageDir = previewOnly
+      ? path.join(finalRoot, multi ? path.join("frames", animation.name) : "frames")
+      : path.join(workingRoot, "images", String(animationIndex));
+    await fs.mkdir(imageDir, { recursive: true });
+    animation.imagePaths = [];
+    for (let index = 0; index < animation.normalized.rendered.length; index += 1) {
+      throwIfAborted(signal);
+      const imagePath = path.join(imageDir, `${String(index).padStart(4, "0")}.png`);
+      await fs.writeFile(imagePath, animation.normalized.rendered[index].buffer);
+      animation.imagePaths.push(imagePath);
+    }
+  }
 
-  const frameDurationMs = Math.round(1000 / clamp(Number(options.fps) || 8, 1, 60));
-  const pivot = normalized.anchor === "ground" ? { x: 0.5, y: 1 - normalized.padding / normalized.cellHeight } : { x: 0.5, y: 0.5 };
+  // Atlas items.
+  const packing = options.packing === "tight" ? "tight" : "grid";
+  const groups = [];
+  for (const animation of animations) {
+    const count = animation.normalized.rendered.length;
+    const layoutCount = packing === "grid" ? animation.sequence.length : count;
+    const columns = animation.options.autoColumns
+      ? Math.max(1, Math.ceil(Math.sqrt(layoutCount)))
+      : clamp(Math.round(Number(animation.options.columns) || Math.ceil(Math.sqrt(layoutCount))), 1, Math.max(1, layoutCount));
+    const items = [];
+    for (let index = 0; index < count; index += 1) {
+      const rendered = animation.normalized.rendered[index];
+      if (packing === "tight") {
+        const trimmed = await trimRendered(rendered.buffer);
+        items.push({ buffer: trimmed.buffer, width: trimmed.bounds.width, height: trimmed.bounds.height, offsetX: trimmed.bounds.left, offsetY: trimmed.bounds.top, trimmed: true, fullWidth: animation.normalized.cellWidth, fullHeight: animation.normalized.cellHeight });
+      } else {
+        items.push({ buffer: rendered.buffer, width: animation.normalized.cellWidth, height: animation.normalized.cellHeight, offsetX: 0, offsetY: 0, trimmed: false });
+      }
+    }
+    // Grid keeps the legacy one-cell-per-sequence-frame layout so engines that read
+    // only frameWidth/columns keep working; duplicates point to the same image.
+    let gridItems = items;
+    if (packing === "grid") gridItems = animation.sequence.map((entry) => items[entry.image]);
+    groups.push({ items: packing === "grid" ? [...new Set(gridItems)] : items, columns, cellWidth: animation.normalized.cellWidth, cellHeight: animation.normalized.cellHeight, imageItems: items });
+    animation.groupIndex = groups.length - 1;
+  }
+  const maxSize = Number(options.atlasMaxSize) || 0;
+  const atlas = planAtlas(groups.map((group) => ({ ...group, items: group.items })), { packing, maxSize, overflow: options.atlasOverflow || "warn" });
+  // Map scaled items back to per-image lists in the same order.
+  atlas.groups.forEach((group, groupIndex) => {
+    const original = groups[groupIndex];
+    const scaledByOriginal = new Map(original.items.map((item, index) => [item, group.items[index]]));
+    group.items = original.imageItems.map((item) => {
+      const scaled = scaledByOriginal.get(item);
+      if (!scaled) return item;
+      if (atlas.scale !== 1) {
+        scaled.offsetX = Math.floor((item.offsetX || 0) * atlas.scale);
+        scaled.offsetY = Math.floor((item.offsetY || 0) * atlas.scale);
+      }
+      return scaled;
+    });
+    if (atlas.scale !== 1) {
+      group.cellWidth = Math.max(1, Math.floor(original.cellWidth * atlas.scale));
+      group.cellHeight = Math.max(1, Math.floor(original.cellHeight * atlas.scale));
+    }
+  });
+
+  onProgress?.({ stage: "sheet", value: 0.86, message: atlas.pages.length > 1 ? `Собираю ${atlas.pages.length} листа…` : "Собираю спрайт-лист…" });
+  const sheetBackground = options.outputBackground === "white" ? { r: 255, g: 255, b: 255, alpha: 1 } : { r: 0, g: 0, b: 0, alpha: 0 };
+  const pixelKernel = animations.some((animation) => animation.options.pixelPerfect) ? sharp.kernel.nearest : sharp.kernel.lanczos3;
+  const pageFiles = atlas.pages.map((_page, index) => (atlas.pages.length === 1 ? `${spriteName}.sheet.png` : `${spriteName}.sheet-${index}.png`));
+  const sheetDir = previewOnly || exportSheet ? finalRoot : workingRoot;
+  const sheetPaths = [];
+  for (const [pageIndex, page] of atlas.pages.entries()) {
+    const composites = [];
+    for (const rect of page.rects) {
+      let input = rect.item.buffer;
+      const meta = rect.item.sourceBufferSize || await sharp(input).metadata();
+      if (meta.width !== rect.item.width || meta.height !== rect.item.height) {
+        input = await sharp(input).resize({ width: rect.item.width, height: rect.item.height, fit: "fill", kernel: pixelKernel }).png().toBuffer();
+      }
+      composites.push({ input, left: rect.x, top: rect.y });
+    }
+    const sheetPath = path.join(sheetDir, pageFiles[pageIndex]);
+    await sharp({ create: { width: Math.max(1, page.width), height: Math.max(1, page.height), channels: 4, background: sheetBackground } })
+      .composite(composites)
+      .png({ compressionLevel: previewOnly ? 6 : 9 })
+      .toFile(sheetPath);
+    sheetPaths.push(sheetPath);
+  }
+
+  // Frames folder in playback order (duplicates written as separate files).
+  let framePaths = [];
+  if (!previewOnly && requestedExports.frames) {
+    for (const animation of animations) {
+      const dir = path.join(finalRoot, multi ? path.join("frames", animation.name) : "frames");
+      await fs.mkdir(dir, { recursive: true });
+      for (const [position, entry] of animation.sequence.entries()) {
+        const framePath = path.join(dir, `${String(position).padStart(4, "0")}.png`);
+        await fs.copyFile(animation.imagePaths[entry.image], framePath);
+        framePaths.push(framePath);
+      }
+    }
+  } else if (previewOnly) {
+    framePaths = animations.flatMap((animation) => animation.imagePaths);
+  }
+
+  const { frames, tags } = describeFrames(animations, atlas, pageFiles);
+  const primary = animations[0];
+  const primaryGroup = atlas.groups[primary.groupIndex];
+  const gridLayout = packing === "grid" && atlas.pages.length === 1 && !multi;
+  const columns = gridLayout ? (primaryGroup.layoutColumns || primaryGroup.columns) : primaryGroup.columns;
+  const rows = gridLayout ? Math.ceil(groups[primary.groupIndex].items.length / Math.max(1, columns)) : Math.ceil(primary.sequence.length / Math.max(1, primaryGroup.columns));
   const manifest = {
     name: spriteName,
-    image: path.basename(sheetPath),
-    frameWidth: normalized.cellWidth,
-    frameHeight: normalized.cellHeight,
+    image: pageFiles[0],
+    frameWidth: primaryGroup.cellWidth,
+    frameHeight: primaryGroup.cellHeight,
     columns,
     rows,
-    frameCount: framePaths.length,
-    fps: clamp(Number(options.fps) || 8, 1, 60),
-    frameDurationMs,
-    anchor: normalized.anchor,
-    pivot,
+    frameCount: multi ? frames.length : primary.sequence.length,
+    fps: primary.fps,
+    frameDurationMs: primary.baseDurationMs,
+    anchor: primary.anchor,
+    pivot: primary.pivot,
     transparent: options.outputBackground !== "white",
-    frames: framePaths.map((_framePath, index) => ({
+    formatVersion: 2,
+    packing,
+    scale: atlas.scale,
+    pages: atlas.pages.map((page, index) => ({ image: pageFiles[index], width: page.width, height: page.height })),
+    loop: primary.loop,
+    animations: tags,
+    frames: frames.map((frame, index) => ({
       index,
-      x: (index % columns) * normalized.cellWidth,
-      y: Math.floor(index / columns) * normalized.cellHeight,
-      width: normalized.cellWidth,
-      height: normalized.cellHeight,
-      durationMs: frameDurationMs,
-      pivot,
+      name: frame.name,
+      animation: frame.animation,
+      sourceFrameIndex: frame.sourceFrameIndex,
+      page: frame.page,
+      x: frame.x,
+      y: frame.y,
+      width: frame.width,
+      height: frame.height,
+      trimmed: frame.trimmed,
+      spriteSourceSize: frame.spriteSourceSize,
+      sourceSize: frame.sourceSize,
+      durationMs: frame.durationMs,
+      pivot: frame.pivot,
+      transform: frame.transform,
     })),
   };
+  const report = multi
+    ? { generatedAt: new Date().toISOString(), animations: animations.map((animation) => ({ name: animation.name, ...animation.built.report })), warnings: animations.flatMap((animation) => animation.built.report.warnings.map((warning) => `${animation.name}: ${warning}`)).slice(0, 100) }
+    : { ...primary.built.report, generatedAt: new Date().toISOString() };
+  if (atlas.exceeds) report.atlas = { naturalWidth: atlas.naturalWidth, naturalHeight: atlas.naturalHeight, limit: atlas.limit, applied: atlas.applied, note: atlas.note };
   const manifestPath = previewOnly || requestedExports.metadata ? path.join(finalRoot, `${spriteName}.json`) : null;
   const reportPath = previewOnly || requestedExports.metadata ? path.join(finalRoot, `${spriteName}.report.json`) : null;
   if (manifestPath) await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   if (reportPath) await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
-  let previewPath = null;
-  if (previewOnly || requestedExports.preview) {
-    onProgress?.({ stage: "preview", value: 0.86, message: "Собираю анимированное превью…" });
-    previewPath = await makeAnimatedPreview(path.join(framesDir, "%04d.png"), path.join(finalRoot, `${spriteName}.preview.webp`), options.fps, appRoot, signal);
+  const engineFiles = [];
+  if (!previewOnly && requestedExports.metadata && exportFormat !== "chuba") {
+    const outputs = exportFormat === "phaser3" ? phaserFiles(spriteName, frames, tags, atlas, pageFiles)
+      : exportFormat === "texturepacker" ? texturePackerFiles(spriteName, frames, tags, atlas, pageFiles)
+        : [godotFile(spriteName, frames, tags, atlas, pageFiles)];
+    for (const output of outputs) {
+      const target = path.join(finalRoot, output.file);
+      await fs.writeFile(target, output.text ?? `${JSON.stringify(output.content, null, 2)}\n`, "utf8");
+      engineFiles.push(target);
+    }
   }
-  onProgress?.({ stage: "done", value: 1, message: `Готово · ${framePaths.length} кадров` });
+
+  let previewPath = null;
+  const previewPaths = [];
+  if (previewOnly || requestedExports.preview) {
+    onProgress?.({ stage: "preview", value: 0.92, message: "Собираю анимированное превью…" });
+    for (const animation of animations) {
+      const order = playbackOrder(animation.sequence.length, animation.loop);
+      const target = path.join(finalRoot, multi ? `${spriteName}.${animation.name}.preview.webp` : `${spriteName}.preview.webp`);
+      const made = await makeSequencePreview(animation.imagePaths, order, animation.sequence, target, animation.fps, appRoot, signal);
+      if (made) previewPaths.push(made);
+    }
+    previewPath = previewPaths[0] || null;
+  }
+  onProgress?.({ stage: "done", value: 1, message: `Готово · ${frames.length} кадров` });
 
   const revealPath = !previewOnly
-    ? (exportSheet ? sheetPath : requestedExports.frames ? framePaths[0] : manifestPath || previewPath)
+    ? (exportSheet ? sheetPaths[0] : requestedExports.frames ? framePaths[0] : manifestPath || previewPath)
     : null;
 
   return {
     name: spriteName,
     outputDir: finalRoot,
-    sheetPath,
+    sheetPath: sheetPaths[0],
+    sheetPaths,
     manifestPath,
     reportPath,
     previewPath,
+    previewPaths,
+    engineFiles,
+    exportFormat,
     revealPath,
     exports: requestedExports,
     framePaths,
-    sourceFramePaths: prepared.map((frame) => frame.sourcePath),
-    sourceFrameIndexes: prepared.map((frame) => frame.sourceIndex),
-    allSourceFramePaths: inputFrames,
-    frameCount: framePaths.length,
+    imagePaths: primary.imagePaths,
+    sourceFramePaths: primary.prepared.map((frame) => frame.sourcePath),
+    sourceFrameIndexes: primary.prepared.map((frame) => frame.sourceIndex),
+    allSourceFramePaths: primary.built.inputFrames,
+    frameCount: multi ? frames.length : primary.sequence.length,
     columns,
     rows,
-    cellWidth: normalized.cellWidth,
-    cellHeight: normalized.cellHeight,
+    cellWidth: primaryGroup.cellWidth,
+    cellHeight: primaryGroup.cellHeight,
     warnings: report.warnings,
-    skipped,
-    attachmentPlacements,
+    skipped: primary.built.skipped,
+    attachmentPlacements: primary.built.attachmentPlacements,
+    reusedRender: animations.every((animation) => animation.built.reused),
+    sequence: primary.sequence.map((entry) => ({ sourceIndex: primary.prepared[entry.image].sourceIndex, durationMs: entry.durationMs, custom: entry.custom })),
+    loop: primary.loop,
+    fps: primary.fps,
+    pivot: primary.pivot,
+    packing,
+    atlas: {
+      pages: atlas.pages.map((page, index) => ({ width: page.width, height: page.height, path: sheetPaths[index] })),
+      width: Math.max(...atlas.pages.map((page) => page.width)),
+      height: Math.max(...atlas.pages.map((page) => page.height)),
+      naturalWidth: atlas.naturalWidth,
+      naturalHeight: atlas.naturalHeight,
+      limit: atlas.limit,
+      exceeds: atlas.exceeds,
+      applied: atlas.applied,
+      scale: atlas.scale,
+      note: atlas.note,
+    },
+    animations: animations.map((animation) => ({ name: animation.name, frameCount: animation.sequence.length, fps: animation.fps, loop: animation.loop, reused: animation.built.reused })),
+    multi,
   };
 }
 
-export async function processVideoBatch({ paths, outputDir, options = {}, appRoot, onProgress, signal }) {
+export async function processSprites({ source, outputDir, name, options = {}, previewOnly = false, appRoot, onProgress, signal }) {
+  if (!source?.paths?.length) throw new Error("Сначала выберите видео или кадры.");
+  return runAtlasJob({
+    animations: [{ name: options.animationName || name, source, options }],
+    outputDir, name, options, previewOnly, appRoot, onProgress, signal,
+  });
+}
+
+export async function processAnimationSet({ animations, outputDir, name, options = {}, previewOnly = false, appRoot, onProgress, signal }) {
+  const valid = (animations || []).filter((animation) => animation?.source?.paths?.length);
+  if (!valid.length) throw new Error("В проекте нет анимаций с исходниками.");
+  return runAtlasJob({ animations: valid, outputDir, name, options, previewOnly, appRoot, onProgress, signal });
+}
+
+export async function processVideoBatch({ paths, outputDir, options = {}, appRoot, onProgress, signal, shouldStop }) {
   const videoPaths = [...new Set((paths || []).filter(Boolean))];
   if (!videoPaths.length) throw new Error("Не выбрано ни одного видео для пакетной обработки.");
   if (!outputDir) throw new Error("Выберите папку назначения для пакетной обработки.");
@@ -969,18 +1639,16 @@ export async function processVideoBatch({ paths, outputDir, options = {}, appRoo
       if (signal?.aborted) throw new Error("Обработка отменена.");
       failures.push({ path: videoPath, name: path.basename(videoPath), error: error.message || String(error) });
     }
+    if (shouldStop?.()) break;
   }
 
-  if (!results.length) {
-    const firstError = failures[0]?.error ? ` ${failures[0].error}` : "";
-    throw new Error(`Не удалось обработать ни одного видео.${firstError}`);
-  }
   onProgress?.({ stage: "done", value: 1, message: `Готово · ${results.length}/${videoPaths.length} видео` });
   return {
     batch: true,
     total: videoPaths.length,
     completed: results.length,
     failed: failures.length,
+    stopped: results.length + failures.length < videoPaths.length,
     failures,
     results,
     outputDir,
@@ -1004,6 +1672,18 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
   const placements = options.attachmentPlacements?.[previewFrameIndex]
     || (options.attachments || []).map((attachment) => ({ ...attachment, points: attachment.points || [] }));
   keyed = await compositeAttachments(keyed, placements);
+  const transform = resolveFrameTransform(options, previewFrameIndex);
+  if (transform && keyed.bounds) {
+    const sprite = await sharp(keyed.buffer).extract(keyed.bounds).png().toBuffer();
+    const transformed = await placeTransformedSprite({
+      sprite, width: keyed.bounds.width, height: keyed.bounds.height, left: keyed.bounds.left, top: keyed.bounds.top,
+      canvasWidth: keyed.info.width, canvasHeight: keyed.info.height, transform,
+      kernel: options.pixelPerfect ? sharp.kernel.nearest : sharp.kernel.lanczos3,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    });
+    const { data, info } = await sharp(transformed.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    keyed = { ...keyed, buffer: transformed.buffer, info, bounds: alphaBounds(data, info) };
+  }
   const afterPath = path.join(previewRoot, "after.png");
   await fs.writeFile(afterPath, keyed.buffer);
   return {

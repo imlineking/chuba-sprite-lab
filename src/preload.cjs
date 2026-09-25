@@ -13,13 +13,22 @@ contextBridge.exposeInMainWorld("spriteLab", {
   openFrameEdit: (request) => ipcRenderer.invoke("frame-edit:open", request),
   openOnlineFrameEditor: (request) => ipcRenderer.invoke("frame-edit:online", request),
   replaceFrameEdit: (request) => ipcRenderer.invoke("frame-edit:replace", request),
+  replaceFrameEditDropped: (request) => ipcRenderer.invoke("frame-edit:replace-dropped", {
+    path: request.path,
+    incomingPath: webUtils.getPathForFile(request.file),
+  }),
+  snapshotFrameEdit: (filePath) => ipcRenderer.invoke("frame-edit:snapshot", filePath),
   statFrameEdit: (filePath) => ipcRenderer.invoke("frame-edit:stat", filePath),
+  saveProject: (request) => ipcRenderer.invoke("project:save", request),
+  loadProject: () => ipcRenderer.invoke("project:load"),
+  restoreProject: (request) => ipcRenderer.invoke("project:restore", request),
   inspectDropped: (files) => {
     const paths = Array.from(files || [], (file) => webUtils.getPathForFile(file)).filter(Boolean);
     return ipcRenderer.invoke("source:dropped", { paths });
   },
   build: (request) => ipcRenderer.invoke("sprites:build", request),
   cancelBuild: () => ipcRenderer.invoke("sprites:cancel"),
+  stopBatchAfterCurrent: () => ipcRenderer.invoke("sprites:stop-after-current"),
   previewFrame: (request) => ipcRenderer.invoke("preview:frame", request),
   previewPoster: (request) => ipcRenderer.invoke("source:poster", request),
   revealOutput: (outputPath) => ipcRenderer.invoke("output:reveal", outputPath),

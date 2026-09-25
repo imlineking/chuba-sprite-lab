@@ -8,7 +8,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sharp from "sharp";
-import { inspectSource, makeSourcePreview, processFramePreview, processSprites, processVideoBatch, supportedImageExtensions } from "./processor.mjs";
+import { inspectSource, makeSourcePreview, processAnimationSet, processFramePreview, processSprites, processVideoBatch, supportedImageExtensions } from "./processor.mjs";
 import { sliceSpriteSheet } from "./sheet-slicer.mjs";
 import { assertGitHubDownloadUrl, compareVersions, parseSha256 } from "./update-utils.mjs";
 
@@ -225,6 +225,20 @@ async function describeSpriteSheet(sheetPath, options = {}) {
   };
 }
 
+async function restoreProjectSource(descriptor = {}) {
+  const paths = Array.isArray(descriptor.paths) ? descriptor.paths.map((item) => path.resolve(String(item))) : [];
+  const available = [];
+  for (const filePath of paths) if (await pathExists(filePath)) available.push(filePath);
+  if (descriptor.kind === "sheet") {
+    const sheetPath = path.resolve(String(descriptor.sheetPath || paths[0] || ""));
+    if (!await pathExists(sheetPath)) throw new Error("Исходный спрайт-лист проекта не найден.");
+    return describeSpriteSheet(sheetPath, descriptor.sheetOptions || { mode: descriptor.sheetMode || "objects" });
+  }
+  if (!available.length) throw new Error("Исходные файлы проекта больше недоступны.");
+  if (descriptor.kind === "video-batch") return describeVideoBatch(available);
+  return describePaths(descriptor.kind === "video" ? "video" : "frames", available);
+}
+
 function safeOutputName(value) {
   return String(value || "sprite-animation").trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^[-.]+|[-.]+$/g, "").slice(0, 80) || "sprite-animation";
 }
@@ -285,10 +299,11 @@ ipcMain.handle("source:video", async () => {
 
 ipcMain.handle("source:frames", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: "Выберите отдельные кадры",
+    title: "Выберите картинки для спрайт-листа — JPG, PNG, WEBP (можно вперемешку)",
     properties: ["openFile", "multiSelections"],
     filters: [
-      { name: "Изображения", extensions: [...supportedImageExtensions].map((ext) => ext.slice(1)) },
+      { name: "Картинки JPG · PNG · WEBP", extensions: ["jpg", "jpeg", "png", "webp"] },
+      { name: "Все изображения", extensions: [...supportedImageExtensions].map((ext) => ext.slice(1)) },
     ],
   });
   if (result.canceled) return null;
@@ -349,6 +364,86 @@ ipcMain.handle("output:folder", async () => {
   return result.canceled ? null : result.filePaths[0];
 });
 
+ipcMain.handle("project:restore", async (_event, request = {}) => restoreProjectSource(request.source));
+
+ipcMain.handle("project:load", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Открыть проект Chuba Sprite Lab",
+    properties: ["openFile"],
+    filters: [{ name: "Проект Chuba Sprite Lab", extensions: ["cslab"] }],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const projectPath = result.filePaths[0];
+  const project = JSON.parse(await fs.readFile(projectPath, "utf8"));
+  if (!project || project.format !== "chuba-sprite-lab-project" || !project.source) throw new Error("Файл не является проектом Chuba Sprite Lab.");
+  const source = await restoreProjectSource(project.source);
+  return { projectPath, project, source };
+});
+
+ipcMain.handle("project:save", async (_event, request = {}) => {
+  const project = request.project;
+  if (!project || project.format !== "chuba-sprite-lab-project" || !project.source) throw new Error("Проект не содержит исходника.");
+  let projectPath = request.projectPath ? path.resolve(String(request.projectPath)) : null;
+  if (!projectPath || request.saveAs) {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: "Сохранить проект Chuba Sprite Lab",
+      defaultPath: project.name ? `${safeOutputName(project.name)}.cslab` : "sprite-project.cslab",
+      filters: [{ name: "Проект Chuba Sprite Lab", extensions: ["cslab"] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    projectPath = result.filePath.toLowerCase().endsWith(".cslab") ? result.filePath : `${result.filePath}.cslab`;
+  }
+
+  const assetDir = path.join(path.dirname(projectPath), `${path.basename(projectPath, ".cslab")}.assets`);
+  await fs.mkdir(assetDir, { recursive: true });
+  const frameOverrides = {};
+  for (const [index, sourcePath] of Object.entries(project.frameOverrides || {})) {
+    if (!await pathExists(sourcePath)) continue;
+    const targetPath = path.join(assetDir, `frame-${String(Number(index) + 1).padStart(4, "0")}.png`);
+    if (path.resolve(sourcePath) !== path.resolve(targetPath)) await sharp(sourcePath).ensureAlpha().png().toFile(targetPath);
+    frameOverrides[index] = targetPath;
+  }
+  const attachments = [];
+  for (const [index, attachment] of (project.attachments || []).entries()) {
+    if (!attachment?.path || !await pathExists(attachment.path)) {
+      attachments.push(attachment);
+      continue;
+    }
+    const extension = supportedImageExtensions.has(path.extname(attachment.path).toLowerCase()) ? path.extname(attachment.path).toLowerCase() : ".png";
+    const targetPath = path.join(assetDir, `attachment-${String(index + 1).padStart(3, "0")}-${safeOutputName(attachment.title || "element")}${extension}`);
+    if (path.resolve(attachment.path) !== path.resolve(targetPath)) await fs.copyFile(attachment.path, targetPath);
+    attachments.push({ ...attachment, path: targetPath, url: pathToFileURL(targetPath).href });
+  }
+  // Named animations: copy each animation's edited frames and elements next to the project.
+  let animations = project.animations;
+  if (Array.isArray(project.animations)) {
+    animations = [];
+    for (const [animIndex, animation] of project.animations.entries()) {
+      const doc = animation?.document;
+      if (!doc) { animations.push(animation); continue; }
+      const docOverrides = {};
+      for (const [index, sourcePath] of Object.entries(doc.frameOverrides || {})) {
+        if (!await pathExists(sourcePath)) continue;
+        const targetPath = path.join(assetDir, `anim-${animIndex + 1}-frame-${String(Number(index) + 1).padStart(4, "0")}.png`);
+        if (path.resolve(sourcePath) !== path.resolve(targetPath)) await sharp(sourcePath).ensureAlpha().png().toFile(targetPath);
+        docOverrides[index] = targetPath;
+      }
+      const docAttachments = [];
+      for (const [index, attachment] of (doc.attachments || []).entries()) {
+        if (!attachment?.path || !await pathExists(attachment.path)) { docAttachments.push(attachment); continue; }
+        const extension = supportedImageExtensions.has(path.extname(attachment.path).toLowerCase()) ? path.extname(attachment.path).toLowerCase() : ".png";
+        const targetPath = path.join(assetDir, `anim-${animIndex + 1}-attachment-${String(index + 1).padStart(3, "0")}-${safeOutputName(attachment.title || "element")}${extension}`);
+        if (path.resolve(attachment.path) !== path.resolve(targetPath)) await fs.copyFile(attachment.path, targetPath);
+        docAttachments.push({ ...attachment, path: targetPath, url: pathToFileURL(targetPath).href });
+      }
+      animations.push({ ...animation, document: { ...doc, frameOverrides: docOverrides, attachments: docAttachments } });
+    }
+  }
+  const saved = { ...project, frameOverrides, attachments, ...(animations ? { animations } : {}), savedAt: new Date().toISOString() };
+  await fs.writeFile(projectPath, `${JSON.stringify(saved, null, 2)}\n`, "utf8");
+  return { projectPath, project: saved };
+});
+
 ipcMain.handle("overlay:choose", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "Выберите PNG-элемент для привязки",
@@ -381,12 +476,17 @@ function assertExternalEditPath(filePath) {
 }
 
 ipcMain.handle("frame-edit:prepare", async (_event, request = {}) => {
-  const existingPath = request.existingPath ? assertExternalEditPath(request.existingPath) : null;
-  if (existingPath && fsSync.existsSync(existingPath)) {
-    const stats = await fs.stat(existingPath);
-    return { path: existingPath, url: pathToFileURL(existingPath).href, modifiedAt: stats.mtimeMs };
+  // A saved .cslab project keeps its edited frames next to the project file,
+  // so an existing revision is not necessarily inside our temporary edit root.
+  // It is read-only input here; the editable copy is still created in the
+  // controlled temporary directory below.
+  const existingPath = request.existingPath ? path.resolve(String(request.existingPath)) : null;
+  if (existingPath && (!fsSync.existsSync(existingPath) || !supportedImageExtensions.has(path.extname(existingPath).toLowerCase()))) {
+    throw new Error("Сохранённая версия кадра больше недоступна.");
   }
-  const sourcePath = path.resolve(String(request.sourcePath || ""));
+  const sourcePath = existingPath && fsSync.existsSync(existingPath)
+    ? existingPath
+    : path.resolve(String(request.sourcePath || ""));
   if (!fsSync.existsSync(sourcePath)) throw new Error("Исходный кадр больше недоступен.");
   const sessionDir = path.join(externalEditRoot(), crypto.randomUUID());
   await fs.mkdir(sessionDir, { recursive: true });
@@ -442,6 +542,30 @@ ipcMain.handle("frame-edit:replace", async (_event, request = {}) => {
   return { path: targetPath, url: `${pathToFileURL(targetPath).href}?v=${Math.round(stats.mtimeMs)}`, modifiedAt: stats.mtimeMs };
 });
 
+async function replaceFrameEditFromPath(targetPath, sourcePath) {
+  const resolvedTarget = assertExternalEditPath(targetPath);
+  const resolvedSource = path.resolve(String(sourcePath || ""));
+  if (!fsSync.existsSync(resolvedSource) || !supportedImageExtensions.has(path.extname(resolvedSource).toLowerCase())) throw new Error("Перетащите PNG, WEBP или JPG.");
+  const incomingPath = `${resolvedTarget}.incoming.png`;
+  await sharp(resolvedSource).ensureAlpha().png().toFile(incomingPath);
+  await fs.copyFile(incomingPath, resolvedTarget);
+  await fs.unlink(incomingPath).catch(() => {});
+  const stats = await fs.stat(resolvedTarget);
+  return { path: resolvedTarget, url: `${pathToFileURL(resolvedTarget).href}?v=${Math.round(stats.mtimeMs)}`, modifiedAt: stats.mtimeMs };
+}
+
+ipcMain.handle("frame-edit:replace-dropped", async (_event, request = {}) => replaceFrameEditFromPath(request.path, request.incomingPath));
+
+ipcMain.handle("frame-edit:snapshot", async (_event, filePath) => {
+  const sourcePath = assertExternalEditPath(filePath);
+  const revisionDir = path.join(externalEditRoot(), "revisions");
+  await fs.mkdir(revisionDir, { recursive: true });
+  const revisionPath = path.join(revisionDir, `${crypto.randomUUID()}.png`);
+  await fs.copyFile(sourcePath, revisionPath);
+  const stats = await fs.stat(revisionPath);
+  return { path: revisionPath, url: pathToFileURL(revisionPath).href, modifiedAt: stats.mtimeMs };
+});
+
 ipcMain.handle("frame-edit:stat", async (_event, filePath) => {
   const resolved = assertExternalEditPath(filePath);
   const stats = await fs.stat(resolved);
@@ -458,14 +582,15 @@ ipcMain.handle("sprites:build", async (_event, request) => {
     };
   }
   if (isBatch && !request.previewOnly) {
-    activeJob = new AbortController();
+    activeJob = { controller: new AbortController(), stopAfterCurrent: false };
     try {
       return await processVideoBatch({
         paths: request.source.paths,
         outputDir: request.outputDir,
         options: request.options,
         appRoot,
-        signal: activeJob.signal,
+        signal: activeJob.controller.signal,
+        shouldStop: () => Boolean(activeJob?.stopAfterCurrent),
         onProgress: (progress) => mainWindow?.webContents.send("sprites:progress", progress),
       });
     } finally {
@@ -473,19 +598,32 @@ ipcMain.handle("sprites:build", async (_event, request) => {
     }
   }
   request = await resolveExportConflict(request);
-  activeJob = new AbortController();
+  activeJob = { controller: new AbortController(), stopAfterCurrent: false };
   try {
-    const result = await processSprites({
-      ...request,
+    const common = {
       appRoot,
-      signal: activeJob.signal,
+      signal: activeJob.controller.signal,
       onProgress: (progress) => mainWindow?.webContents.send("sprites:progress", progress),
-    });
+    };
+    let result;
+    if (Array.isArray(request.animations) && request.animations.length > 1) {
+      // Named animations (idle/run/jump) exported into one atlas with tags.
+      const animations = [];
+      for (const animation of request.animations) {
+        const source = animation.active ? request.source : await restoreProjectSource(animation.source);
+        animations.push({ name: animation.name, source, options: animation.options || request.options });
+      }
+      result = await processAnimationSet({ ...request, ...common, animations });
+    } else {
+      result = await processSprites({ ...request, ...common });
+    }
+    const toUrl = (item) => pathToFileURL(item).href;
     return {
       ...result,
-      sheetUrl: pathToFileURL(result.sheetPath).href,
-      previewUrl: result.previewPath ? pathToFileURL(result.previewPath).href : null,
-      frameUrls: result.framePaths.slice(0, 256).map((item) => pathToFileURL(item).href),
+      sheetUrl: toUrl(result.sheetPath),
+      sheetUrls: (result.sheetPaths || [result.sheetPath]).map(toUrl),
+      previewUrl: result.previewPath ? toUrl(result.previewPath) : null,
+      frameUrls: (result.imagePaths || result.framePaths).slice(0, 256).map(toUrl),
       sourceFrameUrls: result.sourceFramePaths.slice(0, 256).map((item) => pathToFileURL(item).href),
       allSourceFrameUrls: result.allSourceFramePaths.slice(0, 256).map((item) => pathToFileURL(item).href),
     };
@@ -502,7 +640,13 @@ ipcMain.handle("source:poster", async (_event, request) => {
 
 ipcMain.handle("sprites:cancel", () => {
   if (!activeJob) return false;
-  activeJob.abort();
+  activeJob.controller.abort();
+  return true;
+});
+
+ipcMain.handle("sprites:stop-after-current", () => {
+  if (!activeJob) return false;
+  activeJob.stopAfterCurrent = true;
   return true;
 });
 

@@ -11,10 +11,18 @@ const state = {
   attachments: [], attachmentAsset: null, attachmentSourceImage: null, attachmentAssetImage: null,
   attachmentPoints: [], attachmentPointCount: 1, attachmentEditingId: null, attachmentReferenceFrame: 0,
   frameOverrides: {}, externalEdit: null, externalEditTimer: null,
+  solidKeyMode: "black", projectPath: null, history: [], historyIndex: -1, historyTimer: null, historyApplying: false,
+  warnings: [], warningIndex: 0, batchItems: [], pendingSession: null, preferredEditor: "photopea",
+  viewportPanX: 0, viewportPanY: 0, spaceHand: false, handToolLocked: false, viewportPanning: false, panPointerId: null,
+  frameTransforms: {}, transformScope: "frame", transformPanelOpen: false,
+  timeline: null, selectedEntryId: null, processPreset: "character", imageAlign: "ground",
+  animations: [], activeAnimationId: null, animationSwitching: false, fitScale: 1,
 };
 let posterTimer = null;
 let aboutReturnFocus = null;
 let pendingUpdate = null;
+let modalReturnFocus = null;
+let customExportProfiles = {};
 
 const exportControls = { sheet: "#exportSheet", frames: "#exportFrames", metadata: "#exportMetadata", preview: "#exportPreview" };
 const exportNames = { sheet: "спрайт-лист", frames: "кадры", metadata: "JSON", preview: "WebP" };
@@ -25,19 +33,368 @@ const exportPresets = {
   artist: { sheet: false, frames: true, metadata: false, preview: true },
   engine: { sheet: true, frames: false, metadata: true, preview: false },
 };
+const preferenceValueIds = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness", "fringeStrength", "trimStart", "trimEnd"];
+const preferenceCheckIds = ["autoSize", "autoColumns", "pixelPerfect", "removeDuplicates", "whiteOutput", "openAfterExport", "fringeCleanup", "sheetFitEach"];
+
+function sourceDescriptor(source = state.source) {
+  if (!source) return null;
+  return {
+    kind: source.kind,
+    paths: source.kind === "sheet" ? [source.sheetPath] : [...(source.paths || [])],
+    sheetPath: source.sheetPath || null,
+    sheetMode: source.sheetMode || null,
+    sheetOptions: source.kind === "sheet" ? {
+      mode: source.sheetMode || "objects",
+      columns: Number($("#sheetColumns").value) || 4,
+      rows: Number($("#sheetRows").value) || 4,
+    } : null,
+  };
+}
+
+function captureControlState() {
+  return {
+    values: Object.fromEntries(preferenceValueIds.map((id) => [id, $(`#${id}`).value])),
+    checks: Object.fromEntries(preferenceCheckIds.map((id) => [id, $(`#${id}`).checked])),
+    exports: collectExports(),
+    keyMode: state.keyMode,
+    solidKeyMode: state.solidKeyMode,
+    anchor: state.anchor,
+    preset: state.processPreset,
+    studio: captureStudioControls(),
+  };
+}
+
+// Studio (1.7) controls that live outside the legacy value/check lists.
+function captureStudioControls() {
+  return {
+    loopMode: $("#loopMode button.selected")?.dataset.loop || "loop",
+    loopFrom: $("#loopFrom").value, loopTo: $("#loopTo").value,
+    packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
+    atlasMaxSize: $("#atlasMaxSize").value, atlasOverflow: $("#atlasOverflow").value,
+    imageAlign: state.imageAlign,
+  };
+}
+
+function applyStudioControls(studio = {}) {
+  if (studio.imageAlign && typeof setImageAlign === "function") setImageAlign(studio.imageAlign, { silent: true });
+  if (studio.packing) $("#atlasPacking").value = studio.packing;
+  if (studio.exportFormat) $("#exportFormat").value = studio.exportFormat;
+  if (studio.atlasMaxSize != null) $("#atlasMaxSize").value = String(studio.atlasMaxSize);
+  if (studio.atlasOverflow) $("#atlasOverflow").value = studio.atlasOverflow;
+  $("#loopFrom").value = studio.loopFrom || "1";
+  $("#loopTo").value = studio.loopTo || "";
+  if (typeof setLoopMode === "function") setLoopMode(studio.loopMode || "loop", { silent: true });
+}
+
+function buildAnimationDocument() {
+  return {
+    format: "chuba-sprite-lab-project",
+    version: 1,
+    name: $("#spriteName").value || state.source?.title || "sprite-project",
+    source: sourceDescriptor(),
+    outputFolder: state.outputFolder,
+    controls: captureControlState(),
+    spriteName: $("#spriteName").value,
+    excludedFrames: [...state.excludedFrames],
+    maskEdits: state.maskEdits,
+    attachments: state.attachments,
+    frameOverrides: state.frameOverrides,
+    frameTransforms: state.frameTransforms,
+    timeline: state.timeline ? structuredClone(state.timeline) : null,
+    preferredEditor: state.preferredEditor,
+  };
+}
+
+// The top-level fields always describe the active animation, so older versions
+// of Sprite Lab still open the file; extra animations live in "animations".
+function buildProjectDocument() {
+  const project = buildAnimationDocument();
+  if (state.animations.length) {
+    project.animations = state.animations.map((animation) => ({
+      id: animation.id,
+      name: animation.name,
+      document: animation.id === state.activeAnimationId ? buildAnimationDocument() : animation.document,
+    }));
+    project.activeAnimationId = state.activeAnimationId;
+  }
+  return project;
+}
+
+function saveSessionSoon() {
+  clearTimeout(state.sessionTimer);
+  state.sessionTimer = setTimeout(() => {
+    try {
+      if (!state.source) localStorage.removeItem("spriteLab.session");
+      else localStorage.setItem("spriteLab.session", JSON.stringify(buildProjectDocument()));
+    } catch { /* Session recovery is optional. */ }
+  }, 450);
+}
+
+function applyControlState(controls = {}) {
+  state.historyApplying = true;
+  Object.entries(controls.values || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).value = value; });
+  Object.entries(controls.checks || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).checked = Boolean(value); });
+  Object.entries(controls.exports || {}).forEach(([name, value]) => { const selector = exportControls[name]; if (selector) $(selector).checked = Boolean(value); });
+  state.solidKeyMode = controls.solidKeyMode || (controls.keyMode && !["auto", "alpha", "ai"].includes(controls.keyMode) ? controls.keyMode : "black");
+  setKeyMode(controls.keyMode || "auto");
+  setAnchor(controls.anchor || "ground");
+  if (controls.preset) markProcessPreset(controls.preset);
+  applyStudioControls(controls.studio || {});
+  syncAutoSize();
+  $("#toleranceValue").textContent = $("#tolerance").value;
+  $("#blackOutlineValue").textContent = $("#blackOutline").value;
+  $("#blackFeatherValue").textContent = `${$("#blackFeather").value} px`;
+  $("#aiCutoffValue").textContent = $("#aiCutoff").value;
+  $("#aiSoftnessValue").textContent = `${$("#aiSoftness").value} px`;
+  $("#fringeStrengthValue").textContent = $("#fringeStrength").value;
+  $("#fringeStrengthRow").classList.toggle("hidden", !$("#fringeCleanup").checked);
+  state.historyApplying = false;
+  if (state.source?.kind === "video") updateTimeline(false);
+}
+
+async function applyProjectDocument(project, source, projectPath = null, { keepAnimations = false } = {}) {
+  setSource(source);
+  state.projectPath = projectPath;
+  state.timeline = Array.isArray(project.timeline) ? structuredClone(project.timeline) : null;
+  if (!keepAnimations) {
+    state.animations = Array.isArray(project.animations) ? project.animations.map((animation) => ({ id: animation.id, name: animation.name, document: animation.document || null })) : [];
+    state.activeAnimationId = state.animations.length ? (project.activeAnimationId || state.animations[0].id) : null;
+    if (typeof renderAnimationBar === "function") renderAnimationBar();
+  }
+  applyControlState(project.controls || {});
+  state.excludedFrames = new Set(project.excludedFrames || []);
+  state.maskEdits = structuredClone(project.maskEdits || []);
+  state.attachments = structuredClone(project.attachments || []);
+  state.frameOverrides = { ...(project.frameOverrides || {}) };
+  state.frameTransforms = structuredClone(project.frameTransforms || {});
+  state.outputFolder = project.outputFolder || null;
+  state.preferredEditor = project.preferredEditor || "photopea";
+  $("#preferredEditor").value = state.preferredEditor;
+  if (project.source?.sheetOptions) {
+    $("#sheetColumns").value = String(project.source.sheetOptions.columns || 4);
+    $("#sheetRows").value = String(project.source.sheetOptions.rows || 4);
+  }
+  if (project.spriteName && state.source?.kind !== "video-batch") $("#spriteName").value = project.spriteName;
+  $("#outputFolder").textContent = state.outputFolder || "Не выбрана";
+  $("#outputFolder").title = state.outputFolder || "";
+  updateMaskEditSummary(); renderAttachmentList(); updateActionState();
+  if (typeof renderImageSheetControls === "function") renderImageSheetControls();
+  initializeHistory("Проект открыт");
+  setTab("process"); scheduleFramePreview(0); saveSessionSoon();
+}
+
+function captureHistoryState(label = "Изменение") {
+  return {
+    label,
+    controls: captureControlState(),
+    excludedFrames: [...state.excludedFrames],
+    maskEdits: structuredClone(state.maskEdits),
+    attachments: structuredClone(state.attachments),
+    frameOverrides: { ...state.frameOverrides },
+    frameTransforms: structuredClone(state.frameTransforms),
+    timeline: state.timeline ? structuredClone(state.timeline) : null,
+  };
+}
+
+function updateHistoryActions() {
+  $("#undoAction").disabled = state.historyIndex <= 0;
+  $("#redoAction").disabled = state.historyIndex < 0 || state.historyIndex >= state.history.length - 1;
+  $("#undoAction").title = state.historyIndex > 0 ? `Отменить: ${state.history[state.historyIndex].label}` : "Нечего отменять";
+  $("#redoAction").title = state.historyIndex < state.history.length - 1 ? `Повторить: ${state.history[state.historyIndex + 1].label}` : "Нечего повторять";
+}
+
+function initializeHistory(label = "Начальное состояние") {
+  state.history = [captureHistoryState(label)]; state.historyIndex = 0; updateHistoryActions();
+}
+
+function pushHistory(label = "Изменение") {
+  if (state.historyApplying || !state.source) return;
+  const snapshot = captureHistoryState(label);
+  const previous = state.history[state.historyIndex];
+  if (previous && JSON.stringify({ ...previous, label: "" }) === JSON.stringify({ ...snapshot, label: "" })) return;
+  state.history = state.history.slice(0, state.historyIndex + 1);
+  state.history.push(snapshot);
+  if (state.history.length > 60) state.history.shift();
+  state.historyIndex = state.history.length - 1;
+  updateHistoryActions(); saveSessionSoon();
+}
+
+function scheduleHistory(label) {
+  if (state.historyApplying) return;
+  clearTimeout(state.historyTimer);
+  state.historyTimer = setTimeout(() => pushHistory(label), 360);
+}
+
+function applyHistorySnapshot(snapshot) {
+  if (!snapshot) return;
+  state.historyApplying = true;
+  applyControlState(snapshot.controls);
+  state.excludedFrames = new Set(snapshot.excludedFrames || []);
+  state.maskEdits = structuredClone(snapshot.maskEdits || []);
+  state.attachments = structuredClone(snapshot.attachments || []);
+  state.frameOverrides = { ...(snapshot.frameOverrides || {}) };
+  state.frameTransforms = structuredClone(snapshot.frameTransforms || {});
+  state.timeline = snapshot.timeline ? structuredClone(snapshot.timeline) : null;
+  state.historyApplying = false;
+  updateMaskEditSummary(); renderAttachmentList();
+  if (state.result) { buildFilmstrip(state.result); if (typeof refreshPlayer === "function") refreshPlayer(); }
+  markPreviewDirty(); scheduleFramePreview(0); updateHistoryActions(); saveSessionSoon();
+  setStatus(snapshot.label || "История применена", "done", 0);
+}
+
+function undoWorkspace() {
+  if (state.historyIndex <= 0) return;
+  state.historyIndex -= 1; applyHistorySnapshot(state.history[state.historyIndex]);
+}
+
+function redoWorkspace() {
+  if (state.historyIndex >= state.history.length - 1) return;
+  state.historyIndex += 1; applyHistorySnapshot(state.history[state.historyIndex]);
+}
+
+async function saveProjectFile(saveAs = false) {
+  if (!state.source || state.busy) return;
+  try {
+    setStatus("Сохраняю проект…", "busy", 0.15);
+    const result = await window.spriteLab.saveProject({
+      projectPath: state.projectPath,
+      saveAs,
+      project: buildProjectDocument(),
+    });
+    if (!result) {
+      setStatus("Сохранение отменено", "idle", 0);
+      return;
+    }
+    state.projectPath = result.projectPath;
+    state.frameOverrides = { ...(result.project.frameOverrides || {}) };
+    state.attachments = structuredClone(result.project.attachments || state.attachments);
+    renderAttachmentList();
+    saveSessionSoon();
+    setStatus(`Проект сохранён · ${baseName(result.projectPath)}`, "done", 0);
+  } catch (error) {
+    setStatus(error.message || "Не удалось сохранить проект", "error", 0);
+    showError(error.message || "Не удалось сохранить проект.");
+  }
+}
+
+async function openProjectFile() {
+  if (state.busy) return;
+  try {
+    setStatus("Открываю проект…", "busy", 0.08);
+    const loaded = await window.spriteLab.loadProject();
+    if (!loaded) {
+      setStatus(state.source ? "Проект не изменён" : "Готов к работе", state.source ? "done" : "idle", 0);
+      return;
+    }
+    await applyProjectDocument(loaded.project, loaded.source, loaded.projectPath);
+    setStatus(`Проект открыт · ${baseName(loaded.projectPath)}`, "done", 0);
+  } catch (error) {
+    setStatus(error.message || "Не удалось открыть проект", "error", 0);
+    showError(error.message || "Не удалось открыть проект.");
+  }
+}
+
+async function restoreSavedSession() {
+  const project = state.pendingSession;
+  if (!project) return;
+  try {
+    setStatus("Восстанавливаю сессию…", "busy", 0.08);
+    const source = await window.spriteLab.restoreProject({ source: project.source });
+    await applyProjectDocument(project, source, null);
+    state.pendingSession = null;
+    $("#sessionRestore").classList.add("hidden");
+    setStatus("Сессия восстановлена", "done", 0);
+  } catch (error) {
+    localStorage.removeItem("spriteLab.session");
+    state.pendingSession = null;
+    $("#sessionRestore").classList.add("hidden");
+    setStatus(error.message || "Сессию восстановить не удалось", "error", 0);
+    showError(`${error.message || "Исходники сессии недоступны."} Выберите источник заново.`);
+  }
+}
+
+function loadSessionOffer() {
+  try {
+    const project = JSON.parse(localStorage.getItem("spriteLab.session") || "null");
+    if (!project?.source) return;
+    state.pendingSession = project;
+    $("#sessionRestoreHint").textContent = project.name ? `Продолжить «${project.name}» с прежними настройками.` : "Продолжить с прежними исходниками и настройками.";
+    $("#sessionRestore").classList.remove("hidden");
+  } catch { localStorage.removeItem("spriteLab.session"); }
+}
+
+function loadCustomExportProfiles() {
+  try { customExportProfiles = JSON.parse(localStorage.getItem("spriteLab.exportProfiles") || "{}") || {}; }
+  catch { customExportProfiles = {}; }
+  const select = $("#exportPreset");
+  select.querySelectorAll("option[data-custom-profile]").forEach((option) => option.remove());
+  Object.entries(customExportProfiles).forEach(([key, profile]) => {
+    const option = document.createElement("option");
+    option.value = key; option.dataset.customProfile = "true"; option.textContent = profile.label;
+    select.append(option);
+  });
+}
+
+function saveCurrentExportProfile() {
+  const input = $("#profileName");
+  const label = input.value.trim();
+  if (!label) { input.focus(); return; }
+  const key = `user:${Date.now()}`;
+  customExportProfiles[key] = { ...collectExports(), label };
+  localStorage.setItem("spriteLab.exportProfiles", JSON.stringify(customExportProfiles));
+  loadCustomExportProfiles();
+  $("#exportPreset").value = key;
+  $("#deleteExportProfile").classList.remove("hidden");
+  $("#profileNameRow").classList.add("hidden");
+  $("#saveExportProfile").classList.remove("hidden");
+  input.value = "";
+  setStatus(`Профиль «${label}» сохранён`, "done", 0);
+}
+
+function openCommandPalette() {
+  setModalOpen($("#commandModal"), true, $("#commandSearch"), $("#openCommands"));
+  $("#commandSearch").value = "";
+  $$("#commandList button").forEach((button) => button.classList.remove("hidden"));
+}
+
+function closeCommandPalette() {
+  setModalOpen($("#commandModal"), false, null, $("#openCommands"));
+}
+
+function runCommand(command) {
+  closeCommandPalette();
+  const commands = {
+    source: () => chooseSource("chooseSource"),
+    "open-project": openProjectFile,
+    "save-project": () => saveProjectFile(false),
+    undo: undoWorkspace,
+    redo: redoWorkspace,
+    build: () => { if (!$("#buildPreview").disabled) runBuild(true); else setStatus($("#buildPreview").title || "Сборка сейчас недоступна", "error", 0); },
+    export: () => setTab("export"),
+    play: () => typeof togglePlayback === "function" && togglePlayback(),
+    onion: () => typeof toggleOnion === "function" && toggleOnion(),
+    duplicate: () => typeof duplicateSelectedEntry === "function" && duplicateSelectedEntry(),
+    game: () => { if (state.result) setPreviewMode("game"); },
+    help: openAbout,
+  };
+  commands[command]?.();
+}
 
 function setTab(name) {
   $$(".tab").forEach((button) => {
     const selected = button.dataset.tab === name;
     button.classList.toggle("active", selected);
     button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
   });
   $$(".panel").forEach((panel) => {
     const active = panel.dataset.panel === name;
     panel.classList.toggle("active", active);
     panel.setAttribute("aria-hidden", String(!active));
+    panel.inert = !active;
   });
   if (name === "process") scheduleFramePreview(0);
+  updateStepStates();
 }
 
 function setStatus(message, kind = "idle", value = 0) {
@@ -46,7 +403,41 @@ function setStatus(message, kind = "idle", value = 0) {
   const percent = Math.max(0, Math.min(100, Math.round(value * 100)));
   $("#progressBar").style.width = `${percent}%`;
   $("#statusPercent").textContent = `${percent}%`;
+  const showProgress = kind === "busy";
+  $("#progressTrack").classList.toggle("hidden", !showProgress);
+  $("#statusPercent").classList.toggle("hidden", !showProgress);
   $("#cancelJob").classList.toggle("hidden", !state.busy);
+}
+
+function updateStepStates() {
+  $("#sourceTab").classList.toggle("complete", Boolean(state.source));
+  $("#processTab").classList.toggle("complete", Boolean(state.result) && !state.resultDirty);
+  $("#exportTab").classList.toggle("complete", Boolean(state.lastExportDir));
+  $("#saveProject").disabled = !state.source || state.busy;
+}
+
+function trapModalFocus(modal, event) {
+  if (event.key !== "Tab") return;
+  const focusable = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), summary, [tabindex]:not([tabindex="-1"])')]
+    .filter((element) => !element.closest(".hidden"));
+  if (!focusable.length) return;
+  const first = focusable[0]; const last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+}
+
+function setModalOpen(modal, open, focusTarget, returnTarget) {
+  if (open) {
+    modalReturnFocus = returnTarget || document.activeElement;
+    modal.classList.remove("hidden");
+    $("#appShell").inert = true; $(".tabs").inert = true; $(".workspace-actions").inert = true;
+    focusTarget?.focus?.();
+  } else {
+    modal.classList.add("hidden");
+    if (!state.busy) { $("#appShell").inert = false; $(".tabs").inert = false; $(".workspace-actions").inert = false; }
+    (returnTarget || modalReturnFocus)?.focus?.();
+    modalReturnFocus = null;
+  }
 }
 
 function showError(message) {
@@ -60,7 +451,7 @@ function hideError() {
 
 async function openAbout() {
   aboutReturnFocus = document.activeElement;
-  $("#aboutModal").classList.remove("hidden");
+  setModalOpen($("#aboutModal"), true, $("#closeAbout"), aboutReturnFocus);
   $("#checkUpdates").disabled = state.busy;
   $("#checkUpdates").textContent = "Проверить обновления";
   pendingUpdate = null;
@@ -73,12 +464,10 @@ async function openAbout() {
     $("#versionBadge").textContent = info.version;
     $("#aboutVersion").textContent = info.version;
   } catch { /* The package version is already present in the document. */ }
-  $("#closeAbout").focus();
 }
 
 function closeAbout() {
-  $("#aboutModal").classList.add("hidden");
-  aboutReturnFocus?.focus?.();
+  setModalOpen($("#aboutModal"), false, null, aboutReturnFocus);
 }
 
 async function checkForUpdates() {
@@ -168,12 +557,19 @@ function updateActionState() {
   const hasSource = Boolean(state.source);
   const batchCount = state.source?.kind === "video-batch" ? state.source.paths.length : 0;
   const selectedNames = Object.entries(collectExports()).filter(([, selected]) => selected).map(([name]) => exportNames[name]);
-  $("#appShell").inert = state.busy;
   $("#appShell").setAttribute("aria-busy", String(state.busy));
+  $(".control-deck").inert = state.busy;
   $(".tabs").inert = state.busy;
   $("#buildPreview").disabled = !hasSource || state.busy || !state.timelineValid;
+  $("#buildPreview").title = !hasSource ? "Недоступно: сначала добавьте источник"
+    : state.busy ? "Недоступно: обработка уже выполняется"
+      : !state.timelineValid ? "Недоступно: конец диапазона видео должен быть позже начала" : "Собрать анимацию (Ctrl+Enter)";
   $("#chooseOutput").disabled = state.busy;
   $("#exportSprites").disabled = !hasSource || !state.outputFolder || state.busy || selectedNames.length === 0;
+  $("#exportSprites").title = !hasSource ? "Недоступно: сначала выберите источник"
+    : !state.outputFolder ? "Недоступно: выберите папку назначения"
+      : selectedNames.length === 0 ? "Недоступно: выберите хотя бы один формат"
+        : state.busy ? "Недоступно: обработка выполняется" : "Экспортировать набор";
   $("#exportHint").textContent = !hasSource ? "Сначала выберите источник"
     : !state.outputFolder ? "Выберите папку назначения"
       : selectedNames.length === 0 ? "Выберите хотя бы один формат"
@@ -189,6 +585,16 @@ function updateActionState() {
   $("#openMaskEditor").disabled = !hasSource || state.busy;
   $("#addAttachment").disabled = !hasSource || state.busy || state.source?.kind === "video-batch";
   $("#editFrame").disabled = !state.result?.allSourceFramePaths?.length || state.busy || state.source?.kind === "video-batch";
+  $("#transformTool").disabled = (!state.framePreview && !state.result) || state.busy || state.source?.kind === "video-batch";
+  $("#processActionHint").textContent = !hasSource ? "Сначала добавьте источник"
+    : state.busy ? "Обработка выполняется…"
+      : !state.timelineValid ? "Исправьте диапазон видео: конец должен быть позже начала"
+      : state.resultDirty ? "Настройки изменены — соберите анимацию заново"
+        : state.result ? `Готово кадров: ${state.result.frameCount}` : "Первый кадр обновляется автоматически";
+  $("#processActionHint").closest(".process-action-dock")?.classList.toggle("blocked", $("#buildPreview").disabled && !state.busy);
+  $("#exportSprites").closest(".export-action-dock")?.classList.toggle("blocked", $("#exportSprites").disabled && !state.busy);
+  if (typeof updateAnimationExportNote === "function") updateAnimationExportNote();
+  updateStepStates();
 }
 
 function currentFramePath() {
@@ -210,6 +616,10 @@ function setSource(source) {
   state.maskEdits = [];
   state.attachments = [];
   state.frameOverrides = {};
+  state.frameTransforms = {};
+  state.timeline = null;
+  state.selectedEntryId = null;
+  if (!state.animationSwitching) state.projectPath = null;
   state.selectedFrameIndex = 0;
   state.lastExportDir = null;
   state.lastRevealPath = null;
@@ -225,18 +635,25 @@ function setSource(source) {
     $("#recommendationCard").classList.add("hidden");
     $("#batchNote").classList.add("hidden");
     $("#sheetControls").classList.add("hidden");
+    $("#imageSheetControls").classList.add("hidden");
     $("#spriteName").disabled = false;
     $("#spriteNameLabel").textContent = "Имя набора";
     $("#sampleStrip").replaceChildren();
+    $("#continueToProcess").classList.add("hidden");
+    $("#batchQueue").classList.add("hidden");
+    state.batchItems = [];
     updateMaskEditSummary();
     renderAttachmentList();
     resetPreview();
     $("#framePreviewTabs").classList.add("hidden");
     setStatus("Готов к работе");
     updateActionState();
+    state.history = []; state.historyIndex = -1; updateHistoryActions(); saveSessionSoon(); updateStepStates();
     return;
   }
   $("#sourceCard").classList.remove("hidden");
+  state.pendingSession = null;
+  $("#sessionRestore").classList.add("hidden");
   const isBatch = source.kind === "video-batch";
   const isSheet = source.kind === "sheet";
   $("#sourceBadge").textContent = isBatch ? "BATCH" : isSheet ? "SHEET" : source.kind === "video" ? "VIDEO" : "FRAMES";
@@ -245,6 +662,7 @@ function setSource(source) {
   $("#sourceRange").classList.toggle("hidden", source.kind !== "video");
   $("#sourcePreviewLabel").textContent = isBatch ? "ПЕРВОЕ ВИДЕО" : source.kind === "video" ? "НАЧАЛО ДИАПАЗОНА" : isSheet ? "ПЕРВЫЙ ОБЪЕКТ" : "ПЕРВЫЙ КАДР";
   $("#batchNote").classList.toggle("hidden", !isBatch);
+  $("#continueToProcess").classList.remove("hidden");
   $("#sheetControls").classList.toggle("hidden", !isSheet);
   if (isSheet) {
     $("#sheetObjectCount").textContent = `${source.paths.length} объектов`;
@@ -258,17 +676,36 @@ function setSource(source) {
   }
   $("#spriteName").disabled = isBatch;
   $("#spriteNameLabel").textContent = isBatch ? "Имена наборов" : "Имя набора";
-  $("#spriteName").value = isBatch ? "Автоматически — по именам видео" : sourceDefaultName(source);
+  // In a multi-animation project the set name is shared, so keep it.
+  const keepSetName = state.animations.length > 1 && $("#spriteName").value && !isBatch;
+  if (!keepSetName) $("#spriteName").value = isBatch ? "Автоматически — по именам видео" : sourceDefaultName(source);
   resetPreview();
   renderRecommendations(source);
   renderAttachmentList();
+  if (isBatch) initializeBatchQueue(source.paths); else { state.batchItems = []; $("#batchQueue").classList.add("hidden"); }
   $("#framePreviewTabs").classList.remove("hidden");
-  setStatus(`Источник загружен · ${source.detail}`, "done", 0);
+  // A source that already has transparency does not need background removal.
+  const alphaDetected = source.recommendations?.keyMode === "alpha" && !isBatch;
+  if (alphaDetected) setKeyMode("alpha");
+  // …and a source without transparency must not inherit the "Прозрачный" mode.
+  else if (state.keyMode === "alpha" && source.recommendations?.keyMode && !isBatch) setKeyMode("auto");
+  const opaqueNote = alphaDetected && source.opaqueImages ? ` · без прозрачности: ${source.opaqueImages} — их фон останется, пока не включено «Удалить фон»` : "";
+  setStatus(alphaDetected ? `Источник загружен · найдена прозрачность — фон «Прозрачный» включён${opaqueNote} · ${source.detail}` : `Источник загружен · ${source.detail}`, "done", 0);
   updateActionState();
   savePreferences();
+  initializeHistory("Источник добавлен"); saveSessionSoon(); updateStepStates();
+  // Show the first frame immediately and bring the loaded source into view.
+  state.previewMode = "after";
+  setPreviewMode("after");
+  scheduleFramePreview(0);
+  requestAnimationFrame(() => $("#sourceCard").scrollIntoView({ block: "nearest", behavior: "smooth" }));
+  if (typeof renderImageSheetControls === "function") renderImageSheetControls();
+  if (typeof renderAnimationBar === "function") renderAnimationBar();
 }
 
 function resetPreview() {
+  state.viewportPanX = 0; state.viewportPanY = 0; state.viewportPanning = false; state.panPointerId = null;
+  if (state.transformPanelOpen) setTransformPanel(false);
   $("#previewImage").classList.add("hidden");
   $("#compareView").classList.add("hidden");
   $("#previewImage").removeAttribute("src");
@@ -368,12 +805,13 @@ function updateTimeline(refreshPoster = true) {
   const duration = Number(state.source?.duration) || 0;
   let start = Math.max(0, Number($("#trimStart").value) || 0);
   let end = Math.min(duration || Infinity, Number($("#trimEnd").value) || duration);
-  const valid = end > start;
+  const isVideo = state.source?.kind === "video";
+  const valid = !isVideo || end > start;
   state.timelineValid = valid;
   $("#trimError").classList.toggle("hidden", valid);
   $("#trimError").textContent = valid ? "" : "Конец диапазона должен быть позже начала.";
   updateActionState();
-  if (!valid) return;
+  if (!valid || !isVideo) return;
   $("#trimStartRange").value = String(start);
   $("#trimEndRange").value = String(end);
   $("#trimDuration").textContent = `${(end - start).toFixed(1).replace(".", ",")} с`;
@@ -416,8 +854,27 @@ function collectOptions() {
     fringeCleanup: $("#fringeCleanup").checked, fringeStrength: Number($("#fringeStrength").value),
     attachments: state.attachments.filter((attachment) => attachment.enabled !== false), attachmentPlacements: state.resultDirty ? null : state.result?.attachmentPlacements || null,
     frameOverrides: state.frameOverrides,
-    fitEachFrame: state.source?.kind === "sheet" && $("#sheetFitEach").checked,
+    frameTransforms: state.frameTransforms,
+    fitEachFrame: (state.source?.kind === "sheet" && $("#sheetFitEach").checked) || (state.source?.kind === "frames" && state.imageAlign === "fit"),
+    timeline: timelineOption(state.timeline),
+    ...loopOptions(),
+    packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
+    atlasMaxSize: Number($("#atlasMaxSize").value) || 0, atlasOverflow: $("#atlasOverflow").value,
   };
+}
+
+function timelineOption(timeline) {
+  if (!Array.isArray(timeline) || !timeline.length) return undefined;
+  return timeline.map((entry) => ({ src: entry.src, ...(Number(entry.d) > 0 ? { durationMs: Number(entry.d) } : {}) }));
+}
+
+function loopOptions(studio = null) {
+  const mode = studio ? studio.loopMode || "loop" : $("#loopMode button.selected")?.dataset.loop || "loop";
+  const fromValue = studio ? studio.loopFrom : $("#loopFrom").value;
+  const toValue = studio ? studio.loopTo : $("#loopTo").value;
+  const from = Math.max(0, (Number(fromValue) || 1) - 1);
+  const to = toValue === "" || toValue == null ? null : Math.max(from, Number(toValue) - 1);
+  return { loopMode: mode, loopRange: mode === "range" ? { from, to } : null };
 }
 
 function syncExportDependencies(changedName) {
@@ -427,33 +884,42 @@ function syncExportDependencies(changedName) {
   if (changedName === "sheet" && !sheet.checked) metadata.checked = false;
   sheet.disabled = metadata.checked;
   state.lastExportDir = null;
-  if (changedName) $("#exportPreset").value = "custom";
+  if (changedName) { $("#exportPreset").value = "custom"; $("#deleteExportProfile").classList.add("hidden"); }
   updateActionState();
   savePreferences();
 }
 
 function applyExportPreset(name) {
-  const preset = exportPresets[name];
+  const preset = exportPresets[name] || customExportProfiles[name];
   if (!preset) return;
-  Object.entries(preset).forEach(([key, checked]) => { $(exportControls[key]).checked = checked; });
+  Object.entries(exportControls).forEach(([key, selector]) => { $(selector).checked = Boolean(preset[key]); });
   $(exportControls.sheet).disabled = preset.metadata;
   state.lastExportDir = null;
+  $("#deleteExportProfile").classList.toggle("hidden", !name.startsWith("user:"));
   updateActionState();
   savePreferences();
 }
 
 function setKeyMode(mode) {
-  state.keyMode = mode;
+  if (mode === "solid") state.keyMode = state.solidKeyMode || "black";
+  else if (["white", "black", "green", "blue"].includes(mode)) { state.solidKeyMode = mode; state.keyMode = mode; }
+  else state.keyMode = mode;
+  const displayMode = ["white", "black", "green", "blue"].includes(state.keyMode) ? "solid" : state.keyMode;
   $$("#keyMode button").forEach((item) => {
-    const selected = item.dataset.value === mode;
+    const selected = item.dataset.value === displayMode;
     item.classList.toggle("selected", selected);
     item.setAttribute("aria-pressed", String(selected));
   });
-  $("#blackKeyNote").classList.toggle("hidden", mode !== "black");
-  $("#blackOutlineRow").classList.toggle("hidden", mode !== "black");
-  $("#blackFeatherRow").classList.toggle("hidden", mode !== "black");
-  $("#toleranceRow").classList.toggle("hidden", mode === "ai");
-  $("#aiCleanupPanel").classList.toggle("hidden", mode !== "ai");
+  $$("#solidKeyColor button").forEach((item) => {
+    const selected = item.dataset.keyColor === state.solidKeyMode;
+    item.classList.toggle("selected", selected); item.setAttribute("aria-pressed", String(selected));
+  });
+  $("#solidKeyPanel").classList.toggle("hidden", displayMode !== "solid");
+  $("#blackKeyNote").classList.toggle("hidden", state.keyMode !== "black");
+  $("#blackOutlineRow").classList.toggle("hidden", state.keyMode !== "black");
+  $("#blackFeatherRow").classList.toggle("hidden", state.keyMode !== "black");
+  $("#toleranceRow").classList.toggle("hidden", state.keyMode === "ai");
+  $("#aiCleanupPanel").classList.toggle("hidden", state.keyMode !== "ai");
   markPreviewDirty();
 }
 
@@ -474,12 +940,17 @@ function syncAutoSize() {
   markPreviewDirty();
 }
 
-function applyProcessPreset(name) {
+function markProcessPreset(name) {
+  state.processPreset = name;
   $$("#processPresets button[data-preset]").forEach((button) => {
     const selected = button.dataset.preset === name;
     button.classList.toggle("selected", selected);
     button.setAttribute("aria-pressed", String(selected));
   });
+}
+
+function applyProcessPreset(name, { history = true } = {}) {
+  markProcessPreset(name);
   if (name === "effect") {
     setAnchor("center"); $("#removeDuplicates").checked = false; $("#pixelPerfect").checked = false;
   } else if (name === "pixel") {
@@ -489,6 +960,7 @@ function applyProcessPreset(name) {
   }
   markPreviewDirty();
   savePreferences();
+  if (history) pushHistory(`Профиль «${({ character: "Персонаж", effect: "Эффект", pixel: "Пиксель-арт" })[name] || name}»`);
 }
 
 function resetRecommended() {
@@ -505,15 +977,31 @@ function resetRecommended() {
   state.maskEdits = []; updateMaskEditSummary();
   $("#padding").value = "20"; $("#columns").value = "8"; $("#maxFrames").value = "192";
   $("#autoSize").checked = true; $("#autoColumns").checked = true; $("#pixelPerfect").checked = true; $("#removeDuplicates").checked = true; $("#whiteOutput").checked = false;
-  syncAutoSize(); applyProcessPreset("character"); scheduleFramePreview();
+  syncAutoSize(); applyProcessPreset("character", { history: false }); scheduleFramePreview(); pushHistory("Рекомендуемые настройки");
+}
+
+function warningSourceIndex(warning) {
+  const match = String(warning || "").match(/Кадр\s+(\d+)/i);
+  if (!match) return null;
+  const outputIndex = Number(match[1]) - 1;
+  return state.result?.sourceFrameIndexes?.[outputIndex] ?? outputIndex;
+}
+
+function selectWarning(delta = 0) {
+  if (!state.warnings.length) return;
+  state.warningIndex = (state.warningIndex + delta + state.warnings.length) % state.warnings.length;
+  $("#warningPosition").textContent = `${state.warningIndex + 1} / ${state.warnings.length}`;
+  const sourceIndex = warningSourceIndex(state.warnings[state.warningIndex]);
+  if (sourceIndex != null) selectFrame(sourceIndex);
 }
 
 function showWarnings(warnings) {
   const list = $("#warningList");
   list.replaceChildren();
-  if (!warnings?.length) { $("#warningBox").classList.add("hidden"); return; }
+  state.warnings = warnings || []; state.warningIndex = 0;
+  if (!state.warnings.length) { $("#warningBox").classList.add("hidden"); return; }
   const groups = new Map();
-  warnings.forEach((warning) => {
+  state.warnings.forEach((warning) => {
     const key = warning.includes("касается края") ? "Персонаж касается края"
       : warning.includes("ширина силуэта") ? "Скачок ширины силуэта"
         : warning.includes("высота силуэта") ? "Скачок высоты силуэта"
@@ -535,43 +1023,148 @@ function showWarnings(warnings) {
     });
     item.append(button); list.append(item);
   });
-  $("#warningCount").textContent = String(warnings.length);
+  $("#warningCount").textContent = String(state.warnings.length);
+  $("#warningPosition").textContent = `1 / ${state.warnings.length}`;
   $("#warningBox").classList.remove("hidden");
+}
+
+function baseName(filePath) {
+  return String(filePath || "").split(/[\\/]/).pop() || "video";
+}
+
+function renderBatchQueue() {
+  const list = $("#batchQueueList"); list.replaceChildren();
+  state.batchItems.forEach((item, index) => {
+    const row = document.createElement("article"); row.className = `batch-item ${item.status || "pending"}`;
+    const led = document.createElement("i");
+    const title = document.createElement("strong"); title.textContent = item.name;
+    const detail = document.createElement("small"); detail.textContent = item.detail || ({ pending: "Ожидает", processing: "Обработка…", done: "Готово", failed: "Ошибка" })[item.status] || "Ожидает";
+    const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "×"; remove.title = "Убрать из очереди"; remove.disabled = state.busy;
+    remove.addEventListener("click", () => {
+      if (state.busy || state.batchItems.length <= 1) return;
+      state.batchItems.splice(index, 1); state.source.paths = state.batchItems.map((entry) => entry.path);
+      state.source.batchCount = state.source.paths.length; renderBatchQueue(); updateActionState(); saveSessionSoon();
+    });
+    row.append(led, title, detail, remove); list.append(row);
+  });
+  const finished = state.batchItems.filter((item) => item.status === "done" || item.status === "failed").length;
+  $("#batchQueueProgress").textContent = `${finished} / ${state.batchItems.length}`;
+  $("#batchQueue").classList.toggle("hidden", !state.batchItems.length);
+}
+
+function initializeBatchQueue(paths = []) {
+  state.batchItems = paths.map((filePath) => ({ path: filePath, name: baseName(filePath), status: "pending", detail: "Ожидает" }));
+  $("#retryBatch").classList.add("hidden"); $("#stopAfterCurrent").classList.add("hidden"); renderBatchQueue();
+}
+
+function updateBatchProgress(progress) {
+  if (!state.batchItems.length) return;
+  const match = String(progress.message || "").match(/Видео\s+(\d+)\/(\d+)/i);
+  if (!match) return;
+  const index = Number(match[1]) - 1;
+  const total = Math.max(1, Number(match[2]) || state.batchItems.length);
+  const localProgress = Math.max(0, Math.min(1, (Number(progress.value) || 0) * total - index));
+  state.batchItems.forEach((item, itemIndex) => {
+    if (itemIndex < index && item.status === "processing") { item.status = "done"; item.detail = "Готово"; }
+    if (itemIndex === index) { item.status = "processing"; item.detail = `${Math.round(localProgress * 100)}%`; }
+  });
+  renderBatchQueue();
+}
+
+function finishBatchQueue(result) {
+  const failures = new Map((result.failures || []).map((item) => [item.path, item.error]));
+  state.batchItems.forEach((item, index) => {
+    if (failures.has(item.path)) { item.status = "failed"; item.detail = failures.get(item.path); }
+    else if (index < result.completed + result.failed) { item.status = "done"; item.detail = "Готово"; }
+    else { item.status = "pending"; item.detail = result.stopped ? "Остановлено" : "Ожидает"; }
+  });
+  $("#retryBatch").classList.toggle("hidden", !state.batchItems.some((item) => item.status === "failed"));
+  $("#stopAfterCurrent").classList.add("hidden"); renderBatchQueue();
+}
+
+function timelineEntries(result = state.result) {
+  const count = result?.allSourceFrameUrls?.length || 0;
+  if (Array.isArray(state.timeline) && state.timeline.length) {
+    const entries = state.timeline.filter((entry) => entry.src < count);
+    const present = new Set(entries.map((entry) => entry.src));
+    for (let index = 0; index < count; index += 1) if (!present.has(index)) entries.push({ id: `s${index}`, src: index, d: null });
+    return entries;
+  }
+  return Array.from({ length: count }, (_value, index) => ({ id: `s${index}`, src: index, d: null }));
 }
 
 function buildFilmstrip(result) {
   const strip = $("#filmstrip"); strip.replaceChildren();
   const processedBySource = new Map((result.sourceFrameIndexes || []).map((sourceIndex, outputIndex) => [sourceIndex, result.frameUrls[outputIndex]]));
-  result.allSourceFrameUrls.forEach((sourceUrl, sourceIndex) => {
+  const entries = timelineEntries(result);
+  const useCounts = new Map();
+  entries.forEach((entry) => useCounts.set(entry.src, (useCounts.get(entry.src) || 0) + 1));
+  const baseMs = Math.round(1000 / Math.max(1, Number($("#fps").value) || 8));
+  entries.forEach((entry, position) => {
+    const sourceIndex = entry.src;
+    const sourceUrl = result.allSourceFrameUrls[sourceIndex];
     const button = document.createElement("button");
-    button.type = "button"; button.title = `Исходный кадр ${sourceIndex + 1}`; button.dataset.sourceIndex = String(sourceIndex);
-    const img = document.createElement("img"); img.src = processedBySource.get(sourceIndex) || sourceUrl; img.alt = `Кадр ${sourceIndex + 1}`;
+    button.type = "button"; button.title = `Позиция ${position + 1} · исходный кадр ${sourceIndex + 1}`;
+    button.dataset.sourceIndex = String(sourceIndex); button.dataset.entryId = entry.id; button.dataset.frameLabel = String(sourceIndex + 1);
+    button.draggable = true;
+    const img = document.createElement("img"); img.src = processedBySource.get(sourceIndex) || sourceUrl; img.alt = `Кадр ${sourceIndex + 1}`; img.draggable = false;
     button.classList.toggle("excluded", state.excludedFrames.has(sourceIndex));
     const isDuplicate = result.skipped?.duplicateIndexes?.includes(sourceIndex);
     const isEmpty = result.skipped?.emptyIndexes?.includes(sourceIndex);
     button.classList.toggle("skipped", isDuplicate || isEmpty);
+    button.classList.toggle("edited", Boolean(state.frameOverrides[sourceIndex]));
+    button.classList.toggle("warning", state.warnings.some((warning) => warningSourceIndex(warning) === sourceIndex));
+    button.classList.toggle("has-attachment", state.attachments.some((attachment) => attachment.enabled !== false));
+    button.classList.toggle("repeat", (useCounts.get(sourceIndex) || 0) > 1);
     if (isDuplicate) button.title += " · точный дубль";
     if (isEmpty) button.title += " · пустой после очистки";
-    button.append(img); button.addEventListener("click", () => selectFrame(sourceIndex)); strip.append(button);
+    button.append(img);
+    if (Number(entry.d) > 0) {
+      const badge = document.createElement("span"); badge.className = "duration-badge"; badge.textContent = `${entry.d}мс`;
+      button.title += ` · ${entry.d} мс`; button.append(badge);
+    } else button.title += ` · ${baseMs} мс (по FPS)`;
+    button.addEventListener("click", () => selectFrame(sourceIndex, true, entry.id));
+    strip.append(button);
   });
+  if (typeof bindTimelineDrag === "function") bindTimelineDrag(strip);
   $("#filmstripBar").classList.toggle("hidden", result.allSourceFrameUrls.length === 0);
   const truncated = result.allSourceFramePaths.length - result.allSourceFrameUrls.length;
-  $("#filmstripNote").textContent = truncated > 0 ? `Показаны первые ${result.allSourceFrameUrls.length} кадров. Ещё кадров: ${truncated}.` : `${result.allSourceFramePaths.length} исходных кадров · исключено: ${state.excludedFrames.size}`;
+  const repeats = entries.length - new Set(entries.map((entry) => entry.src)).size;
+  const custom = entries.filter((entry) => Number(entry.d) > 0).length;
+  $("#filmstripNote").textContent = truncated > 0
+    ? `Показаны первые ${result.allSourceFrameUrls.length} кадров. Ещё кадров: ${truncated}.`
+    : `${result.allSourceFramePaths.length} исходных кадров · исключено: ${state.excludedFrames.size}${repeats ? ` · повторов: ${repeats}` : ""}${custom ? ` · своя длительность: ${custom}` : ""} · перетаскивайте кадры, чтобы поменять порядок`;
+  $("#filmstripNote").title = $("#filmstripNote").textContent;
   $("#filmstripNote").classList.remove("hidden");
+  const selected = entries.find((entry) => entry.id === state.selectedEntryId) || entries.find((entry) => entry.src === state.selectedFrameIndex);
+  if (selected) markSelectedEntry(selected.id);
 }
 
-function selectFrame(sourceIndex, activateFrameView = true) {
+function markSelectedEntry(entryId) {
+  state.selectedEntryId = entryId;
+  $$("#filmstrip button").forEach((button) => {
+    const selected = button.dataset.entryId === entryId;
+    button.classList.toggle("selected", selected);
+    button.classList.toggle("excluded", state.excludedFrames.has(Number(button.dataset.sourceIndex)));
+    if (selected) button.scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
+  const entry = timelineEntries().find((item) => item.id === entryId);
+  if (typeof syncFrameDurationControl === "function") syncFrameDurationControl(entry);
+}
+
+function selectFrame(sourceIndex, activateFrameView = true, entryId = null) {
   if (!state.result?.allSourceFramePaths?.length) return;
   state.selectedFrameIndex = Math.max(0, Math.min(sourceIndex, state.result.allSourceFramePaths.length - 1));
-  $$("#filmstrip button").forEach((button) => {
-    const buttonSourceIndex = Number(button.dataset.sourceIndex);
-    button.classList.toggle("selected", buttonSourceIndex === state.selectedFrameIndex);
-    button.classList.toggle("excluded", state.excludedFrames.has(buttonSourceIndex));
-  });
+  const entries = timelineEntries();
+  const entry = entries.find((item) => item.id === entryId)
+    || (entries.find((item) => item.id === state.selectedEntryId && item.src === state.selectedFrameIndex))
+    || entries.find((item) => item.src === state.selectedFrameIndex);
+  markSelectedEntry(entry?.id || null);
   const automaticallySkipped = state.result.skipped?.duplicateIndexes?.includes(state.selectedFrameIndex)
     || state.result.skipped?.emptyIndexes?.includes(state.selectedFrameIndex);
   const isBatch = state.source?.kind === "video-batch";
   $("#excludeFrame").disabled = automaticallySkipped || isBatch;
+  $("#excludeFrame").title = isBatch ? "Недоступно в пакетном режиме" : automaticallySkipped ? "Кадр пропущен автоматически (дубль или пустой)" : "Del — исключить или вернуть кадр";
   $("#excludeFrame").textContent = isBatch
     ? "Только для одного видео"
     : automaticallySkipped
@@ -579,6 +1172,7 @@ function selectFrame(sourceIndex, activateFrameView = true) {
     : state.excludedFrames.has(state.selectedFrameIndex) ? "Вернуть кадр" : "Исключить кадр";
   if (activateFrameView) setPreviewMode("after");
   requestFramePreview(currentFramePath());
+  if (state.transformPanelOpen) syncTransformControls();
 }
 
 function activeMaskFrameIndex() {
@@ -606,13 +1200,15 @@ function updateFinishingSummary() {
   if (!objectSummary || !edgeSummary || !overlaySummary) return;
   const regions = state.maskEdits.filter((edit) => edit.type === "tracked-region").length;
   const strokes = new Set(state.maskEdits.filter((edit) => edit.type !== "tracked-region").map((edit) => edit.strokeId)).size;
-  objectSummary.textContent = regions + strokes ? `Лишнее: ${regions + strokes}` : "Лишнее: нет";
+  objectSummary.textContent = regions + strokes ? `Удаление объектов: ${regions + strokes}` : "Удаление объектов: не применено";
   objectSummary.classList.toggle("active", regions + strokes > 0);
-  edgeSummary.textContent = $("#fringeCleanup").checked ? "Контур: очищается" : "Контур: нет";
+  edgeSummary.textContent = $("#fringeCleanup").checked ? "Очистка края: включена" : "Очистка края: выключена";
   edgeSummary.classList.toggle("active", $("#fringeCleanup").checked);
   const enabledAttachments = state.attachments.filter((attachment) => attachment.enabled !== false).length;
-  overlaySummary.textContent = `PNG: ${enabledAttachments}${enabledAttachments !== state.attachments.length ? `/${state.attachments.length}` : ""}`;
+  overlaySummary.textContent = `Привязанные PNG: ${enabledAttachments}${enabledAttachments !== state.attachments.length ? `/${state.attachments.length}` : ""}`;
   overlaySummary.classList.toggle("active", enabledAttachments > 0);
+  const enabledTools = Number(regions + strokes > 0) + Number($("#fringeCleanup").checked) + Number(enabledAttachments > 0);
+  $("#finishingState").textContent = enabledTools ? `Активно: ${enabledTools}` : "Не применено";
 }
 
 function updateMaskEditorStatus() {
@@ -631,6 +1227,7 @@ function redrawMaskCanvas() {
   if (!state.maskEditorImage || !canvas.width || !canvas.height) return;
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.drawImage(state.maskEditorImage, 0, 0, canvas.width, canvas.height);
+  if (typeof drawMaskOnion === "function") drawMaskOnion(context, canvas);
   for (const edit of state.maskEdits) {
     if (!maskEditApplies(edit)) continue;
     if (edit.type === "tracked-region") {
@@ -689,8 +1286,7 @@ async function openMaskEditor() {
   sourceContext.drawImage(image, 0, 0, canvas.width, canvas.height);
   state.maskEditorPixels = sourceContext.getImageData(0, 0, canvas.width, canvas.height).data.slice();
   redrawMaskCanvas();
-  $("#aiMaskModal").classList.remove("hidden");
-  $("#applyMaskEditor").focus();
+  setModalOpen($("#aiMaskModal"), true, $("#applyMaskEditor"), $("#openMaskEditor"));
   setStatus("Редактор маски открыт", "done", 0);
 }
 
@@ -699,9 +1295,8 @@ function closeMaskEditor({ discard = false } = {}) {
   state.maskDrawing = false;
   state.maskEditorImage = null;
   state.maskEditorPixels = null;
-  $("#aiMaskModal").classList.add("hidden");
+  setModalOpen($("#aiMaskModal"), false, null, $("#openMaskEditor"));
   updateMaskEditSummary();
-  $("#openMaskEditor").focus();
 }
 
 function addMaskPoint(event) {
@@ -832,7 +1427,7 @@ function renderAttachmentList() {
     const toggle = document.createElement("button"); toggle.type = "button"; toggle.textContent = attachment.enabled === false ? "○" : "●"; toggle.title = attachment.enabled === false ? "Включить PNG" : "Временно скрыть PNG";
     toggle.addEventListener("click", () => {
       attachment.enabled = attachment.enabled === false;
-      renderAttachmentList(); markPreviewDirty(); scheduleFramePreview(0);
+      renderAttachmentList(); markPreviewDirty(); scheduleFramePreview(0); pushHistory("Видимость PNG изменена");
     });
     const edit = document.createElement("button"); edit.type = "button"; edit.textContent = "↗"; edit.title = "Изменить привязку";
     edit.addEventListener("click", async () => {
@@ -841,7 +1436,7 @@ function renderAttachmentList() {
     const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "×"; remove.title = "Удалить PNG";
     remove.addEventListener("click", () => {
       state.attachments = state.attachments.filter((entry) => entry.id !== attachment.id);
-      renderAttachmentList(); markPreviewDirty(); scheduleFramePreview(0);
+      renderAttachmentList(); markPreviewDirty(); scheduleFramePreview(0); pushHistory("PNG удалён");
     });
     actions.append(toggle, edit, remove);
     item.append(image, text, actions); list.append(item);
@@ -889,7 +1484,7 @@ function drawAttachmentEditor() {
     const x = point.x * canvas.width; const y = point.y * canvas.height;
     context.beginPath(); context.arc(x, y, 10, 0, Math.PI * 2); context.fillStyle = index ? "#c8df6f" : "#ff7617"; context.fill();
     context.strokeStyle = "#0b0e12"; context.lineWidth = 3; context.stroke();
-    context.fillStyle = "#11151a"; context.font = '700 10px "Bahnschrift"'; context.textAlign = "center"; context.textBaseline = "middle"; context.fillText(index ? "B" : "A", x, y + 0.5);
+    context.fillStyle = "#11151a"; context.font = '700 12px "Bahnschrift"'; context.textAlign = "center"; context.textBaseline = "middle"; context.fillText(index ? "B" : "A", x, y + 0.5);
   });
   updateAttachmentPointStatus();
 }
@@ -928,17 +1523,17 @@ async function openAttachmentEditor(existing = null) {
   canvas.width = Math.max(1, Math.round(sourceImage.naturalWidth * scale));
   canvas.height = Math.max(1, Math.round(sourceImage.naturalHeight * scale));
   drawAttachmentEditor();
-  $("#attachmentModal").classList.remove("hidden");
+  setModalOpen($("#attachmentModal"), true, $("#saveAttachment"), $("#addAttachment"));
 }
 
 function closeAttachmentEditor() {
   state.attachmentAsset = null; state.attachmentSourceImage = null; state.attachmentAssetImage = null; state.attachmentPoints = []; state.attachmentEditingId = null; state.attachmentReferenceFrame = 0;
-  $("#attachmentModal").classList.add("hidden");
-  $("#addAttachment").focus();
+  setModalOpen($("#attachmentModal"), false, null, $("#addAttachment"));
 }
 
 function saveAttachment() {
   if (!state.attachmentAsset || state.attachmentPoints.length < state.attachmentPointCount) return;
+  const isEditing = Boolean(state.attachmentEditingId);
   const points = state.attachmentPoints.slice(0, state.attachmentPointCount).map((point) => ({ ...point }));
   const first = points[0]; const second = points[1];
   const nextAttachment = {
@@ -955,6 +1550,7 @@ function saveAttachment() {
   if (state.attachmentEditingId) state.attachments = state.attachments.map((attachment) => attachment.id === state.attachmentEditingId ? nextAttachment : attachment);
   else state.attachments.push(nextAttachment);
   closeAttachmentEditor(); renderAttachmentList(); markPreviewDirty(); scheduleFramePreview(0);
+  pushHistory(isEditing ? "Привязка PNG изменена" : "PNG привязан");
   setStatus("PNG добавлен · при сборке движение будет отслежено", "done", 0);
 }
 
@@ -970,11 +1566,13 @@ async function refreshExternalEdit({ force = false } = {}) {
     const stats = await window.spriteLab.statFrameEdit(state.externalEdit.path);
     if (!force && stats.modifiedAt <= state.externalEdit.modifiedAt + 1) return;
     state.externalEdit.modifiedAt = stats.modifiedAt;
-    state.frameOverrides[state.externalEdit.frameIndex] = state.externalEdit.path;
-    $("#frameEditorImage").src = `${state.externalEdit.url.split("?")[0]}?v=${Math.round(stats.modifiedAt)}`;
+    const revision = await window.spriteLab.snapshotFrameEdit(state.externalEdit.path);
+    state.frameOverrides[state.externalEdit.frameIndex] = revision.path;
+    $("#frameEditorImage").src = `${revision.url}?v=${Math.round(revision.modifiedAt)}`;
     setFrameEditorStatus("Изменения найдены и подхвачены", "changed");
     markPreviewDirty();
     await requestFramePreview(state.externalEdit.path);
+    pushHistory(`Кадр ${state.externalEdit.frameIndex + 1} изменён`);
     setStatus(`Кадр ${state.externalEdit.frameIndex + 1} обновлён · пересоберите анимацию`, "done", 0);
   } catch (error) {
     setFrameEditorStatus(error.message || "Не удалось проверить рабочую копию", "error");
@@ -986,31 +1584,35 @@ async function openFrameEditor() {
   const frameIndex = state.selectedFrameIndex;
   const sourcePath = state.frameOverrides[frameIndex] || state.result.allSourceFramePaths[frameIndex];
   const edit = await window.spriteLab.prepareFrameEdit({ sourcePath, frameIndex, existingPath: state.frameOverrides[frameIndex] });
-  state.frameOverrides[frameIndex] = edit.path;
   state.externalEdit = { ...edit, frameIndex };
   $("#frameEditorImage").src = `${edit.url}?v=${Math.round(edit.modifiedAt)}`;
   $("#frameEditorBadge").textContent = `КАДР ${frameIndex + 1}`;
   $("#frameEditorPath").textContent = edit.path;
   $("#frameEditorPath").title = edit.path;
   setFrameEditorStatus("Рабочая копия готова");
-  $("#frameEditorModal").classList.remove("hidden");
+  setModalOpen($("#frameEditorModal"), true, $("#openDefaultEditor"), $("#editFrame"));
   clearInterval(state.externalEditTimer);
   state.externalEditTimer = setInterval(() => refreshExternalEdit(), 1200);
-  $("#openDefaultEditor").focus();
 }
 
 function closeFrameEditor() {
   clearInterval(state.externalEditTimer);
   state.externalEditTimer = null;
   state.externalEdit = null;
-  $("#frameEditorModal").classList.add("hidden");
-  $("#editFrame").focus();
+  setModalOpen($("#frameEditorModal"), false, null, $("#editFrame"));
 }
 
 async function replaceExternalEdit() {
   if (!state.externalEdit) return;
   const replaced = await window.spriteLab.replaceFrameEdit({ path: state.externalEdit.path });
   if (!replaced) return;
+  state.externalEdit = { ...state.externalEdit, ...replaced, modifiedAt: 0 };
+  await refreshExternalEdit({ force: true });
+}
+
+async function replaceExternalEditFromDrop(file) {
+  if (!state.externalEdit || !file) return;
+  const replaced = await window.spriteLab.replaceFrameEditDropped({ path: state.externalEdit.path, file });
   state.externalEdit = { ...state.externalEdit, ...replaced, modifiedAt: 0 };
   await refreshExternalEdit({ force: true });
 }
@@ -1047,7 +1649,7 @@ function toggleSelectedFrame() {
   selectFrame(state.selectedFrameIndex);
   markPreviewDirty();
   setStatus("Список исключений изменён · пересоберите предпросмотр", "done", 0);
-  savePreferences();
+  savePreferences(); pushHistory(state.excludedFrames.has(sourceIndex) ? "Кадр исключён" : "Кадр возвращён");
 }
 
 function updatePreview(result) {
@@ -1058,10 +1660,12 @@ function updatePreview(result) {
   $("#metaCell").textContent = `${result.cellWidth} × ${result.cellHeight}`;
   $("#metaGrid").textContent = `${result.columns} × ${result.rows}`;
   $("#metaAnchor").textContent = ({ ground: "Земля", center: "Центр", motion: "Движение" })[state.anchor] || state.anchor;
+  if (typeof renderAtlasStatus === "function") renderAtlasStatus(result);
+  if (typeof loadPlayerFrames === "function") loadPlayerFrames(result);
   showWarnings(result.warnings); buildFilmstrip(result);
   renderAttachmentList();
   $("#resultPreviewTabs").classList.remove("hidden");
-  state.previewMode = result.previewUrl ? "animation" : "sheet";
+  state.previewMode = result.frameUrls?.length || result.previewUrl ? "animation" : "sheet";
   setPreviewMode(state.previewMode);
   if (result.allSourceFramePaths?.length) selectFrame(result.sourceFrameIndexes?.[0] ?? 0, false);
 }
@@ -1072,12 +1676,105 @@ function updateComparePosition() {
   $("#compareDivider").style.left = `${value}%`;
 }
 
+// Scale at which an image of natural size fits into a box (object-fit: contain).
+function containScale(naturalWidth, naturalHeight, boxWidth, boxHeight) {
+  if (!naturalWidth || !naturalHeight || !boxWidth || !boxHeight) return 1;
+  return Math.min(boxWidth / naturalWidth, boxHeight / naturalHeight);
+}
+
+function currentFitScale() {
+  const stage = $("#previewStage");
+  if (["animation", "game"].includes(state.previewMode) && typeof playerFitScale === "function") return playerFitScale();
+  const image = state.previewMode === "compare" ? $("#compareAfter") : $("#previewImage");
+  if (!image?.naturalWidth) return 1;
+  const style = getComputedStyle(image);
+  const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+  const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  const width = (image.clientWidth || stage.clientWidth) - (Number.isFinite(padX) ? padX : 0);
+  const height = (image.clientHeight || stage.clientHeight) - (Number.isFinite(padY) ? padY : 0);
+  return containScale(image.naturalWidth, image.naturalHeight, width, height);
+}
+
 function applyZoom() {
-  const transform = `scale(${state.zoom})`;
+  const transform = `translate(${state.viewportPanX}px, ${state.viewportPanY}px) scale(${state.zoom})`;
   $("#previewImage").style.transform = transform;
   $("#compareBefore").style.transform = transform;
   $("#compareAfter").style.transform = transform;
-  $("#zoomValue").textContent = `${Math.round(state.zoom * 100)}%`;
+  state.fitScale = currentFitScale();
+  const realScale = state.previewMode === "game" && typeof studio !== "undefined" ? studio.gameScale : state.fitScale * state.zoom;
+  $("#zoomValue").textContent = `${Math.round(realScale * 100)}%`;
+  $("#zoomValue").title = state.previewMode === "game" ? "Масштаб в игре" : `Реальный масштаб: вписано ${Math.round(state.fitScale * 100)}% × зум ${Math.round(state.zoom * 100)}%`;
+  if (typeof drawPlayer === "function") drawPlayer();
+}
+
+function handToolActive() {
+  return state.spaceHand || state.handToolLocked;
+}
+
+function updateHandTool() {
+  const active = handToolActive();
+  $("#previewStage").classList.toggle("hand-tool", active);
+  $("#previewStage").classList.toggle("panning", active && state.viewportPanning);
+  $("#handTool").classList.toggle("active", active);
+  $("#handTool").setAttribute("aria-pressed", String(state.handToolLocked));
+}
+
+function stopViewportPan() {
+  state.viewportPanning = false; state.panPointerId = null; updateHandTool();
+}
+
+function defaultFrameTransform() {
+  return { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0, skewX: 0, fill: null };
+}
+
+function activeTransformKey() {
+  return state.transformScope === "all" ? "*" : String(state.selectedFrameIndex);
+}
+
+function activeFrameTransform() {
+  const own = state.frameTransforms[activeTransformKey()];
+  const inherited = state.transformScope === "frame" ? state.frameTransforms["*"] : null;
+  return { ...defaultFrameTransform(), ...(own || inherited || {}) };
+}
+
+function syncTransformControls() {
+  const transform = activeFrameTransform();
+  const width = Math.round(transform.scaleX * 100); const height = Math.round(transform.scaleY * 100);
+  $("#transformWidth").value = String(width); $("#transformWidthValue").textContent = `${width}%`;
+  $("#transformHeight").value = String(height); $("#transformHeightValue").textContent = `${height}%`;
+  $("#transformSkew").value = String(Math.round(transform.skewX)); $("#transformSkewValue").textContent = `${Math.round(transform.skewX)}°`;
+  $("#transformOffsetX").value = String(Math.round(transform.offsetX)); $("#transformOffsetY").value = String(Math.round(transform.offsetY));
+  $("#transformFill").classList.toggle("active", transform.fill === "stretch");
+  $("#transformFrameLabel").textContent = state.transformScope === "all" ? "вся анимация · выделено по прозрачности" : `кадр ${state.selectedFrameIndex + 1} · выделен по прозрачности`;
+  $$("#transformScope button").forEach((button) => button.classList.toggle("selected", button.dataset.scope === state.transformScope));
+}
+
+function writeTransformFromControls(changedAxis = null) {
+  let scaleX = Number($("#transformWidth").value) / 100;
+  let scaleY = Number($("#transformHeight").value) / 100;
+  if ($("#transformLock").checked && changedAxis === "x") { scaleY = scaleX; $("#transformHeight").value = String(Math.round(scaleY * 100)); }
+  if ($("#transformLock").checked && changedAxis === "y") { scaleX = scaleY; $("#transformWidth").value = String(Math.round(scaleX * 100)); }
+  const transform = {
+    scaleX, scaleY,
+    offsetX: Number($("#transformOffsetX").value) || 0,
+    offsetY: Number($("#transformOffsetY").value) || 0,
+    skewX: Number($("#transformSkew").value) || 0,
+    fill: null,
+  };
+  state.frameTransforms[activeTransformKey()] = transform;
+  syncTransformControls(); markPreviewDirty(); scheduleFramePreview(140); scheduleHistory("Трансформация объекта"); saveSessionSoon();
+}
+
+function setTransformPanel(open) {
+  state.transformPanelOpen = Boolean(open);
+  $("#transformPanel").classList.toggle("hidden", !state.transformPanelOpen);
+  $("#transformTool").classList.toggle("active", state.transformPanelOpen);
+  $("#transformTool").setAttribute("aria-pressed", String(state.transformPanelOpen));
+  $("#previewImage").classList.toggle("transform-selected", state.transformPanelOpen);
+  $("#compareView").classList.toggle("transform-selected", state.transformPanelOpen);
+  $("#previewStage").classList.toggle("transform-open", state.transformPanelOpen);
+  requestAnimationFrame(applyZoom);
+  if (state.transformPanelOpen) { setPreviewMode("after"); syncTransformControls(); }
 }
 
 function changeZoom(delta) {
@@ -1101,6 +1798,11 @@ function setPreviewMode(mode) {
     button.setAttribute("aria-pressed", String(selected));
   });
   $("#previewImage").classList.add("hidden"); $("#compareView").classList.add("hidden");
+  $("#playerCanvas").classList.add("hidden"); $("#playerBar").classList.add("hidden");
+  $("#previewStage").classList.toggle("game-mode", mode === "game");
+  if ((mode === "animation" || mode === "game") && state.result && typeof showPlayer === "function" && showPlayer(mode)) {
+    $("#previewEmpty").classList.add("hidden"); applyZoom(); return;
+  }
   const inspection = state.framePreview;
   let url = null;
   if (mode === "before") url = inspection?.beforeUrl;
@@ -1110,13 +1812,15 @@ function setPreviewMode(mode) {
   if (mode === "compare" && inspection) {
     $("#previewEmpty").classList.add("hidden");
     $("#compareBefore").src = inspection.beforeUrl; $("#compareAfter").src = inspection.afterUrl;
+    $("#compareAfter").onload = () => applyZoom();
     $("#compareView").classList.remove("hidden"); updateComparePosition(); applyZoom(); return;
   }
   if (!url) { $("#previewEmpty").classList.remove("hidden"); return; }
   $("#previewEmpty").classList.add("hidden");
+  $("#previewImage").onload = () => applyZoom();
   $("#previewImage").src = `${url}${url.includes("?") ? "&" : "?"}v=${Date.now()}`;
   $("#previewImage").classList.toggle("pixel", $("#pixelPerfect").checked);
-    $("#previewImage").classList.remove("hidden");
+  $("#previewImage").classList.remove("hidden");
   applyZoom();
 }
 
@@ -1133,6 +1837,7 @@ async function requestFramePreview(inputPath) {
     if (["before", "after", "compare"].includes(state.previewMode)) setPreviewMode(state.previewMode);
     else if (!state.result) setPreviewMode("after");
     if (!state.busy && state.keyMode === "ai") setStatus("Предпросмотр обработки обновлён", "done", 0);
+    updateActionState();
     return result;
   } catch (error) {
     if (token === state.quickToken && revision === state.sourceRevision) {
@@ -1162,18 +1867,36 @@ async function chooseSource(method) {
 async function runBuild(previewOnly) {
   if (!state.source || state.busy || (!previewOnly && !state.outputFolder)) return;
   state.busy = true; updateActionState();
+  const batchExport = state.source.kind === "video-batch" && !previewOnly;
+  if (batchExport) {
+    state.batchItems.forEach((item) => { item.status = "pending"; item.detail = "Ожидает"; });
+    $("#stopAfterCurrent").disabled = false;
+    $("#stopAfterCurrent").textContent = "Остановить после текущего";
+    $("#stopAfterCurrent").classList.remove("hidden");
+    $("#retryBatch").classList.add("hidden");
+    renderBatchQueue();
+  }
   setStatus(previewOnly ? "Собираю предпросмотр…" : "Экспортирую набор…", "busy", 0.02);
   try {
-    const result = await window.spriteLab.build({
+    const request = {
       source: state.source, outputDir: previewOnly ? null : state.outputFolder,
       name: state.source.kind === "video-batch" ? null : $("#spriteName").value, options: collectOptions(), previewOnly,
-    });
+    };
+    if (!previewOnly && state.source.kind !== "video-batch" && typeof animationSetRequest === "function") {
+      const animations = animationSetRequest(request.options);
+      if (animations.length > 1) request.animations = animations;
+    }
+    const result = await window.spriteLab.build(request);
     if (result.batch) {
+      finishBatchQueue(result);
       state.lastExportDir = result.outputDir;
       state.lastRevealPath = result.revealPath;
       const failureText = result.failed ? ` · с ошибкой: ${result.failed}` : "";
-      setStatus(`Готово · ${result.completed}/${result.total} видео${failureText}`, result.failed ? "error" : "done", 1);
-      $("#exportSummary").textContent = result.failed
+      const stoppedText = result.stopped ? " · очередь остановлена" : "";
+      setStatus(`Готово · ${result.completed}/${result.total} видео${failureText}${stoppedText}`, result.failed ? "error" : "done", 1);
+      $("#exportSummary").textContent = result.stopped
+        ? `Готово наборов: ${result.completed}. Оставшиеся видео сохранены в очереди.`
+        : result.failed
         ? `Готово наборов: ${result.completed} из ${result.total}. Не обработано: ${result.failures.map((item) => item.name).join(", ")}.`
         : `Готово: ${result.completed} наборов. Каждый ролик сохранён в отдельной папке с автоматическим именем.`;
       $("#exportSummary").classList.remove("hidden");
@@ -1182,13 +1905,23 @@ async function runBuild(previewOnly) {
       hideError();
       return;
     }
-    updatePreview(result); hideError(); setStatus(`Готово · ${result.frameCount} кадров`, "done", 1);
+    if (result.multi && !previewOnly) {
+      // The set export returns the atlas of all animations; keep the active preview intact.
+      renderAtlasStatus?.(result);
+    } else updatePreview(result);
+    hideError();
+    const reuseText = result.reusedRender ? " · использован готовый предпросмотр" : "";
+    setStatus(`Готово · ${result.frameCount} кадров${reuseText}`, "done", 1);
     if (!previewOnly) {
       state.lastExportDir = result.outputDir;
       state.lastRevealPath = result.revealPath;
       const exported = collectExports();
       const details = [`${result.frameCount} кадров`];
-      if (exported.sheet || exported.metadata) details.push(`лист ${result.cellWidth * result.columns} × ${result.cellHeight * result.rows}`);
+      if (result.multi) details.push(`анимаций: ${result.animations.length} (${result.animations.map((item) => item.name).join(", ")})`);
+      const pages = result.atlas?.pages?.length || 1;
+      if (exported.sheet || exported.metadata) details.push(result.atlas ? `лист ${result.atlas.width} × ${result.atlas.height}${pages > 1 ? ` · листов: ${pages}` : ""}` : `лист ${result.cellWidth * result.columns} × ${result.cellHeight * result.rows}`);
+      if (result.engineFiles?.length) details.push(`${({ phaser3: "Phaser 3", godot: "Godot 4", texturepacker: "TexturePacker JSON-hash" })[result.exportFormat] || result.exportFormat}: ${result.engineFiles.map(baseName).join(", ")}`);
+      if (result.reusedRender) details.push("без повторной обработки кадров");
       if (exported.frames) details.push("отдельные PNG");
       if (exported.preview) details.push("WebP-превью");
       $("#exportSummary").textContent = `Готово: ${details.join(" · ")}`;
@@ -1202,18 +1935,18 @@ async function runBuild(previewOnly) {
     if (!cancelled) showError(error.message || "Не удалось завершить обработку.");
   } finally {
     state.busy = false; updateActionState(); $("#cancelJob").classList.add("hidden");
+    if (batchExport) $("#stopAfterCurrent").classList.add("hidden");
   }
 }
 
 function savePreferences() {
   try {
-    const controls = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness", "fringeStrength"];
-    const checks = ["autoSize", "autoColumns", "pixelPerfect", "removeDuplicates", "whiteOutput", "openAfterExport", "fringeCleanup"];
     localStorage.setItem("spriteLab.preferences", JSON.stringify({
-      schema: 3,
-      keyMode: state.keyMode, anchor: state.anchor, outputFolder: state.outputFolder,
-      values: Object.fromEntries(controls.map((id) => [id, $(`#${id}`).value])),
-      checks: Object.fromEntries(checks.map((id) => [id, $(`#${id}`).checked])),
+      schema: 4,
+      keyMode: state.keyMode, solidKeyMode: state.solidKeyMode, anchor: state.anchor, outputFolder: state.outputFolder,
+      preferredEditor: state.preferredEditor,
+      values: Object.fromEntries(preferenceValueIds.map((id) => [id, $(`#${id}`).value])),
+      checks: Object.fromEntries(preferenceCheckIds.map((id) => [id, $(`#${id}`).checked])),
     }));
   } catch { /* Preferences are optional. */ }
 }
@@ -1225,15 +1958,18 @@ function loadPreferences() {
     Object.entries(saved.values || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).value = value; });
     if (Number(saved.schema || 0) < 2) $("#aiSoftness").value = "0";
     $("#toleranceValue").textContent = $("#tolerance").value;
-    $("#blackOutlineValue").textContent = `${$("#blackOutline").value} px`;
+    $("#blackOutlineValue").textContent = $("#blackOutline").value;
     $("#blackFeatherValue").textContent = `${$("#blackFeather").value} px`;
     $("#aiCutoffValue").textContent = $("#aiCutoff").value;
     $("#aiSoftnessValue").textContent = `${$("#aiSoftness").value} px`;
     $("#fringeStrengthValue").textContent = $("#fringeStrength").value;
     Object.entries(saved.checks || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).checked = Boolean(value); });
     $("#fringeStrengthRow").classList.toggle("hidden", !$("#fringeCleanup").checked);
+    state.solidKeyMode = saved.solidKeyMode || state.solidKeyMode;
     if (saved.keyMode) setKeyMode(saved.keyMode);
     if (saved.anchor) setAnchor(saved.anchor);
+    state.preferredEditor = saved.preferredEditor || "photopea";
+    $("#preferredEditor").value = state.preferredEditor;
     if (saved.outputFolder) {
       state.outputFolder = saved.outputFolder; $("#outputFolder").textContent = saved.outputFolder; $("#outputFolder").title = saved.outputFolder;
     }
@@ -1250,6 +1986,20 @@ $$(".tab").forEach((button, index, tabs) => button.addEventListener("keydown", (
   tabs[nextIndex].focus();
   setTab(tabs[nextIndex].dataset.tab);
 }));
+$("#newProject").addEventListener("click", () => {
+  localStorage.removeItem("spriteLab.session"); state.pendingSession = null; $("#sessionRestore").classList.add("hidden"); setSource(null); setTab("source");
+});
+$("#openProject").addEventListener("click", openProjectFile);
+$("#openProjectImport").addEventListener("click", openProjectFile);
+$("#saveProject").addEventListener("click", () => saveProjectFile(false));
+$("#undoAction").addEventListener("click", undoWorkspace);
+$("#redoAction").addEventListener("click", redoWorkspace);
+$("#openCommands").addEventListener("click", openCommandPalette);
+$("#continueToProcess").addEventListener("click", () => setTab("process"));
+$("#restoreSession").addEventListener("click", restoreSavedSession);
+$("#discardSession").addEventListener("click", () => {
+  state.pendingSession = null; localStorage.removeItem("spriteLab.session"); $("#sessionRestore").classList.add("hidden");
+});
 $("#chooseSource").addEventListener("click", () => chooseSource("chooseSource"));
 $("#chooseFolder").addEventListener("click", () => chooseSource("chooseFolder"));
 $("#chooseSheet").addEventListener("click", () => chooseSource("chooseSheet"));
@@ -1279,17 +2029,16 @@ $("#newSource").addEventListener("click", () => { setSource(null); setTab("sourc
 $("#applyRecommendations").addEventListener("click", applyRecommendations);
 $("#manualSetup").addEventListener("click", () => setTab("process"));
 for (const eventName of ["dragenter", "dragover"]) $("#dropZone").addEventListener(eventName, (event) => { event.preventDefault(); $("#dropZone").classList.add("dragging"); });
-for (const eventName of ["dragleave", "drop"]) $("#dropZone").addEventListener(eventName, (event) => { event.preventDefault(); $("#dropZone").classList.remove("dragging"); });
-$("#dropZone").addEventListener("drop", async (event) => {
-  try {
-    setStatus("Проверяю перетащённые файлы…", "busy", 0.02);
-    const source = await window.spriteLab.inspectDropped(event.dataTransfer.files);
-    if (source) setSource(source);
-  } catch (error) { setStatus(error.message || "Формат не поддерживается", "error", 0); }
-});
+// The drop itself is handled for the whole window in studio.js (overlay).
+for (const eventName of ["dragleave", "drop"]) $("#dropZone").addEventListener(eventName, () => { $("#dropZone").classList.remove("dragging"); });
 
-$("#keyMode").addEventListener("click", (event) => { const button = event.target.closest("button[data-value]"); if (button) { setKeyMode(button.dataset.value); scheduleFramePreview(); } });
-$("#anchorMode").addEventListener("click", (event) => { const button = event.target.closest("button[data-value]"); if (button) { setAnchor(button.dataset.value); savePreferences(); } });
+$("#keyMode").addEventListener("click", (event) => { const button = event.target.closest("button[data-value]"); if (button) { setKeyMode(button.dataset.value); scheduleFramePreview(); pushHistory("Фон изменён"); } });
+$("#solidKeyColor").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-key-color]");
+  if (!button) return;
+  state.solidKeyMode = button.dataset.keyColor; setKeyMode(state.solidKeyMode); scheduleFramePreview(); pushHistory("Цвет фона изменён");
+});
+$("#anchorMode").addEventListener("click", (event) => { const button = event.target.closest("button[data-value]"); if (button) { setAnchor(button.dataset.value); savePreferences(); pushHistory("Стабилизация изменена"); } });
 $("#processPresets").addEventListener("click", (event) => { const button = event.target.closest("button[data-preset]"); if (button) applyProcessPreset(button.dataset.preset); });
 $("#resetSettings").addEventListener("click", resetRecommended);
 $("#tolerance").addEventListener("input", (event) => { $("#toleranceValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(); });
@@ -1310,7 +2059,7 @@ $("#openMaskEditor").addEventListener("click", async () => {
   try { await openMaskEditor(); } catch (error) { setStatus(error.message || "Не удалось открыть редактор маски", "error", 0); showError(error.message); }
 });
 $("#clearMaskEdits").addEventListener("click", () => {
-  state.maskEdits = []; updateMaskEditSummary(); markPreviewDirty(); scheduleFramePreview(0);
+  state.maskEdits = []; updateMaskEditSummary(); markPreviewDirty(); scheduleFramePreview(0); pushHistory("Исправления маски очищены");
 });
 $("#maskBrushMode").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-mode]");
@@ -1337,7 +2086,7 @@ $("#resetMaskStrokes").addEventListener("click", clearCurrentMaskStrokes);
 $("#closeMaskEditor").addEventListener("click", () => closeMaskEditor({ discard: true }));
 $("#cancelMaskEditor").addEventListener("click", () => closeMaskEditor({ discard: true }));
 $("#applyMaskEditor").addEventListener("click", () => {
-  closeMaskEditor(); markPreviewDirty(); setStatus("Исправления маски применены · проверяю кадр", "busy", 0.1); scheduleFramePreview(0);
+  closeMaskEditor(); markPreviewDirty(); pushHistory("Исправлена маска"); setStatus("Исправления маски применены · проверяю кадр", "busy", 0.1); scheduleFramePreview(0);
 });
 $("#aiMaskModal").addEventListener("click", (event) => { if (event.target === $("#aiMaskModal")) closeMaskEditor({ discard: true }); });
 $("#addAttachment").addEventListener("click", async () => {
@@ -1390,6 +2139,9 @@ $("#openWithEditor").addEventListener("click", async () => {
 $$("[data-online-editor]").forEach((button) => button.addEventListener("click", async () => {
   if (!state.externalEdit) return;
   try {
+    state.preferredEditor = button.dataset.onlineEditor;
+    $("#preferredEditor").value = state.preferredEditor;
+    savePreferences();
     await window.spriteLab.openOnlineFrameEditor({ path: state.externalEdit.path, editor: button.dataset.onlineEditor });
     setFrameEditorStatus("Редактор открыт · путь к PNG скопирован", "busy");
   } catch (error) { setFrameEditorStatus(error.message || "Не удалось открыть онлайн-редактор", "error"); }
@@ -1397,6 +2149,22 @@ $$("[data-online-editor]").forEach((button) => button.addEventListener("click", 
 $("#replaceEditedFrame").addEventListener("click", async () => {
   try { await replaceExternalEdit(); } catch (error) { setFrameEditorStatus(error.message || "Не удалось заменить кадр", "error"); }
 });
+$("#preferredEditor").addEventListener("change", (event) => { state.preferredEditor = event.target.value; savePreferences(); });
+$("#openPreferredEditor").addEventListener("click", async () => {
+  if (!state.externalEdit) return;
+  try {
+    await window.spriteLab.openOnlineFrameEditor({ path: state.externalEdit.path, editor: state.preferredEditor });
+    setFrameEditorStatus("Редактор открыт · путь к PNG скопирован", "busy");
+  } catch (error) { setFrameEditorStatus(error.message || "Не удалось открыть онлайн-редактор", "error"); }
+});
+for (const eventName of ["dragenter", "dragover"]) $("#editedFrameDrop").addEventListener(eventName, (event) => { event.preventDefault(); $("#editedFrameDrop").classList.add("dragging"); });
+for (const eventName of ["dragleave", "drop"]) $("#editedFrameDrop").addEventListener(eventName, (event) => { event.preventDefault(); $("#editedFrameDrop").classList.remove("dragging"); });
+$("#editedFrameDrop").addEventListener("drop", async (event) => {
+  try { await replaceExternalEditFromDrop(event.dataTransfer.files?.[0]); }
+  catch (error) { setFrameEditorStatus(error.message || "Не удалось принять файл", "error"); }
+});
+$("#editedFrameDrop").addEventListener("click", replaceExternalEdit);
+$("#editedFrameDrop").addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") replaceExternalEdit(); });
 $("#applyEditedFrame").addEventListener("click", () => { closeFrameEditor(); runBuild(true); });
 $("#closeFrameEditor").addEventListener("click", closeFrameEditor);
 $("#frameEditorModal").addEventListener("click", (event) => { if (event.target === $("#frameEditorModal")) closeFrameEditor(); });
@@ -1423,9 +2191,21 @@ $("#copyOutputPath").addEventListener("click", async () => {
   if (!state.lastExportDir) return;
   await window.spriteLab.copyOutputPath(state.lastExportDir);
   $("#copyOutputPath").textContent = "Путь скопирован";
-  setTimeout(() => { $("#copyOutputPath").textContent = "Скопировать путь"; }, 1400);
+  setTimeout(() => { $("#copyOutputPath").textContent = "Копировать путь"; }, 1400);
 });
 $("#exportPreset").addEventListener("change", (event) => applyExportPreset(event.target.value));
+$("#saveExportProfile").addEventListener("click", () => { $("#saveExportProfile").classList.add("hidden"); $("#profileNameRow").classList.remove("hidden"); $("#profileName").focus(); });
+$("#confirmProfile").addEventListener("click", saveCurrentExportProfile);
+$("#deleteExportProfile").addEventListener("click", () => {
+  const key = $("#exportPreset").value;
+  if (!key.startsWith("user:")) return;
+  delete customExportProfiles[key];
+  localStorage.setItem("spriteLab.exportProfiles", JSON.stringify(customExportProfiles));
+  loadCustomExportProfiles(); $("#exportPreset").value = "chuba"; applyExportPreset("chuba");
+  setStatus("Пользовательский профиль удалён", "done", 0);
+});
+$("#cancelProfile").addEventListener("click", () => { $("#profileNameRow").classList.add("hidden"); $("#saveExportProfile").classList.remove("hidden"); });
+$("#profileName").addEventListener("keydown", (event) => { if (event.key === "Enter") saveCurrentExportProfile(); });
 Object.entries(exportControls).forEach(([name, selector]) => $(selector).addEventListener("change", () => syncExportDependencies(name)));
 $("#spriteName").addEventListener("input", () => {
   state.lastExportDir = null; state.lastRevealPath = null;
@@ -1435,9 +2215,69 @@ $("#spriteName").addEventListener("input", () => {
 
 $$(".preview-tabs button").forEach((button) => button.addEventListener("click", () => setPreviewMode(button.dataset.preview)));
 $("#cancelJob").addEventListener("click", () => window.spriteLab.cancelBuild());
+$("#stopAfterCurrent").addEventListener("click", async () => {
+  if (await window.spriteLab.stopBatchAfterCurrent()) {
+    $("#stopAfterCurrent").disabled = true; $("#stopAfterCurrent").textContent = "Остановится после текущего";
+  }
+});
+$("#retryBatch").addEventListener("click", () => {
+  const failed = state.batchItems.filter((item) => item.status === "failed");
+  if (!failed.length || state.busy) return;
+  state.source.paths = failed.map((item) => item.path); state.source.batchCount = failed.length;
+  initializeBatchQueue(state.source.paths); updateActionState(); runBuild(false);
+});
+$("#previousWarning").addEventListener("click", () => selectWarning(-1));
+$("#nextWarning").addEventListener("click", () => selectWarning(1));
+$("#handTool").addEventListener("click", () => {
+  state.handToolLocked = !state.handToolLocked; updateHandTool();
+});
+$("#transformTool").addEventListener("click", () => setTransformPanel(!state.transformPanelOpen));
+$("#closeTransform").addEventListener("click", () => setTransformPanel(false));
+$("#transformScope").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-scope]");
+  if (!button) return;
+  state.transformScope = button.dataset.scope; syncTransformControls();
+});
+$("#transformWidth").addEventListener("input", () => writeTransformFromControls("x"));
+$("#transformHeight").addEventListener("input", () => writeTransformFromControls("y"));
+$("#transformSkew").addEventListener("input", () => writeTransformFromControls("skew"));
+$("#transformOffsetX").addEventListener("change", () => writeTransformFromControls("offset"));
+$("#transformOffsetY").addEventListener("change", () => writeTransformFromControls("offset"));
+$("#transformFill").addEventListener("click", () => {
+  state.frameTransforms[activeTransformKey()] = { ...activeFrameTransform(), fill: "stretch", scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0, skewX: 0 };
+  syncTransformControls(); markPreviewDirty(); scheduleFramePreview(0); pushHistory("Объект растянут до краёв");
+});
+$("#transformShrink").addEventListener("click", () => {
+  const transform = activeFrameTransform();
+  transform.fill = null; transform.scaleX = Math.max(.25, transform.scaleX * .85); transform.scaleY = Math.max(.25, transform.scaleY * .85);
+  state.frameTransforms[activeTransformKey()] = transform;
+  syncTransformControls(); markPreviewDirty(); scheduleFramePreview(0); pushHistory("Объект уменьшен");
+});
+$("#transformReset").addEventListener("click", () => {
+  delete state.frameTransforms[activeTransformKey()];
+  syncTransformControls(); markPreviewDirty(); scheduleFramePreview(0); pushHistory("Трансформация объекта сброшена");
+});
+$("#previewStage").addEventListener("pointerdown", (event) => {
+  if (!handToolActive() || event.button !== 0 || event.target.closest(".stage-tools, .transform-panel, .error-card, .player-bar") || (!state.framePreview && !state.result)) return;
+  event.preventDefault();
+  state.viewportPanning = true; state.panPointerId = event.pointerId;
+  state.panStartClientX = event.clientX; state.panStartClientY = event.clientY;
+  state.panStartX = state.viewportPanX; state.panStartY = state.viewportPanY;
+  event.currentTarget.setPointerCapture(event.pointerId); updateHandTool();
+});
+$("#previewStage").addEventListener("pointermove", (event) => {
+  if (!state.viewportPanning || event.pointerId !== state.panPointerId) return;
+  state.viewportPanX = state.panStartX + event.clientX - state.panStartClientX;
+  state.viewportPanY = state.panStartY + event.clientY - state.panStartClientY;
+  applyZoom();
+});
+for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
+  $("#previewStage").addEventListener(eventName, stopViewportPan);
+}
 $("#zoomOut").addEventListener("click", () => changeZoom(-0.25));
 $("#zoomIn").addEventListener("click", () => changeZoom(0.25));
-$("#zoomFit").addEventListener("click", () => { state.zoom = 1; applyZoom(); });
+$("#zoomFit").addEventListener("click", () => { state.zoom = 1; state.viewportPanX = 0; state.viewportPanY = 0; applyZoom(); });
+new ResizeObserver(() => applyZoom()).observe($("#previewStage"));
 $("#toggleGuides").addEventListener("click", () => {
   state.guides = !state.guides;
   $("#guideLayer").classList.toggle("hidden", !state.guides);
@@ -1453,24 +2293,67 @@ $("#closeWindow").addEventListener("click", () => window.spriteLab.close());
 $("#aboutApp").addEventListener("click", openAbout);
 $("#closeAbout").addEventListener("click", closeAbout);
 $("#aboutModal").addEventListener("click", (event) => { if (event.target === $("#aboutModal")) closeAbout(); });
+$("#closeCommands").addEventListener("click", closeCommandPalette);
+$("#commandModal").addEventListener("click", (event) => { if (event.target === $("#commandModal")) closeCommandPalette(); });
+$("#commandSearch").addEventListener("input", (event) => {
+  const query = event.target.value.trim().toLocaleLowerCase("ru");
+  $$("#commandList button").forEach((button) => button.classList.toggle("hidden", query && !button.textContent.toLocaleLowerCase("ru").includes(query)));
+});
+$("#commandList").addEventListener("click", (event) => { const button = event.target.closest("button[data-command]"); if (button) runCommand(button.dataset.command); });
 $("#checkUpdates").addEventListener("click", checkForUpdates);
 $("#openRepository").addEventListener("click", () => window.spriteLab.openRepository());
 for (const id of ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "pixelPerfect", "removeDuplicates", "whiteOutput", "trimStart", "trimEnd"]) {
-  $(`#${id}`).addEventListener("change", () => { markPreviewDirty(); savePreferences(); });
+  $(`#${id}`).addEventListener("change", () => { markPreviewDirty(); savePreferences(); scheduleHistory("Настройки обработки изменены"); });
 }
 $("#openAfterExport").addEventListener("change", savePreferences);
 
+for (const id of ["tolerance", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness", "fringeStrength"]) {
+  $(`#${id}`).addEventListener("change", () => scheduleHistory("Настройки обработки изменены"));
+}
+
 document.addEventListener("keydown", (event) => {
+  const editingText = ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName) || event.target.isContentEditable;
+  const modalOpen = Boolean($(".modal-backdrop:not(.hidden)"));
+  if (event.code !== "Space" || event.repeat || editingText || modalOpen) return;
+  event.preventDefault(); state.spaceHand = true; updateHandTool();
+});
+document.addEventListener("keyup", (event) => {
+  if (event.code !== "Space") return;
+  event.preventDefault(); state.spaceHand = false; stopViewportPan(); updateHandTool();
+});
+window.addEventListener("blur", () => { state.spaceHand = false; stopViewportPan(); updateHandTool(); });
+
+document.addEventListener("keydown", (event) => {
+  const openModal = $$(".modal-backdrop:not(.hidden)")[0];
+  if (openModal) trapModalFocus(openModal, event);
+  if (event.key === "Escape" && state.transformPanelOpen) { setTransformPanel(false); return; }
+  if (event.key === "Escape" && !$("#commandModal").classList.contains("hidden")) { closeCommandPalette(); return; }
   if (event.key === "Escape" && !$("#frameEditorModal").classList.contains("hidden")) { closeFrameEditor(); return; }
   if (event.key === "Escape" && !$("#attachmentModal").classList.contains("hidden")) { closeAttachmentEditor(); return; }
   if (event.key === "Escape" && !$("#aiMaskModal").classList.contains("hidden")) { closeMaskEditor({ discard: true }); return; }
   if (event.key === "Escape" && !$("#aboutModal").classList.contains("hidden")) { closeAbout(); return; }
   if (event.key === "Escape" && state.busy) window.spriteLab.cancelBuild();
-  if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); runBuild(true); }
-  if (event.ctrlKey && event.key.toLowerCase() === "o") { event.preventDefault(); chooseSource("chooseSource"); }
+  if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "k") { event.preventDefault(); openCommandPalette(); return; }
+  if (event.ctrlKey && event.key === "Enter") {
+    event.preventDefault();
+    if (!$("#buildPreview").disabled) runBuild(true);
+    else if (!state.busy) setStatus($("#buildPreview").title || "Сборка сейчас недоступна", "error", 0);
+    return;
+  }
+  if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "o") { event.preventDefault(); openProjectFile(); return; }
+  if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "o") { event.preventDefault(); chooseSource("chooseSource"); return; }
+  if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "s") { event.preventDefault(); saveProjectFile(false); return; }
+  const editingText = ["INPUT", "TEXTAREA"].includes(event.target.tagName) || event.target.isContentEditable;
+  if (!editingText && event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "z") { event.preventDefault(); undoWorkspace(); return; }
+  if (!editingText && event.ctrlKey && (event.key.toLowerCase() === "y" || (event.shiftKey && event.key.toLowerCase() === "z"))) { event.preventDefault(); redoWorkspace(); return; }
+  if (event.ctrlKey && ["1", "2", "3"].includes(event.key)) { event.preventDefault(); setTab(({ 1: "source", 2: "process", 3: "export" })[event.key]); }
 });
 
-window.spriteLab.onProgress((progress) => { if (state.busy) setStatus(progress.message || "Обработка…", "busy", progress.value || 0); });
+window.spriteLab.onProgress((progress) => {
+  if (!state.busy) return;
+  updateBatchProgress(progress);
+  setStatus(progress.message || "Обработка…", "busy", progress.value || 0);
+});
 window.spriteLab.onUpdateProgress((progress) => {
   const status = $("#updateStatus");
   status.className = progress.value >= 1 ? "update-status success" : "update-status busy";
@@ -1478,7 +2361,7 @@ window.spriteLab.onUpdateProgress((progress) => {
 });
 
 $$("button.selected").forEach((button) => button.setAttribute("aria-pressed", "true"));
-loadPreferences(); syncAutoSize(); updateMaskEditSummary(); renderAttachmentList(); updateActionState(); syncExportDependencies(""); setPreviewMode("after"); setStatus("Готов к работе");
+loadCustomExportProfiles(); loadPreferences(); syncAutoSize(); updateMaskEditSummary(); renderAttachmentList(); updateActionState(); syncExportDependencies(""); setPreviewMode("after"); setStatus("Готов к работе"); loadSessionOffer();
 window.spriteLab.getAppInfo().then((info) => {
   $("#versionBadge").textContent = info.version;
   $("#aboutVersion").textContent = info.version;

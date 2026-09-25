@@ -3,11 +3,18 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import test from "node:test";
 import sharp from "sharp";
 import { inspectSource, keyFrame, processFramePreview, processSprites, processVideoBatch } from "../src/processor.mjs";
 import { compositeAttachments, trackAttachmentPlacements } from "../src/attachment-tracker.mjs";
 import { sliceSpriteSheet } from "../src/sheet-slicer.mjs";
+
+function resolveTestFfmpeg(appRoot) {
+  // The bundled Windows binary is preferred; otherwise fall back to ffmpeg from PATH.
+  const bundled = path.join(appRoot, "vendor", process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+  return existsSync(bundled) ? bundled : process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+}
 
 async function makeFrame(filePath, left, top) {
   const orange = await sharp({
@@ -84,7 +91,7 @@ test("extracts and processes frames from a video", async () => {
   await makeFrame(path.join(input, "frame-1.png"), 20, 21);
   await makeFrame(path.join(input, "frame-2.png"), 33, 17);
   const appRoot = path.resolve(".");
-  const ffmpeg = path.join(appRoot, "vendor", "ffmpeg.exe");
+  const ffmpeg = resolveTestFfmpeg(appRoot);
   const videoPath = path.join(temp, "motion.mp4");
   const encoded = spawnSync(ffmpeg, [
     "-hide_banner", "-loglevel", "error", "-y",
@@ -137,7 +144,7 @@ test("batch mode processes multiple videos with automatic unique names", async (
   await makeFrame(path.join(input, "frame-0.png"), 8, 25);
   await makeFrame(path.join(input, "frame-1.png"), 22, 20);
   const appRoot = path.resolve(".");
-  const ffmpeg = path.join(appRoot, "vendor", "ffmpeg.exe");
+  const ffmpeg = resolveTestFfmpeg(appRoot);
   const firstVideo = path.join(temp, "walk.mp4");
   const secondVideo = path.join(temp, "jump.mp4");
   const encoded = spawnSync(ffmpeg, [
@@ -163,6 +170,20 @@ test("batch mode processes multiple videos with automatic unique names", async (
   assert.equal(result.failed, 0);
   assert.deepEqual(result.results.map((item) => item.name).sort(), ["jump", "walk-2"]);
   for (const item of result.results) assert.ok(await fs.stat(item.sheetPath));
+
+  const stoppedOutput = path.join(temp, "stopped-output");
+  const stopped = await processVideoBatch({
+    paths: [firstVideo, secondVideo], outputDir: stoppedOutput, appRoot,
+    shouldStop: () => true,
+    options: {
+      fps: 6, columns: 2, cellWidth: 96, cellHeight: 96, padding: 8, maxFrames: 10,
+      tolerance: 25, keyMode: "white", anchor: "ground", autoSize: true, autoColumns: true,
+      pixelPerfect: true, removeDuplicates: false, outputBackground: "transparent",
+      exports: { sheet: true, frames: false, metadata: false, preview: false },
+    },
+  });
+  assert.equal(stopped.completed, 1);
+  assert.equal(stopped.stopped, true);
 });
 
 test("exports only the selected artifact types", async () => {
@@ -383,6 +404,45 @@ test("auto layout, exclusions and live frame preview work together", async () =>
   assert.equal(result.columns, 2);
   assert.notEqual(result.cellWidth, 800);
   assert.notEqual(result.cellHeight, 800);
+});
+
+test("frame transform changes proportions and can stretch the object to cell edges", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-transform-test-"));
+  const inputPath = path.join(temp, "frame.png");
+  await makeFrame(inputPath, 20, 19);
+  const source = await inspectSource({ kind: "frames", paths: [inputPath], appRoot: path.resolve(".") });
+  const common = {
+    keyMode: "white", tolerance: 18, anchor: "center", autoSize: false, autoColumns: false,
+    columns: 1, cellWidth: 100, cellHeight: 80, padding: 10, removeDuplicates: false,
+    pixelPerfect: true, outputBackground: "transparent",
+  };
+  const base = await processSprites({
+    source, outputDir: null, name: "base", appRoot: path.resolve("."), previewOnly: true, options: common,
+  });
+  const stretched = await processSprites({
+    source, outputDir: null, name: "scaled", appRoot: path.resolve("."), previewOnly: true,
+    options: { ...common, frameTransforms: { 0: { scaleX: 1.8, scaleY: 0.55, offsetX: 0, offsetY: 0, skewX: 0 } } },
+  });
+  const filled = await processSprites({
+    source, outputDir: null, name: "filled", appRoot: path.resolve("."), previewOnly: true,
+    options: { ...common, frameTransforms: { "*": { fill: "stretch" } } },
+  });
+  const skewed = await processSprites({
+    source, outputDir: null, name: "skewed", appRoot: path.resolve("."), previewOnly: true,
+    options: { ...common, frameTransforms: { 0: { scaleX: 1, scaleY: 1, skewX: 22 } } },
+  });
+  const trimmedInfo = async (filePath) => (await sharp(filePath).trim().png().toBuffer({ resolveWithObject: true })).info;
+  const baseInfo = await trimmedInfo(base.framePaths[0]);
+  const stretchedInfo = await trimmedInfo(stretched.framePaths[0]);
+  const filledInfo = await trimmedInfo(filled.framePaths[0]);
+  const skewedInfo = await trimmedInfo(skewed.framePaths[0]);
+  assert.ok(stretchedInfo.width > baseInfo.width * 1.5, "independent width control must widen the selected object");
+  assert.ok(stretchedInfo.height < baseInfo.height * 0.75, "independent height control must flatten the selected object");
+  assert.equal(filledInfo.width, 100, "fill mode must reach both horizontal cell edges");
+  assert.equal(filledInfo.height, 80, "fill mode must reach both vertical cell edges");
+  assert.ok(skewedInfo.width > 0 && skewedInfo.height > 0, "perspective skew must produce a visible sprite");
+  const filledManifest = JSON.parse(await fs.readFile(filled.manifestPath, "utf8"));
+  assert.equal(filledManifest.frames[0].transform.fill, "stretch", "manifest must describe the applied frame transform");
 });
 
 test("an aborted job stops before writing output", async () => {
