@@ -10,6 +10,13 @@ export const supportedImageExtensions = new Set([".png", ".jpg", ".jpeg", ".webp
 const naturalCompare = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare;
 const frameKeyCache = new Map();
 const videoFrameCache = new Map();
+sharp.cache({ memory: 32, files: 0, items: 32 });
+
+function rememberFrameKey(cacheKey, result) {
+  frameKeyCache.set(cacheKey, result);
+  while (frameKeyCache.size > 12) frameKeyCache.delete(frameKeyCache.keys().next().value);
+  return result;
+}
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -158,6 +165,51 @@ async function detectSuggestedKeyMode(filePath) {
   if (g > r * 1.35 && g > b * 1.35) return "green";
   if (b > r * 1.35 && b > g * 1.2) return "blue";
   return "auto";
+}
+
+async function detectFastAIKeyMode(filePath) {
+  const { data, info } = await sharp(filePath).resize({ width: 320, height: 320, fit: "inside" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+  const candidates = [
+    ["white", [255, 255, 255], 55],
+    ["black", [0, 0, 0], 55],
+    ["green", [0, 255, 0], 82],
+    ["blue", [0, 0, 255], 82],
+  ];
+  let best = null;
+  for (const [mode, key, threshold] of candidates) {
+    const visited = new Uint8Array(width * height);
+    const queue = new Int32Array(width * height);
+    let head = 0;
+    let tail = 0;
+    let borderCount = 0;
+    let matchingBorder = 0;
+    const enqueue = (x, y, border = false) => {
+      if (x < 0 || y < 0 || x >= width || y >= height) return;
+      const index = y * width + x;
+      if (border) borderCount += 1;
+      if (visited[index] || colorDistance(data, index * channels, key) > threshold) return;
+      if (border) matchingBorder += 1;
+      visited[index] = 1;
+      queue[tail++] = index;
+    };
+    for (let x = 0; x < width; x += 1) { enqueue(x, 0, true); enqueue(x, height - 1, true); }
+    for (let y = 1; y < height - 1; y += 1) { enqueue(0, y, true); enqueue(width - 1, y, true); }
+    while (head < tail) {
+      const index = queue[head++];
+      const x = index % width;
+      const y = Math.floor(index / width);
+      enqueue(x - 1, y);
+      enqueue(x + 1, y);
+      enqueue(x, y - 1);
+      enqueue(x, y + 1);
+    }
+    const borderRatio = matchingBorder / Math.max(1, borderCount);
+    const connectedRatio = tail / Math.max(1, width * height);
+    const score = borderRatio * 0.7 + connectedRatio * 0.3;
+    if (borderRatio >= 0.5 && connectedRatio >= 0.12 && (!best || score > best.score)) best = { mode, score };
+  }
+  return best?.mode || null;
 }
 
 async function recommendSource(samplePaths, video = {}) {
@@ -310,12 +362,18 @@ function erodeConnectedMask(mask, width, height, radius) {
 export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, blackFeather = 0, context = {}) {
   const fileStats = await fs.stat(inputPath);
   const aiSignature = mode === "ai"
-    ? JSON.stringify([context.aiCutoff, context.aiSoftness, context.frameIndex, context.aiEdits || []])
+    ? JSON.stringify([context.aiCutoff, context.aiSoftness, context.aiForceModel, context.frameIndex, context.aiEdits || []])
     : "";
   const cacheKey = `${inputPath}|${fileStats.mtimeMs}|${mode}|${tolerance}|${blackOutline}|${blackFeather}|${aiSignature}`;
   if (frameKeyCache.has(cacheKey)) return frameKeyCache.get(cacheKey);
 
   if (mode === "ai") {
+    const edits = context.aiEdits || [];
+    const fastMode = !context.aiForceModel && edits.length === 0 ? await detectFastAIKeyMode(inputPath) : null;
+    if (fastMode) {
+      const fastResult = await keyFrame(inputPath, fastMode, tolerance, blackOutline, blackFeather, {});
+      return rememberFrameKey(cacheKey, { ...fastResult, aiFastPath: fastMode });
+    }
     const { data, info } = await segmentSubject(inputPath, {
       appRoot: context.appRoot,
       cutoff: context.aiCutoff,
@@ -329,16 +387,13 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
       bounds: alphaBounds(data, info),
       keyColor: null,
     };
-    frameKeyCache.set(cacheKey, result);
-    if (frameKeyCache.size > 64) frameKeyCache.delete(frameKeyCache.keys().next().value);
-    return result;
+    return rememberFrameKey(cacheKey, result);
   }
 
   const { data, info } = await sharp(inputPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   if (mode === "alpha") {
     const result = { buffer: await sharp(data, { raw: info }).png().toBuffer(), info, bounds: alphaBounds(data, info), keyColor: null };
-    frameKeyCache.set(cacheKey, result);
-    return result;
+    return rememberFrameKey(cacheKey, result);
   }
 
   const keys = {
@@ -455,9 +510,7 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
     bounds,
     keyColor,
   };
-  frameKeyCache.set(cacheKey, result);
-  if (frameKeyCache.size > 64) frameKeyCache.delete(frameKeyCache.keys().next().value);
-  return result;
+  return rememberFrameKey(cacheKey, result);
 }
 
 async function extractVideoFrames(videoPath, outputDir, fps, maxFrames, appRoot, onProgress, trimStart = 0, trimEnd = 0, signal) {
@@ -687,7 +740,7 @@ export async function processSprites({ source, outputDir, name, options = {}, pr
     onProgress?.({
       stage: "key",
       value: 0.16 + (index + 1) / inputFrames.length * 0.34,
-      message: `${options.keyMode === "ai" ? "ИИ выделяет объект" : "Очищаю фон"} · ${index + 1}/${inputFrames.length}`,
+      message: `${keyed.aiFastPath ? "Быстро очищаю фон" : options.keyMode === "ai" ? "ИИ выделяет объект" : "Очищаю фон"} · ${index + 1}/${inputFrames.length}`,
     });
   }
   if (!prepared.length) throw new Error("После удаления фона не осталось ни одного непустого кадра. Уменьшите допуск цвета.");

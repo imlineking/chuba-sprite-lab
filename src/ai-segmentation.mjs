@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import * as ort from "onnxruntime-node";
 import sharp from "sharp";
@@ -38,6 +39,9 @@ async function getSession(appRoot) {
   loadedSession = await ort.InferenceSession.create(modelPath, {
     executionProviders: ["cpu"],
     graphOptimizationLevel: "all",
+    executionMode: "sequential",
+    intraOpNumThreads: Math.max(1, Math.min(2, os.cpus().length - 1)),
+    interOpNumThreads: 1,
   });
   loadedModelPath = modelPath;
   return loadedSession;
