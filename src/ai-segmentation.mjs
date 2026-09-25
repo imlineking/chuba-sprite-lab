@@ -47,33 +47,7 @@ async function getSession(appRoot) {
   return loadedSession;
 }
 
-function applyMaskEdits(alpha, originalAlpha, width, height, edits, frameIndex) {
-  for (const edit of edits || []) {
-    if (!edit?.applyAll && Number(edit?.frameIndex) !== Number(frameIndex)) continue;
-    const centerX = clamp(Number(edit.x) || 0, 0, 1) * (width - 1);
-    const centerY = clamp(Number(edit.y) || 0, 0, 1) * (height - 1);
-    const radius = Math.max(1, clamp(Number(edit.radius) || 0.03, 0.002, 0.35) * Math.max(width, height));
-    const minX = Math.max(0, Math.floor(centerX - radius));
-    const maxX = Math.min(width - 1, Math.ceil(centerX + radius));
-    const minY = Math.max(0, Math.floor(centerY - radius));
-    const maxY = Math.min(height - 1, Math.ceil(centerY + radius));
-    for (let y = minY; y <= maxY; y += 1) {
-      for (let x = minX; x <= maxX; x += 1) {
-        const distance = Math.hypot(x - centerX, y - centerY);
-        if (distance > radius) continue;
-        const index = y * width + x;
-        const hardRadius = radius * 0.82;
-        const strength = distance <= hardRadius
-          ? 1
-          : clamp(1 - (distance - hardRadius) / Math.max(1, radius - hardRadius), 0, 1);
-        if (edit.mode === "keep") alpha[index] = Math.max(alpha[index], Math.round(originalAlpha[index] * strength));
-        else alpha[index] = Math.min(alpha[index], Math.round(alpha[index] * (1 - strength)));
-      }
-    }
-  }
-}
-
-export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness = 0, edits = [], frameIndex = 0 } = {}) {
+export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness = 0 } = {}) {
   if (!appRoot) throw new Error("Не указан путь к локальной ИИ-модели.");
   const session = await getSession(appRoot);
   const { data: source, info } = await sharp(inputPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -112,7 +86,6 @@ export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness
   }
 
   const alpha = new Uint8Array(info.width * info.height);
-  const originalAlpha = new Uint8Array(alpha.length);
   const parsedCutoff = Number(cutoff);
   const threshold = clamp(Number.isFinite(parsedCutoff) ? parsedCutoff : 50, 1, 99) / 100;
   const parsedSoftness = Number(softness);
@@ -128,10 +101,8 @@ export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness
     : hardMask;
   for (let index = 0; index < alpha.length; index += 1) {
     const original = source[index * info.channels + 3];
-    originalAlpha[index] = original;
     alpha[index] = Math.round(original * matteMask[index] / 255);
   }
-  applyMaskEdits(alpha, originalAlpha, info.width, info.height, edits, frameIndex);
   for (let index = 0; index < alpha.length; index += 1) source[index * info.channels + 3] = alpha[index];
   return { data: source, info };
 }

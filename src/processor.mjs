@@ -5,6 +5,9 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import sharp from "sharp";
 import { segmentSubject } from "./ai-segmentation.mjs";
+import { applyMaskEdits } from "./mask-edits.mjs";
+import { cleanMagentaFringe } from "./edge-cleanup.mjs";
+import { compositeAttachments, trackAttachmentPlacements } from "./attachment-tracker.mjs";
 
 export const supportedImageExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".avif"]);
 const naturalCompare = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare;
@@ -359,40 +362,65 @@ function erodeConnectedMask(mask, width, height, radius) {
   return eroded;
 }
 
+async function applyCorrectionsToResult(result, inputPath, context = {}) {
+  const edits = context.aiEdits || [];
+  if (!edits.length && !context.fringeCleanup) return result;
+  const [{ data, info }, original] = await Promise.all([
+    sharp(result.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+    sharp(inputPath).ensureAlpha().raw().toBuffer(),
+  ]);
+  const maskTracking = applyMaskEdits(data, original, info, edits, context.frameIndex).tracked;
+  if (context.fringeCleanup) cleanMagentaFringe(data, info, context.fringeStrength);
+  return {
+    ...result,
+    buffer: await sharp(data, { raw: info }).png().toBuffer(),
+    info,
+    bounds: alphaBounds(data, info),
+    maskTracking,
+  };
+}
+
 export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, blackFeather = 0, context = {}) {
   const fileStats = await fs.stat(inputPath);
-  const aiSignature = mode === "ai"
-    ? JSON.stringify([context.aiCutoff, context.aiSoftness, context.aiForceModel, context.frameIndex, context.aiEdits || []])
-    : "";
-  const cacheKey = `${inputPath}|${fileStats.mtimeMs}|${mode}|${tolerance}|${blackOutline}|${blackFeather}|${aiSignature}`;
+  const correctionSignature = JSON.stringify([
+    context.fringeCleanup, context.fringeStrength,
+    mode === "ai" ? context.aiCutoff : null,
+    mode === "ai" ? context.aiSoftness : null,
+    mode === "ai" ? context.aiForceModel : null,
+    context.aiEdits?.length ? context.frameIndex : null,
+    context.aiEdits || [],
+  ]);
+  const cacheKey = `${inputPath}|${fileStats.mtimeMs}|${mode}|${tolerance}|${blackOutline}|${blackFeather}|${correctionSignature}`;
   if (frameKeyCache.has(cacheKey)) return frameKeyCache.get(cacheKey);
 
   if (mode === "ai") {
     const edits = context.aiEdits || [];
-    const fastMode = !context.aiForceModel && edits.length === 0 ? await detectFastAIKeyMode(inputPath) : null;
+    const fastMode = !context.aiForceModel ? await detectFastAIKeyMode(inputPath) : null;
     if (fastMode) {
       const fastResult = await keyFrame(inputPath, fastMode, tolerance, blackOutline, blackFeather, {});
-      return rememberFrameKey(cacheKey, { ...fastResult, aiFastPath: fastMode });
+      const edited = await applyCorrectionsToResult({ ...fastResult, aiFastPath: fastMode }, inputPath, context);
+      return rememberFrameKey(cacheKey, edited);
     }
     const { data, info } = await segmentSubject(inputPath, {
       appRoot: context.appRoot,
       cutoff: context.aiCutoff,
       softness: context.aiSoftness,
-      edits: context.aiEdits,
-      frameIndex: context.frameIndex,
     });
-    const result = {
+    const result = await applyCorrectionsToResult({
       buffer: await sharp(data, { raw: info }).png().toBuffer(),
       info,
       bounds: alphaBounds(data, info),
       keyColor: null,
-    };
+    }, inputPath, context);
     return rememberFrameKey(cacheKey, result);
   }
 
   const { data, info } = await sharp(inputPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const original = Buffer.from(data);
   if (mode === "alpha") {
-    const result = { buffer: await sharp(data, { raw: info }).png().toBuffer(), info, bounds: alphaBounds(data, info), keyColor: null };
+    const maskTracking = applyMaskEdits(data, original, info, context.aiEdits || [], context.frameIndex).tracked;
+    if (context.fringeCleanup) cleanMagentaFringe(data, info, context.fringeStrength);
+    const result = { buffer: await sharp(data, { raw: info }).png().toBuffer(), info, bounds: alphaBounds(data, info), keyColor: null, maskTracking };
     return rememberFrameKey(cacheKey, result);
   }
 
@@ -503,12 +531,15 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
     }
   }
 
+  const maskTracking = applyMaskEdits(data, original, info, context.aiEdits || [], context.frameIndex).tracked;
+  if (context.fringeCleanup) cleanMagentaFringe(data, info, context.fringeStrength);
   const bounds = alphaBounds(data, info);
   const result = {
     buffer: await sharp(data, { raw: info }).png().toBuffer(),
     info,
     bounds,
     keyColor,
+    maskTracking,
   };
   return rememberFrameKey(cacheKey, result);
 }
@@ -614,8 +645,11 @@ async function renderFrames(frames, options) {
       left = padding;
       top = padding;
     } else {
-      spriteWidth = Math.max(1, Math.round(frame.bounds.width * scale));
-      spriteHeight = Math.max(1, Math.round(frame.bounds.height * scale));
+      const frameScale = options.fitEachFrame
+        ? Math.min((cellWidth - padding * 2) / Math.max(1, frame.bounds.width), (cellHeight - padding * 2) / Math.max(1, frame.bounds.height))
+        : scale;
+      spriteWidth = Math.max(1, Math.round(frame.bounds.width * frameScale));
+      spriteHeight = Math.max(1, Math.round(frame.bounds.height * frameScale));
       sprite = await sharp(frame.buffer)
         .extract(frame.bounds)
         .resize({ width: spriteWidth, height: spriteHeight, fit: "fill", kernel })
@@ -704,6 +738,14 @@ export async function processSprites({ source, outputDir, name, options = {}, pr
     inputFrames = [...source.paths].sort(naturalCompare).slice(0, clamp(Number(options.maxFrames) || 192, 1, 1000));
   }
   if (!inputFrames.length) throw new Error("Не удалось получить ни одного кадра.");
+  if (options.frameOverrides && typeof options.frameOverrides === "object") {
+    inputFrames = await Promise.all(inputFrames.map(async (framePath, index) => {
+      const overridePath = options.frameOverrides[index];
+      return overridePath && await exists(overridePath) ? overridePath : framePath;
+    }));
+  }
+
+  const attachmentPlacements = await trackAttachmentPlacements(inputFrames, options.attachments || [], { onProgress, signal });
 
   const prepared = [];
   const skipped = { empty: 0, duplicates: 0, excluded: 0, emptyIndexes: [], duplicateIndexes: [] };
@@ -715,13 +757,16 @@ export async function processSprites({ source, outputDir, name, options = {}, pr
       skipped.excluded += 1;
       continue;
     }
-    const keyed = await keyFrame(inputFrames[index], options.keyMode || "auto", options.tolerance ?? 28, options.blackOutline ?? 3, options.blackFeather ?? 0, {
+    let keyed = await keyFrame(inputFrames[index], options.keyMode || "auto", options.tolerance ?? 28, options.blackOutline ?? 3, options.blackFeather ?? 0, {
       appRoot,
       frameIndex: index,
       aiCutoff: options.aiCutoff,
       aiSoftness: options.aiSoftness,
       aiEdits: options.aiEdits,
+      fringeCleanup: options.fringeCleanup,
+      fringeStrength: options.fringeStrength,
     });
+    keyed = await compositeAttachments(keyed, attachmentPlacements[index]);
     if (!keyed.bounds) {
       skipped.empty += 1;
       skipped.emptyIndexes.push(index);
@@ -746,6 +791,18 @@ export async function processSprites({ source, outputDir, name, options = {}, pr
   if (!prepared.length) throw new Error("После удаления фона не осталось ни одного непустого кадра. Уменьшите допуск цвета.");
 
   const report = makeReport(prepared, skipped, options.keyMode || "auto");
+  if (source.kind === "sheet") report.warnings = report.warnings.filter((warning) => !/ширина силуэта|высота силуэта/.test(warning));
+  for (const frame of prepared) {
+    if ((frame.maskTracking || []).some((tracking) => !tracking.matched || tracking.confidence < 0.18)) {
+      report.warnings.push(`Кадр ${frame.sourceIndex + 1}: умная область не найдена уверенно.`);
+    }
+    for (const placement of attachmentPlacements[frame.sourceIndex] || []) {
+      if ((placement.points || []).some((point) => Number(point.confidence) < 0.22)) {
+        report.warnings.push(`Кадр ${frame.sourceIndex + 1}: низкая уверенность привязки PNG «${placement.title || "элемент"}».`);
+      }
+    }
+  }
+  report.warnings = [...new Set(report.warnings)].slice(0, 100);
   const normalized = await renderFrames(prepared, options);
   const framePaths = [];
   for (let index = 0; index < normalized.rendered.length; index += 1) {
@@ -841,6 +898,7 @@ export async function processSprites({ source, outputDir, name, options = {}, pr
     cellHeight: normalized.cellHeight,
     warnings: report.warnings,
     skipped,
+    attachmentPlacements,
   };
 }
 
@@ -905,13 +963,19 @@ export async function processVideoBatch({ paths, outputDir, options = {}, appRoo
 export async function processFramePreview({ inputPath, options = {}, appRoot }) {
   if (!inputPath) throw new Error("Нет кадра для быстрого предпросмотра.");
   const previewRoot = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-live-"));
-  const keyed = await keyFrame(inputPath, options.keyMode || "auto", options.tolerance ?? 28, options.blackOutline ?? 3, options.blackFeather ?? 0, {
+  let keyed = await keyFrame(inputPath, options.keyMode || "auto", options.tolerance ?? 28, options.blackOutline ?? 3, options.blackFeather ?? 0, {
     appRoot,
     frameIndex: options.previewFrameIndex ?? 0,
     aiCutoff: options.aiCutoff,
     aiSoftness: options.aiSoftness,
     aiEdits: options.aiEdits,
+    fringeCleanup: options.fringeCleanup,
+    fringeStrength: options.fringeStrength,
   });
+  const previewFrameIndex = options.previewFrameIndex ?? 0;
+  const placements = options.attachmentPlacements?.[previewFrameIndex]
+    || (options.attachments || []).map((attachment) => ({ ...attachment, points: attachment.points || [] }));
+  keyed = await compositeAttachments(keyed, placements);
   const afterPath = path.join(previewRoot, "after.png");
   await fs.writeFile(afterPath, keyed.buffer);
   return {

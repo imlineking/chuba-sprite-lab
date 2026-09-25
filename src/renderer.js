@@ -6,8 +6,11 @@ const state = {
   busy: false, lastExportDir: null, lastRevealPath: null, framePreview: null, selectedFrameIndex: 0,
   excludedFrames: new Set(), quickTimer: null, quickToken: 0,
   zoom: 1, guides: false, backdrop: 0, timelineValid: true, sourceRevision: 0, resultDirty: false,
-  maskEdits: [], maskBrushMode: "erase", maskDrawing: false, maskStrokeId: 0,
-  maskEditorSnapshot: [], maskEditorImage: null,
+  maskEdits: [], maskBrushMode: "smart", maskDrawing: false, maskStrokeId: 0,
+  maskEditorSnapshot: [], maskEditorImage: null, maskEditorPixels: null,
+  attachments: [], attachmentAsset: null, attachmentSourceImage: null, attachmentAssetImage: null,
+  attachmentPoints: [], attachmentPointCount: 1, attachmentEditingId: null, attachmentReferenceFrame: 0,
+  frameOverrides: {}, externalEdit: null, externalEditTimer: null,
 };
 let posterTimer = null;
 let aboutReturnFocus = null;
@@ -184,9 +187,12 @@ function updateActionState() {
     ? `ЭКСПОРТИРОВАТЬ ${batchCount} ВИДЕО`
     : state.result?.frameCount && !state.resultDirty ? `ЭКСПОРТИРОВАТЬ ${state.result.frameCount} КАДРОВ` : "ЭКСПОРТИРОВАТЬ";
   $("#openMaskEditor").disabled = !hasSource || state.busy;
+  $("#addAttachment").disabled = !hasSource || state.busy || state.source?.kind === "video-batch";
+  $("#editFrame").disabled = !state.result?.allSourceFramePaths?.length || state.busy || state.source?.kind === "video-batch";
 }
 
 function currentFramePath() {
+  if (state.frameOverrides[state.selectedFrameIndex]) return state.frameOverrides[state.selectedFrameIndex];
   if (state.result?.allSourceFramePaths?.[state.selectedFrameIndex]) return state.result.allSourceFramePaths[state.selectedFrameIndex];
   if (state.source?.samplePaths?.[state.selectedFrameIndex]) return state.source.samplePaths[state.selectedFrameIndex];
   return state.source?.previewPath || state.source?.paths?.[0] || null;
@@ -202,6 +208,8 @@ function setSource(source) {
   state.framePreview = null;
   state.excludedFrames.clear();
   state.maskEdits = [];
+  state.attachments = [];
+  state.frameOverrides = {};
   state.selectedFrameIndex = 0;
   state.lastExportDir = null;
   state.lastRevealPath = null;
@@ -216,10 +224,12 @@ function setSource(source) {
     $("#sourcePreviewImage").removeAttribute("src");
     $("#recommendationCard").classList.add("hidden");
     $("#batchNote").classList.add("hidden");
+    $("#sheetControls").classList.add("hidden");
     $("#spriteName").disabled = false;
     $("#spriteNameLabel").textContent = "Имя набора";
     $("#sampleStrip").replaceChildren();
     updateMaskEditSummary();
+    renderAttachmentList();
     resetPreview();
     $("#framePreviewTabs").classList.add("hidden");
     setStatus("Готов к работе");
@@ -228,12 +238,19 @@ function setSource(source) {
   }
   $("#sourceCard").classList.remove("hidden");
   const isBatch = source.kind === "video-batch";
-  $("#sourceBadge").textContent = isBatch ? "BATCH" : source.kind === "video" ? "VIDEO" : "FRAMES";
+  const isSheet = source.kind === "sheet";
+  $("#sourceBadge").textContent = isBatch ? "BATCH" : isSheet ? "SHEET" : source.kind === "video" ? "VIDEO" : "FRAMES";
   $("#sourceTitle").textContent = source.title;
   $("#sourceDetail").textContent = source.detail;
   $("#sourceRange").classList.toggle("hidden", source.kind !== "video");
-  $("#sourcePreviewLabel").textContent = isBatch ? "ПЕРВОЕ ВИДЕО" : source.kind === "video" ? "НАЧАЛО ДИАПАЗОНА" : "ПЕРВЫЙ КАДР";
+  $("#sourcePreviewLabel").textContent = isBatch ? "ПЕРВОЕ ВИДЕО" : source.kind === "video" ? "НАЧАЛО ДИАПАЗОНА" : isSheet ? "ПЕРВЫЙ ОБЪЕКТ" : "ПЕРВЫЙ КАДР";
   $("#batchNote").classList.toggle("hidden", !isBatch);
+  $("#sheetControls").classList.toggle("hidden", !isSheet);
+  if (isSheet) {
+    $("#sheetObjectCount").textContent = `${source.paths.length} объектов`;
+    $$("#sheetSliceMode button").forEach((button) => button.classList.toggle("selected", button.dataset.sheetMode === source.sheetMode));
+    $("#sheetGridFields").classList.toggle("hidden", source.sheetMode !== "grid");
+  }
   configureTimeline(source);
   if (source.previewUrl) {
     $("#sourcePreviewImage").src = source.previewUrl;
@@ -244,6 +261,7 @@ function setSource(source) {
   $("#spriteName").value = isBatch ? "Автоматически — по именам видео" : sourceDefaultName(source);
   resetPreview();
   renderRecommendations(source);
+  renderAttachmentList();
   $("#framePreviewTabs").classList.remove("hidden");
   setStatus(`Источник загружен · ${source.detail}`, "done", 0);
   updateActionState();
@@ -395,6 +413,10 @@ function collectOptions() {
     excludedFrames: [...state.excludedFrames], exports: collectExports(),
     aiCutoff: Number($("#aiCutoff").value), aiSoftness: Number($("#aiSoftness").value),
     aiEdits: state.maskEdits, previewFrameIndex: state.result ? state.selectedFrameIndex : 0,
+    fringeCleanup: $("#fringeCleanup").checked, fringeStrength: Number($("#fringeStrength").value),
+    attachments: state.attachments.filter((attachment) => attachment.enabled !== false), attachmentPlacements: state.resultDirty ? null : state.result?.attachmentPlacements || null,
+    frameOverrides: state.frameOverrides,
+    fitEachFrame: state.source?.kind === "sheet" && $("#sheetFitEach").checked,
   };
 }
 
@@ -479,6 +501,7 @@ function resetRecommended() {
   $("#blackFeather").value = "0"; $("#blackFeatherValue").textContent = "0 px";
   $("#aiCutoff").value = "50"; $("#aiCutoffValue").textContent = "50";
   $("#aiSoftness").value = "0"; $("#aiSoftnessValue").textContent = "0 px";
+  $("#fringeCleanup").checked = false; $("#fringeStrength").value = "55"; $("#fringeStrengthValue").textContent = "55"; $("#fringeStrengthRow").classList.add("hidden");
   state.maskEdits = []; updateMaskEditSummary();
   $("#padding").value = "20"; $("#columns").value = "8"; $("#maxFrames").value = "192";
   $("#autoSize").checked = true; $("#autoColumns").checked = true; $("#pixelPerfect").checked = true; $("#removeDuplicates").checked = true; $("#whiteOutput").checked = false;
@@ -493,7 +516,9 @@ function showWarnings(warnings) {
   warnings.forEach((warning) => {
     const key = warning.includes("касается края") ? "Персонаж касается края"
       : warning.includes("ширина силуэта") ? "Скачок ширины силуэта"
-        : warning.includes("высота силуэта") ? "Скачок высоты силуэта" : warning.replace(/Кадр\s+\d+:?\s*/i, "");
+        : warning.includes("высота силуэта") ? "Скачок высоты силуэта"
+          : warning.includes("уверенность привязки") ? "Проверьте привязку PNG"
+            : warning.includes("умная область") ? "Проверьте удаление объекта" : warning.replace(/Кадр\s+\d+:?\s*/i, "");
     const match = warning.match(/Кадр\s+(\d+)/i);
     if (!groups.has(key)) groups.set(key, []);
     if (match) groups.get(key).push(Number(match[1]) - 1);
@@ -503,7 +528,7 @@ function showWarnings(warnings) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = frameIndexes.length ? `${label} · ${frameIndexes.length} кадр.` : label;
-    button.className = label.includes("края") ? "severity-error" : "severity-info";
+    button.className = label.includes("края") || label.includes("привязку") || label.includes("удаление") ? "severity-error" : "severity-info";
     if (frameIndexes.length) button.addEventListener("click", () => {
       const outputIndex = frameIndexes[0];
       selectFrame(state.result?.sourceFrameIndexes?.[outputIndex] ?? outputIndex);
@@ -565,18 +590,37 @@ function maskEditApplies(edit, frameIndex = activeMaskFrameIndex()) {
 }
 
 function updateMaskEditSummary() {
-  const strokes = new Set(state.maskEdits.map((edit) => edit.strokeId)).size;
-  $("#clearMaskEdits").disabled = strokes === 0;
-  $("#maskEditSummary").textContent = strokes
-    ? `Ручных исправлений: ${strokes}. Они применятся вместе с ИИ-маской.`
-    : "Ручных исправлений пока нет.";
+  const regions = state.maskEdits.filter((edit) => edit.type === "tracked-region").length;
+  const strokes = new Set(state.maskEdits.filter((edit) => edit.type !== "tracked-region").map((edit) => edit.strokeId)).size;
+  $("#clearMaskEdits").disabled = regions + strokes === 0;
+  $("#maskEditSummary").textContent = regions + strokes
+    ? `Умных областей: ${regions} · мазков: ${strokes}.`
+    : "Стена, пятно или просвет — один раз для всей серии.";
+  updateFinishingSummary();
+}
+
+function updateFinishingSummary() {
+  const objectSummary = $("[data-summary='object']");
+  const edgeSummary = $("[data-summary='edge']");
+  const overlaySummary = $("[data-summary='overlay']");
+  if (!objectSummary || !edgeSummary || !overlaySummary) return;
+  const regions = state.maskEdits.filter((edit) => edit.type === "tracked-region").length;
+  const strokes = new Set(state.maskEdits.filter((edit) => edit.type !== "tracked-region").map((edit) => edit.strokeId)).size;
+  objectSummary.textContent = regions + strokes ? `Лишнее: ${regions + strokes}` : "Лишнее: нет";
+  objectSummary.classList.toggle("active", regions + strokes > 0);
+  edgeSummary.textContent = $("#fringeCleanup").checked ? "Контур: очищается" : "Контур: нет";
+  edgeSummary.classList.toggle("active", $("#fringeCleanup").checked);
+  const enabledAttachments = state.attachments.filter((attachment) => attachment.enabled !== false).length;
+  overlaySummary.textContent = `PNG: ${enabledAttachments}${enabledAttachments !== state.attachments.length ? `/${state.attachments.length}` : ""}`;
+  overlaySummary.classList.toggle("active", enabledAttachments > 0);
 }
 
 function updateMaskEditorStatus() {
   const frameIndex = activeMaskFrameIndex();
   const relevant = state.maskEdits.filter((edit) => maskEditApplies(edit, frameIndex));
-  const strokes = new Set(relevant.map((edit) => edit.strokeId)).size;
-  $("#maskEditorStatus").textContent = `Кадр ${frameIndex + 1} · ${strokes ? `${strokes} исправл.` : "без исправлений"}`;
+  const regions = relevant.filter((edit) => edit.type === "tracked-region").length;
+  const strokes = new Set(relevant.filter((edit) => edit.type !== "tracked-region").map((edit) => edit.strokeId)).size;
+  $("#maskEditorStatus").textContent = `Кадр ${frameIndex + 1} · ${regions ? `${regions} обл.` : "0 обл."} · ${strokes ? `${strokes} действ.` : "без кисти"}`;
   $("#undoMaskStroke").disabled = strokes === 0;
   $("#resetMaskStrokes").disabled = relevant.length === 0;
 }
@@ -589,6 +633,25 @@ function redrawMaskCanvas() {
   context.drawImage(state.maskEditorImage, 0, 0, canvas.width, canvas.height);
   for (const edit of state.maskEdits) {
     if (!maskEditApplies(edit)) continue;
+    if (edit.type === "tracked-region") {
+      const left = (Number(edit.selectionLeft) || Math.max(0, (Number(edit.centroidX) || 0) - (Number(edit.selectionWidth) || 0.04) / 2)) * canvas.width;
+      const top = (Number(edit.selectionTop) || Math.max(0, (Number(edit.centroidY) || 0) - (Number(edit.selectionHeight) || 0.04) / 2)) * canvas.height;
+      const width = Math.max(12, (Number(edit.selectionWidth) || 0.04) * canvas.width);
+      const height = Math.max(12, (Number(edit.selectionHeight) || 0.04) * canvas.height);
+      context.save();
+      context.fillStyle = "rgba(255, 118, 23, .12)";
+      context.strokeStyle = "rgba(255, 143, 65, .95)";
+      context.lineWidth = Math.max(1.5, Math.max(canvas.width, canvas.height) / 620);
+      context.setLineDash([8, 5]);
+      context.fillRect(left, top, width, height);
+      context.strokeRect(left, top, width, height);
+      context.setLineDash([]);
+      const pinX = (Number(edit.centroidX) || Number(edit.x) || 0) * canvas.width;
+      const pinY = (Number(edit.centroidY) || Number(edit.y) || 0) * canvas.height;
+      context.beginPath(); context.arc(pinX, pinY, 6, 0, Math.PI * 2); context.fillStyle = "#ff7617"; context.fill();
+      context.restore();
+      continue;
+    }
     context.beginPath();
     context.arc(edit.x * canvas.width, edit.y * canvas.height, edit.radius * Math.max(canvas.width, canvas.height), 0, Math.PI * 2);
     context.fillStyle = edit.mode === "keep" ? "rgba(200, 223, 111, .34)" : "rgba(255, 92, 98, .34)";
@@ -602,8 +665,7 @@ function redrawMaskCanvas() {
 
 async function openMaskEditor() {
   if (!state.source || state.busy) return;
-  if (state.keyMode !== "ai") setKeyMode("ai");
-  setStatus("ИИ анализирует выбранный кадр…", "busy", 0.12);
+  setStatus("Готовлю выбранный кадр…", "busy", 0.12);
   await requestFramePreview(currentFramePath());
   const imageUrl = state.framePreview?.beforeUrl || state.source.previewUrl;
   if (!imageUrl) {
@@ -622,6 +684,10 @@ async function openMaskEditor() {
   const canvas = $("#maskCanvas");
   canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
   canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const sourceContext = canvas.getContext("2d", { willReadFrequently: true });
+  sourceContext.clearRect(0, 0, canvas.width, canvas.height);
+  sourceContext.drawImage(image, 0, 0, canvas.width, canvas.height);
+  state.maskEditorPixels = sourceContext.getImageData(0, 0, canvas.width, canvas.height).data.slice();
   redrawMaskCanvas();
   $("#aiMaskModal").classList.remove("hidden");
   $("#applyMaskEditor").focus();
@@ -632,6 +698,7 @@ function closeMaskEditor({ discard = false } = {}) {
   if (discard) state.maskEdits = state.maskEditorSnapshot.map((edit) => ({ ...edit }));
   state.maskDrawing = false;
   state.maskEditorImage = null;
+  state.maskEditorPixels = null;
   $("#aiMaskModal").classList.add("hidden");
   updateMaskEditSummary();
   $("#openMaskEditor").focus();
@@ -654,6 +721,298 @@ function addMaskPoint(event) {
     strokeId: state.maskStrokeId,
   });
   redrawMaskCanvas();
+}
+
+function selectTrackedRegion(event) {
+  if (!state.maskEditorPixels || !state.maskEditorImage) return;
+  const canvas = $("#maskCanvas");
+  const rect = canvas.getBoundingClientRect();
+  const seedX = Math.max(0, Math.min(canvas.width - 1, Math.round((event.clientX - rect.left) / Math.max(1, rect.width) * canvas.width)));
+  const seedY = Math.max(0, Math.min(canvas.height - 1, Math.round((event.clientY - rect.top) / Math.max(1, rect.height) * canvas.height)));
+  const pixels = state.maskEditorPixels;
+  const color = [0, 0, 0];
+  let samples = 0;
+  for (let y = Math.max(0, seedY - 2); y <= Math.min(canvas.height - 1, seedY + 2); y += 1) {
+    for (let x = Math.max(0, seedX - 2); x <= Math.min(canvas.width - 1, seedX + 2); x += 1) {
+      const offset = (y * canvas.width + x) * 4;
+      color[0] += pixels[offset]; color[1] += pixels[offset + 1]; color[2] += pixels[offset + 2]; samples += 1;
+    }
+  }
+  for (let index = 0; index < 3; index += 1) color[index] = Math.round(color[index] / Math.max(1, samples));
+  const tolerance = Number($("#smartRegionTolerance").value) || 42;
+  const thresholdSquared = tolerance * tolerance;
+  const visited = new Uint8Array(canvas.width * canvas.height);
+  const queue = new Int32Array(visited.length);
+  let head = 0;
+  let tail = 0;
+  let minX = canvas.width; let minY = canvas.height; let maxX = -1; let maxY = -1; let sumX = 0; let sumY = 0;
+  const enqueue = (x, y) => {
+    if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return;
+    const index = y * canvas.width + x;
+    if (visited[index]) return;
+    visited[index] = 1;
+    const offset = index * 4;
+    const dr = pixels[offset] - color[0]; const dg = pixels[offset + 1] - color[1]; const db = pixels[offset + 2] - color[2];
+    if (pixels[offset + 3] < 8 || dr * dr + dg * dg + db * db > thresholdSquared) return;
+    queue[tail++] = index;
+  };
+  enqueue(seedX, seedY);
+  while (head < tail) {
+    const index = queue[head++];
+    const x = index % canvas.width; const y = Math.floor(index / canvas.width);
+    minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+    sumX += x; sumY += y;
+    enqueue(x - 1, y); enqueue(x + 1, y); enqueue(x, y - 1); enqueue(x, y + 1);
+  }
+  if (tail < 4) {
+    $("#maskEditorStatus").textContent = "Область слишком мала · увеличьте чувствительность";
+    return;
+  }
+  state.maskStrokeId += 1;
+  state.maskEdits.push({
+    type: "tracked-region", mode: "erase", color, tolerance,
+    x: seedX / Math.max(1, canvas.width - 1), y: seedY / Math.max(1, canvas.height - 1),
+    centroidX: sumX / tail / Math.max(1, canvas.width - 1), centroidY: sumY / tail / Math.max(1, canvas.height - 1),
+    area: tail / Math.max(1, canvas.width * canvas.height),
+    selectionLeft: minX / canvas.width, selectionTop: minY / canvas.height,
+    selectionWidth: (maxX - minX + 1) / canvas.width, selectionHeight: (maxY - minY + 1) / canvas.height,
+    searchRadius: 0.32, frameIndex: activeMaskFrameIndex(), applyAll: $("#maskApplyAll").checked,
+    strokeId: state.maskStrokeId,
+  });
+  redrawMaskCanvas();
+}
+
+function setMaskTool(mode) {
+  state.maskBrushMode = mode;
+  $$("#maskBrushMode button").forEach((item) => item.classList.toggle("selected", item.dataset.mode === mode));
+  $("#smartRegionRow").classList.toggle("hidden", mode !== "smart");
+  $("#maskBrushSizeRow").classList.toggle("hidden", mode === "smart");
+  $("#maskApplyTitle").textContent = mode === "smart" ? "Искать во всей серии" : "Повторить во всех кадрах";
+  $("#maskApplyHint").textContent = mode === "smart" ? "слежение за цветом, размером и формой" : "кисть останется в тех же координатах";
+  $("#maskToolTip").textContent = mode === "smart"
+    ? "Щёлкните по стене, пятну или просвету. Область будет найдена заново в каждом кадре."
+    : "Кисть исправляет маску вручную. Поиск движения для неё не применяется.";
+}
+
+function loadUiImage(url, errorMessage) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(errorMessage));
+    image.src = url;
+  });
+}
+
+function renderAttachmentList() {
+  const list = $("#attachmentList");
+  list.replaceChildren();
+  if (!state.attachments.length) {
+    const empty = document.createElement("p");
+    empty.textContent = "PNG-элементов пока нет.";
+    list.append(empty);
+    updateFinishingSummary();
+    return;
+  }
+  for (const attachment of state.attachments) {
+    const trackedPoints = (state.result?.attachmentPlacements || [])
+      .flatMap((frame) => frame.filter((entry) => entry.id === attachment.id).flatMap((entry) => entry.points || []));
+    const confidence = trackedPoints.length
+      ? trackedPoints.reduce((sum, point) => sum + Number(point.confidence || 0), 0) / trackedPoints.length
+      : null;
+    const item = document.createElement("article");
+    item.className = "attachment-item";
+    item.classList.toggle("low-confidence", confidence != null && confidence < 0.45);
+    item.classList.toggle("disabled", attachment.enabled === false);
+    const image = document.createElement("img"); image.src = attachment.url; image.alt = "";
+    const text = document.createElement("div");
+    const title = document.createElement("strong"); title.textContent = attachment.title;
+    const detail = document.createElement("small"); detail.textContent = `${attachment.points.length} точк. · ${Math.round(attachment.sizeRatio * 100)}%${confidence == null ? " · не проверено" : ` · уверенность ${Math.round(confidence * 100)}%`}`;
+    text.append(title, detail);
+    const actions = document.createElement("div"); actions.className = "attachment-actions";
+    const toggle = document.createElement("button"); toggle.type = "button"; toggle.textContent = attachment.enabled === false ? "○" : "●"; toggle.title = attachment.enabled === false ? "Включить PNG" : "Временно скрыть PNG";
+    toggle.addEventListener("click", () => {
+      attachment.enabled = attachment.enabled === false;
+      renderAttachmentList(); markPreviewDirty(); scheduleFramePreview(0);
+    });
+    const edit = document.createElement("button"); edit.type = "button"; edit.textContent = "↗"; edit.title = "Изменить привязку";
+    edit.addEventListener("click", async () => {
+      try { await openAttachmentEditor(attachment); } catch (error) { setStatus(error.message || "Не удалось открыть привязку", "error", 0); showError(error.message); }
+    });
+    const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "×"; remove.title = "Удалить PNG";
+    remove.addEventListener("click", () => {
+      state.attachments = state.attachments.filter((entry) => entry.id !== attachment.id);
+      renderAttachmentList(); markPreviewDirty(); scheduleFramePreview(0);
+    });
+    actions.append(toggle, edit, remove);
+    item.append(image, text, actions); list.append(item);
+  }
+  updateFinishingSummary();
+}
+
+function updateAttachmentPointStatus() {
+  const needed = state.attachmentPointCount;
+  const count = state.attachmentPoints.length;
+  $("#attachmentPointStatus").textContent = count >= needed ? "точки готовы" : count === 0 ? "поставьте точку A" : "поставьте точку B";
+  $("#attachmentEditorStatus").textContent = state.attachmentAsset
+    ? `${state.attachmentAsset.title} · ${count}/${needed} точек`
+    : "PNG не выбран";
+  $("#saveAttachment").disabled = !state.attachmentAsset || count < needed;
+}
+
+function drawAttachmentEditor() {
+  const canvas = $("#attachmentCanvas");
+  const source = state.attachmentSourceImage;
+  if (!source || !canvas.width || !canvas.height) return;
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  if (state.attachmentPoints.length && state.attachmentAssetImage) {
+    const first = state.attachmentPoints[0];
+    const second = state.attachmentPoints[1];
+    const centerX = (second ? (first.x + second.x) / 2 : first.x) * canvas.width;
+    const centerY = (second ? (first.y + second.y) / 2 : first.y) * canvas.height;
+    const targetWidth = canvas.width * (Number($("#attachmentSize").value) || 22) / 100;
+    const targetHeight = targetWidth * state.attachmentAssetImage.naturalHeight / Math.max(1, state.attachmentAssetImage.naturalWidth);
+    const rotation = (Number($("#attachmentRotation").value) || 0) * Math.PI / 180;
+    context.save();
+    context.translate(centerX, centerY); context.rotate(rotation); context.globalAlpha = 0.9;
+    context.drawImage(state.attachmentAssetImage, -targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
+    context.restore();
+  }
+  if (state.attachmentPoints.length === 2) {
+    context.beginPath();
+    context.moveTo(state.attachmentPoints[0].x * canvas.width, state.attachmentPoints[0].y * canvas.height);
+    context.lineTo(state.attachmentPoints[1].x * canvas.width, state.attachmentPoints[1].y * canvas.height);
+    context.strokeStyle = "rgba(200,223,111,.85)"; context.lineWidth = 2; context.setLineDash([7, 5]); context.stroke(); context.setLineDash([]);
+  }
+  state.attachmentPoints.forEach((point, index) => {
+    const x = point.x * canvas.width; const y = point.y * canvas.height;
+    context.beginPath(); context.arc(x, y, 10, 0, Math.PI * 2); context.fillStyle = index ? "#c8df6f" : "#ff7617"; context.fill();
+    context.strokeStyle = "#0b0e12"; context.lineWidth = 3; context.stroke();
+    context.fillStyle = "#11151a"; context.font = '700 10px "Bahnschrift"'; context.textAlign = "center"; context.textBaseline = "middle"; context.fillText(index ? "B" : "A", x, y + 0.5);
+  });
+  updateAttachmentPointStatus();
+}
+
+async function openAttachmentEditor(existing = null) {
+  if (!state.source || state.busy || state.source.kind === "video-batch") return;
+  const asset = existing || await window.spriteLab.chooseOverlay();
+  if (!asset) return;
+  const referenceFrame = existing?.frameIndex ?? activeMaskFrameIndex();
+  const framePath = state.result?.allSourceFramePaths?.[referenceFrame] || currentFramePath();
+  if (!framePath) throw new Error("Сначала выберите исходный кадр.");
+  await requestFramePreview(framePath);
+  const resolvedFrameUrl = state.framePreview?.beforeUrl || state.source.previewUrl;
+  const [sourceImage, assetImage] = await Promise.all([
+    loadUiImage(resolvedFrameUrl, "Не удалось загрузить опорный кадр."),
+    loadUiImage(asset.url, "Не удалось загрузить PNG-элемент."),
+  ]);
+  state.attachmentAsset = asset;
+  state.attachmentSourceImage = sourceImage;
+  state.attachmentAssetImage = assetImage;
+  state.attachmentEditingId = existing?.id || null;
+  state.attachmentReferenceFrame = referenceFrame;
+  state.attachmentPoints = existing?.points?.map((point) => ({ ...point })) || [];
+  state.attachmentPointCount = existing?.points?.length === 2 ? 2 : 1;
+  const size = Math.round((existing?.sizeRatio || 0.22) * 100);
+  const rotation = Number(existing?.rotation) || 0;
+  $("#attachmentSize").value = String(size); $("#attachmentSizeValue").textContent = `${size}%`;
+  $("#attachmentRotation").value = String(rotation); $("#attachmentRotationValue").textContent = `${rotation}°`;
+  $$("#attachmentPointMode button").forEach((button) => button.classList.toggle("selected", Number(button.dataset.points) === state.attachmentPointCount));
+  $("#attachmentTitle").textContent = existing ? "Перенастройте привязку" : "Прикрепите элемент к движению";
+  $("#saveAttachment").textContent = existing ? "Сохранить привязку" : "Добавить к анимации";
+  $("#attachmentAsset").innerHTML = `<img src="${asset.url}" alt=""><div><strong></strong><small>${asset.width}×${asset.height}${asset.hasAlpha ? " · прозрачность есть" : " · без прозрачности"}</small></div>`;
+  $("#attachmentAsset strong").textContent = asset.title;
+  const scale = Math.min(1, 1600 / Math.max(sourceImage.naturalWidth, sourceImage.naturalHeight));
+  const canvas = $("#attachmentCanvas");
+  canvas.width = Math.max(1, Math.round(sourceImage.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(sourceImage.naturalHeight * scale));
+  drawAttachmentEditor();
+  $("#attachmentModal").classList.remove("hidden");
+}
+
+function closeAttachmentEditor() {
+  state.attachmentAsset = null; state.attachmentSourceImage = null; state.attachmentAssetImage = null; state.attachmentPoints = []; state.attachmentEditingId = null; state.attachmentReferenceFrame = 0;
+  $("#attachmentModal").classList.add("hidden");
+  $("#addAttachment").focus();
+}
+
+function saveAttachment() {
+  if (!state.attachmentAsset || state.attachmentPoints.length < state.attachmentPointCount) return;
+  const points = state.attachmentPoints.slice(0, state.attachmentPointCount).map((point) => ({ ...point }));
+  const first = points[0]; const second = points[1];
+  const nextAttachment = {
+    id: state.attachmentEditingId || `attachment-${Date.now()}-${state.attachments.length}`,
+    ...state.attachmentAsset,
+    frameIndex: state.attachmentReferenceFrame, points,
+    sizeRatio: Number($("#attachmentSize").value) / 100,
+    rotation: Number($("#attachmentRotation").value) || 0,
+    anchorX: 0.5, anchorY: 0.5,
+    referenceDistance: second ? Math.hypot(second.x - first.x, second.y - first.y) : 0,
+    referenceAngle: second ? Math.atan2(second.y - first.y, second.x - first.x) * 180 / Math.PI : 0,
+    enabled: state.attachmentEditingId ? state.attachments.find((attachment) => attachment.id === state.attachmentEditingId)?.enabled !== false : true,
+  };
+  if (state.attachmentEditingId) state.attachments = state.attachments.map((attachment) => attachment.id === state.attachmentEditingId ? nextAttachment : attachment);
+  else state.attachments.push(nextAttachment);
+  closeAttachmentEditor(); renderAttachmentList(); markPreviewDirty(); scheduleFramePreview(0);
+  setStatus("PNG добавлен · при сборке движение будет отслежено", "done", 0);
+}
+
+function setFrameEditorStatus(message, kind = "ready") {
+  const status = $("#frameEditorStatus");
+  status.className = `frame-editor-status ${kind}`;
+  status.querySelector("strong").textContent = message;
+}
+
+async function refreshExternalEdit({ force = false } = {}) {
+  if (!state.externalEdit) return;
+  try {
+    const stats = await window.spriteLab.statFrameEdit(state.externalEdit.path);
+    if (!force && stats.modifiedAt <= state.externalEdit.modifiedAt + 1) return;
+    state.externalEdit.modifiedAt = stats.modifiedAt;
+    state.frameOverrides[state.externalEdit.frameIndex] = state.externalEdit.path;
+    $("#frameEditorImage").src = `${state.externalEdit.url.split("?")[0]}?v=${Math.round(stats.modifiedAt)}`;
+    setFrameEditorStatus("Изменения найдены и подхвачены", "changed");
+    markPreviewDirty();
+    await requestFramePreview(state.externalEdit.path);
+    setStatus(`Кадр ${state.externalEdit.frameIndex + 1} обновлён · пересоберите анимацию`, "done", 0);
+  } catch (error) {
+    setFrameEditorStatus(error.message || "Не удалось проверить рабочую копию", "error");
+  }
+}
+
+async function openFrameEditor() {
+  if (!state.result?.allSourceFramePaths?.length || state.busy || state.source?.kind === "video-batch") return;
+  const frameIndex = state.selectedFrameIndex;
+  const sourcePath = state.frameOverrides[frameIndex] || state.result.allSourceFramePaths[frameIndex];
+  const edit = await window.spriteLab.prepareFrameEdit({ sourcePath, frameIndex, existingPath: state.frameOverrides[frameIndex] });
+  state.frameOverrides[frameIndex] = edit.path;
+  state.externalEdit = { ...edit, frameIndex };
+  $("#frameEditorImage").src = `${edit.url}?v=${Math.round(edit.modifiedAt)}`;
+  $("#frameEditorBadge").textContent = `КАДР ${frameIndex + 1}`;
+  $("#frameEditorPath").textContent = edit.path;
+  $("#frameEditorPath").title = edit.path;
+  setFrameEditorStatus("Рабочая копия готова");
+  $("#frameEditorModal").classList.remove("hidden");
+  clearInterval(state.externalEditTimer);
+  state.externalEditTimer = setInterval(() => refreshExternalEdit(), 1200);
+  $("#openDefaultEditor").focus();
+}
+
+function closeFrameEditor() {
+  clearInterval(state.externalEditTimer);
+  state.externalEditTimer = null;
+  state.externalEdit = null;
+  $("#frameEditorModal").classList.add("hidden");
+  $("#editFrame").focus();
+}
+
+async function replaceExternalEdit() {
+  if (!state.externalEdit) return;
+  const replaced = await window.spriteLab.replaceFrameEdit({ path: state.externalEdit.path });
+  if (!replaced) return;
+  state.externalEdit = { ...state.externalEdit, ...replaced, modifiedAt: 0 };
+  await refreshExternalEdit({ force: true });
 }
 
 function undoMaskStroke() {
@@ -700,6 +1059,7 @@ function updatePreview(result) {
   $("#metaGrid").textContent = `${result.columns} × ${result.rows}`;
   $("#metaAnchor").textContent = ({ ground: "Земля", center: "Центр", motion: "Движение" })[state.anchor] || state.anchor;
   showWarnings(result.warnings); buildFilmstrip(result);
+  renderAttachmentList();
   $("#resultPreviewTabs").classList.remove("hidden");
   state.previewMode = result.previewUrl ? "animation" : "sheet";
   setPreviewMode(state.previewMode);
@@ -772,7 +1132,7 @@ async function requestFramePreview(inputPath) {
     hideError();
     if (["before", "after", "compare"].includes(state.previewMode)) setPreviewMode(state.previewMode);
     else if (!state.result) setPreviewMode("after");
-    if (!state.busy && state.keyMode === "ai") setStatus("ИИ-маска обновлена", "done", 0);
+    if (!state.busy && state.keyMode === "ai") setStatus("Предпросмотр обработки обновлён", "done", 0);
     return result;
   } catch (error) {
     if (token === state.quickToken && revision === state.sourceRevision) {
@@ -847,10 +1207,10 @@ async function runBuild(previewOnly) {
 
 function savePreferences() {
   try {
-    const controls = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness"];
-    const checks = ["autoSize", "autoColumns", "pixelPerfect", "removeDuplicates", "whiteOutput", "openAfterExport"];
+    const controls = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness", "fringeStrength"];
+    const checks = ["autoSize", "autoColumns", "pixelPerfect", "removeDuplicates", "whiteOutput", "openAfterExport", "fringeCleanup"];
     localStorage.setItem("spriteLab.preferences", JSON.stringify({
-      schema: 2,
+      schema: 3,
       keyMode: state.keyMode, anchor: state.anchor, outputFolder: state.outputFolder,
       values: Object.fromEntries(controls.map((id) => [id, $(`#${id}`).value])),
       checks: Object.fromEntries(checks.map((id) => [id, $(`#${id}`).checked])),
@@ -869,7 +1229,9 @@ function loadPreferences() {
     $("#blackFeatherValue").textContent = `${$("#blackFeather").value} px`;
     $("#aiCutoffValue").textContent = $("#aiCutoff").value;
     $("#aiSoftnessValue").textContent = `${$("#aiSoftness").value} px`;
+    $("#fringeStrengthValue").textContent = $("#fringeStrength").value;
     Object.entries(saved.checks || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).checked = Boolean(value); });
+    $("#fringeStrengthRow").classList.toggle("hidden", !$("#fringeCleanup").checked);
     if (saved.keyMode) setKeyMode(saved.keyMode);
     if (saved.anchor) setAnchor(saved.anchor);
     if (saved.outputFolder) {
@@ -890,6 +1252,26 @@ $$(".tab").forEach((button, index, tabs) => button.addEventListener("keydown", (
 }));
 $("#chooseSource").addEventListener("click", () => chooseSource("chooseSource"));
 $("#chooseFolder").addEventListener("click", () => chooseSource("chooseFolder"));
+$("#chooseSheet").addEventListener("click", () => chooseSource("chooseSheet"));
+$("#sheetSliceMode").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-sheet-mode]");
+  if (!button) return;
+  $$("#sheetSliceMode button").forEach((item) => item.classList.toggle("selected", item === button));
+  $("#sheetGridFields").classList.toggle("hidden", button.dataset.sheetMode !== "grid");
+});
+$("#resliceSheet").addEventListener("click", async () => {
+  if (!state.source?.sheetPath || state.busy) return;
+  const mode = $("#sheetSliceMode button.selected")?.dataset.sheetMode || "objects";
+  try {
+    setStatus("Ищу отдельные объекты на листе…", "busy", 0.1);
+    const source = await window.spriteLab.resliceSheet({
+      sheetPath: state.source.sheetPath,
+      options: { mode, columns: Number($("#sheetColumns").value), rows: Number($("#sheetRows").value) },
+    });
+    setSource(source);
+  } catch (error) { setStatus(error.message || "Не удалось перенарезать лист", "error", 0); showError(error.message); }
+});
+$("#sheetFitEach").addEventListener("change", () => { markPreviewDirty(); });
 $("#dropZone").addEventListener("click", () => chooseSource("chooseSource"));
 $("#dropZone").addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") chooseSource("chooseSource"); });
 $("#clearSource").addEventListener("click", () => setSource(null));
@@ -915,6 +1297,15 @@ $("#blackOutline").addEventListener("input", (event) => { $("#blackOutlineValue"
 $("#blackFeather").addEventListener("input", (event) => { $("#blackFeatherValue").textContent = `${event.target.value} px`; markPreviewDirty(); scheduleFramePreview(); });
 $("#aiCutoff").addEventListener("input", (event) => { $("#aiCutoffValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(380); });
 $("#aiSoftness").addEventListener("input", (event) => { $("#aiSoftnessValue").textContent = `${event.target.value} px`; markPreviewDirty(); scheduleFramePreview(380); });
+$("#fringeCleanup").addEventListener("change", (event) => {
+  $("#fringeStrengthRow").classList.toggle("hidden", !event.target.checked);
+  updateFinishingSummary();
+  markPreviewDirty(); scheduleFramePreview(0); savePreferences();
+});
+$("#fringeStrength").addEventListener("input", (event) => {
+  $("#fringeStrengthValue").textContent = event.target.value;
+  markPreviewDirty(); scheduleFramePreview(240); savePreferences();
+});
 $("#openMaskEditor").addEventListener("click", async () => {
   try { await openMaskEditor(); } catch (error) { setStatus(error.message || "Не удалось открыть редактор маски", "error", 0); showError(error.message); }
 });
@@ -924,12 +1315,16 @@ $("#clearMaskEdits").addEventListener("click", () => {
 $("#maskBrushMode").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-mode]");
   if (!button) return;
-  state.maskBrushMode = button.dataset.mode;
-  $$("#maskBrushMode button").forEach((item) => item.classList.toggle("selected", item === button));
+  setMaskTool(button.dataset.mode);
 });
 $("#maskBrushSize").addEventListener("input", (event) => { $("#maskBrushSizeValue").textContent = `${event.target.value} px`; });
+$("#smartRegionTolerance").addEventListener("input", (event) => { $("#smartRegionToleranceValue").textContent = event.target.value; });
 $("#maskCanvas").addEventListener("pointerdown", (event) => {
   event.preventDefault();
+  if (state.maskBrushMode === "smart") {
+    selectTrackedRegion(event);
+    return;
+  }
   state.maskDrawing = true;
   state.maskStrokeId += 1;
   event.currentTarget.setPointerCapture(event.pointerId);
@@ -945,10 +1340,66 @@ $("#applyMaskEditor").addEventListener("click", () => {
   closeMaskEditor(); markPreviewDirty(); setStatus("Исправления маски применены · проверяю кадр", "busy", 0.1); scheduleFramePreview(0);
 });
 $("#aiMaskModal").addEventListener("click", (event) => { if (event.target === $("#aiMaskModal")) closeMaskEditor({ discard: true }); });
+$("#addAttachment").addEventListener("click", async () => {
+  try { await openAttachmentEditor(); } catch (error) { showError(error.message || "Не удалось открыть PNG-элемент."); }
+});
+$("#attachmentPointMode").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-points]");
+  if (!button) return;
+  state.attachmentPointCount = Number(button.dataset.points) === 2 ? 2 : 1;
+  state.attachmentPoints = state.attachmentPoints.slice(0, state.attachmentPointCount);
+  $$("#attachmentPointMode button").forEach((item) => item.classList.toggle("selected", item === button));
+  drawAttachmentEditor();
+});
+$("#attachmentCanvas").addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  const canvas = event.currentTarget; const rect = canvas.getBoundingClientRect();
+  const point = {
+    x: Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width))),
+    y: Math.max(0, Math.min(1, (event.clientY - rect.top) / Math.max(1, rect.height))),
+  };
+  if (state.attachmentPointCount === 1) state.attachmentPoints = [point];
+  else if (state.attachmentPoints.length >= 2) state.attachmentPoints = [point];
+  else state.attachmentPoints.push(point);
+  drawAttachmentEditor();
+});
+$("#attachmentSize").addEventListener("input", (event) => { $("#attachmentSizeValue").textContent = `${event.target.value}%`; drawAttachmentEditor(); });
+$("#attachmentRotation").addEventListener("input", (event) => { $("#attachmentRotationValue").textContent = `${event.target.value}°`; drawAttachmentEditor(); });
+$("#resetAttachmentPoints").addEventListener("click", () => { state.attachmentPoints = []; drawAttachmentEditor(); });
+$("#saveAttachment").addEventListener("click", saveAttachment);
+$("#closeAttachmentEditor").addEventListener("click", closeAttachmentEditor);
+$("#cancelAttachmentEditor").addEventListener("click", closeAttachmentEditor);
+$("#attachmentModal").addEventListener("click", (event) => { if (event.target === $("#attachmentModal")) closeAttachmentEditor(); });
 $("#autoSize").addEventListener("change", () => { syncAutoSize(); savePreferences(); });
 $("#autoColumns").addEventListener("change", () => { syncAutoSize(); savePreferences(); });
 $("#buildPreview").addEventListener("click", () => runBuild(true));
 $("#excludeFrame").addEventListener("click", toggleSelectedFrame);
+$("#editFrame").addEventListener("click", async () => {
+  try { await openFrameEditor(); } catch (error) { setStatus(error.message || "Не удалось подготовить кадр", "error", 0); showError(error.message); }
+});
+$("#openDefaultEditor").addEventListener("click", async () => {
+  if (!state.externalEdit) return;
+  try { await window.spriteLab.openFrameEdit({ path: state.externalEdit.path, mode: "default" }); setFrameEditorStatus("Кадр открыт · сохраните его через Ctrl+S", "busy"); }
+  catch (error) { setFrameEditorStatus(error.message || "Не удалось открыть редактор", "error"); }
+});
+$("#openWithEditor").addEventListener("click", async () => {
+  if (!state.externalEdit) return;
+  try { await window.spriteLab.openFrameEdit({ path: state.externalEdit.path, mode: "open-with" }); setFrameEditorStatus("Выберите приложение и сохраните кадр", "busy"); }
+  catch (error) { setFrameEditorStatus(error.message || "Не удалось открыть список приложений", "error"); }
+});
+$$("[data-online-editor]").forEach((button) => button.addEventListener("click", async () => {
+  if (!state.externalEdit) return;
+  try {
+    await window.spriteLab.openOnlineFrameEditor({ path: state.externalEdit.path, editor: button.dataset.onlineEditor });
+    setFrameEditorStatus("Редактор открыт · путь к PNG скопирован", "busy");
+  } catch (error) { setFrameEditorStatus(error.message || "Не удалось открыть онлайн-редактор", "error"); }
+}));
+$("#replaceEditedFrame").addEventListener("click", async () => {
+  try { await replaceExternalEdit(); } catch (error) { setFrameEditorStatus(error.message || "Не удалось заменить кадр", "error"); }
+});
+$("#applyEditedFrame").addEventListener("click", () => { closeFrameEditor(); runBuild(true); });
+$("#closeFrameEditor").addEventListener("click", closeFrameEditor);
+$("#frameEditorModal").addEventListener("click", (event) => { if (event.target === $("#frameEditorModal")) closeFrameEditor(); });
 $("#compareSlider").addEventListener("input", updateComparePosition);
 
 $("#trimStartRange").addEventListener("input", (event) => { $("#trimStart").value = Number(event.target.value).toFixed(2); updateTimeline(); });
@@ -1010,6 +1461,8 @@ for (const id of ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFr
 $("#openAfterExport").addEventListener("change", savePreferences);
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !$("#frameEditorModal").classList.contains("hidden")) { closeFrameEditor(); return; }
+  if (event.key === "Escape" && !$("#attachmentModal").classList.contains("hidden")) { closeAttachmentEditor(); return; }
   if (event.key === "Escape" && !$("#aiMaskModal").classList.contains("hidden")) { closeMaskEditor({ discard: true }); return; }
   if (event.key === "Escape" && !$("#aboutModal").classList.contains("hidden")) { closeAbout(); return; }
   if (event.key === "Escape" && state.busy) window.spriteLab.cancelBuild();
@@ -1025,7 +1478,7 @@ window.spriteLab.onUpdateProgress((progress) => {
 });
 
 $$("button.selected").forEach((button) => button.setAttribute("aria-pressed", "true"));
-loadPreferences(); syncAutoSize(); updateMaskEditSummary(); updateActionState(); syncExportDependencies(""); setPreviewMode("after"); setStatus("Готов к работе");
+loadPreferences(); syncAutoSize(); updateMaskEditSummary(); renderAttachmentList(); updateActionState(); syncExportDependencies(""); setPreviewMode("after"); setStatus("Готов к работе");
 window.spriteLab.getAppInfo().then((info) => {
   $("#versionBadge").textContent = info.version;
   $("#aboutVersion").textContent = info.version;

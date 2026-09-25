@@ -4,8 +4,16 @@ contextBridge.exposeInMainWorld("spriteLab", {
   chooseSource: () => ipcRenderer.invoke("source:any"),
   chooseVideo: () => ipcRenderer.invoke("source:video"),
   chooseFrames: () => ipcRenderer.invoke("source:frames"),
+  chooseSheet: () => ipcRenderer.invoke("source:sheet"),
+  resliceSheet: (request) => ipcRenderer.invoke("source:reslice-sheet", request),
   chooseFolder: () => ipcRenderer.invoke("source:folder"),
   chooseOutput: () => ipcRenderer.invoke("output:folder"),
+  chooseOverlay: () => ipcRenderer.invoke("overlay:choose"),
+  prepareFrameEdit: (request) => ipcRenderer.invoke("frame-edit:prepare", request),
+  openFrameEdit: (request) => ipcRenderer.invoke("frame-edit:open", request),
+  openOnlineFrameEditor: (request) => ipcRenderer.invoke("frame-edit:online", request),
+  replaceFrameEdit: (request) => ipcRenderer.invoke("frame-edit:replace", request),
+  statFrameEdit: (filePath) => ipcRenderer.invoke("frame-edit:stat", filePath),
   inspectDropped: (files) => {
     const paths = Array.from(files || [], (file) => webUtils.getPathForFile(file)).filter(Boolean);
     return ipcRenderer.invoke("source:dropped", { paths });

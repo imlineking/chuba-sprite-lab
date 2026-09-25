@@ -9,6 +9,7 @@ import { pipeline } from "node:stream/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sharp from "sharp";
 import { inspectSource, makeSourcePreview, processFramePreview, processSprites, processVideoBatch, supportedImageExtensions } from "./processor.mjs";
+import { sliceSpriteSheet } from "./sheet-slicer.mjs";
 import { assertGitHubDownloadUrl, compareVersions, parseSha256 } from "./update-utils.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -204,6 +205,26 @@ async function describeVideoBatch(paths) {
   };
 }
 
+async function describeSpriteSheet(sheetPath, options = {}) {
+  const root = path.join(app.getPath("temp"), "Chuba Sprite Lab", "sheet-imports");
+  await fs.mkdir(root, { recursive: true });
+  const outputDir = await fs.mkdtemp(path.join(root, "sheet-"));
+  const sliced = await sliceSpriteSheet(sheetPath, outputDir, options);
+  const source = await describePaths("frames", sliced.framePaths);
+  return {
+    ...source,
+    kind: "sheet",
+    sheetPath,
+    sheetMode: sliced.mode,
+    sheetCells: sliced.cells,
+    sheetBackground: sliced.background,
+    title: path.basename(sheetPath),
+    detail: `${sliced.width}×${sliced.height} · найдено объектов: ${sliced.framePaths.length}`,
+    estimatedFrames: sliced.framePaths.length,
+    recommendations: { ...source.recommendations, anchor: "center" },
+  };
+}
+
 function safeOutputName(value) {
   return String(value || "sprite-animation").trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^[-.]+|[-.]+$/g, "").slice(0, 80) || "sprite-animation";
 }
@@ -274,6 +295,22 @@ ipcMain.handle("source:frames", async () => {
   return describePaths("frames", result.filePaths);
 });
 
+ipcMain.handle("source:sheet", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Выберите готовый спрайт-лист",
+    properties: ["openFile"],
+    filters: [{ name: "Спрайт-лист", extensions: [...supportedImageExtensions].map((ext) => ext.slice(1)) }],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  return describeSpriteSheet(result.filePaths[0], { mode: "objects" });
+});
+
+ipcMain.handle("source:reslice-sheet", async (_event, request = {}) => {
+  const sheetPath = path.resolve(String(request.sheetPath || ""));
+  if (!fsSync.existsSync(sheetPath) || !supportedImageExtensions.has(path.extname(sheetPath).toLowerCase())) throw new Error("Исходный спрайт-лист не найден.");
+  return describeSpriteSheet(sheetPath, request.options || {});
+});
+
 ipcMain.handle("source:folder", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "Выберите папку с кадрами",
@@ -310,6 +347,103 @@ ipcMain.handle("output:folder", async () => {
     properties: ["openDirectory", "createDirectory"],
   });
   return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.handle("overlay:choose", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Выберите PNG-элемент для привязки",
+    properties: ["openFile"],
+    filters: [{ name: "PNG с прозрачностью", extensions: ["png", "webp"] }],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const filePath = result.filePaths[0];
+  const metadata = await sharp(filePath).metadata();
+  if (!metadata.width || !metadata.height) throw new Error("Не удалось прочитать выбранное изображение.");
+  return {
+    path: filePath,
+    url: pathToFileURL(filePath).href,
+    title: path.basename(filePath),
+    width: metadata.width,
+    height: metadata.height,
+    hasAlpha: Boolean(metadata.hasAlpha),
+  };
+});
+
+function externalEditRoot() {
+  return path.join(app.getPath("temp"), "Chuba Sprite Lab", "external-edits");
+}
+
+function assertExternalEditPath(filePath) {
+  const root = path.resolve(externalEditRoot());
+  const resolved = path.resolve(String(filePath || ""));
+  if (!resolved.startsWith(`${root}${path.sep}`)) throw new Error("Недопустимый путь рабочей копии.");
+  return resolved;
+}
+
+ipcMain.handle("frame-edit:prepare", async (_event, request = {}) => {
+  const existingPath = request.existingPath ? assertExternalEditPath(request.existingPath) : null;
+  if (existingPath && fsSync.existsSync(existingPath)) {
+    const stats = await fs.stat(existingPath);
+    return { path: existingPath, url: pathToFileURL(existingPath).href, modifiedAt: stats.mtimeMs };
+  }
+  const sourcePath = path.resolve(String(request.sourcePath || ""));
+  if (!fsSync.existsSync(sourcePath)) throw new Error("Исходный кадр больше недоступен.");
+  const sessionDir = path.join(externalEditRoot(), crypto.randomUUID());
+  await fs.mkdir(sessionDir, { recursive: true });
+  const filePath = path.join(sessionDir, `frame-${String(Number(request.frameIndex || 0) + 1).padStart(4, "0")}.png`);
+  await sharp(sourcePath).ensureAlpha().png().toFile(filePath);
+  const stats = await fs.stat(filePath);
+  return { path: filePath, url: pathToFileURL(filePath).href, modifiedAt: stats.mtimeMs };
+});
+
+ipcMain.handle("frame-edit:open", async (_event, request = {}) => {
+  const filePath = assertExternalEditPath(request.path);
+  if (!fsSync.existsSync(filePath)) throw new Error("Рабочая копия кадра не найдена.");
+  if (request.mode === "open-with") {
+    const child = spawn("rundll32.exe", ["shell32.dll,OpenAs_RunDLL", filePath], { detached: true, windowsHide: true, stdio: "ignore" });
+    child.unref();
+    return { opened: true };
+  }
+  const error = await shell.openPath(filePath);
+  if (error) throw new Error(error);
+  return { opened: true };
+});
+
+const onlineFrameEditors = {
+  photopea: "https://www.photopea.com/",
+  canva: "https://www.canva.com/photo-editor/",
+  pixlr: "https://pixlr.com/e/",
+};
+
+ipcMain.handle("frame-edit:online", async (_event, request = {}) => {
+  const filePath = assertExternalEditPath(request.path);
+  const editorUrl = onlineFrameEditors[request.editor];
+  if (!editorUrl) throw new Error("Неизвестный онлайн-редактор.");
+  clipboard.writeText(filePath);
+  await shell.openExternal(editorUrl);
+  return { opened: true, copiedPath: filePath };
+});
+
+ipcMain.handle("frame-edit:replace", async (_event, request = {}) => {
+  const targetPath = assertExternalEditPath(request.path);
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Выберите сохранённый кадр",
+    properties: ["openFile"],
+    filters: [{ name: "Изображение", extensions: ["png", "webp", "jpg", "jpeg"] }],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const incomingPath = `${targetPath}.incoming.png`;
+  await sharp(result.filePaths[0]).ensureAlpha().png().toFile(incomingPath);
+  await fs.copyFile(incomingPath, targetPath);
+  await fs.unlink(incomingPath).catch(() => {});
+  const stats = await fs.stat(targetPath);
+  return { path: targetPath, url: `${pathToFileURL(targetPath).href}?v=${Math.round(stats.mtimeMs)}`, modifiedAt: stats.mtimeMs };
+});
+
+ipcMain.handle("frame-edit:stat", async (_event, filePath) => {
+  const resolved = assertExternalEditPath(filePath);
+  const stats = await fs.stat(resolved);
+  return { modifiedAt: stats.mtimeMs, size: stats.size };
 });
 
 ipcMain.handle("sprites:build", async (_event, request) => {
