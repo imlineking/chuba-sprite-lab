@@ -18,7 +18,6 @@
     "appId": "com.hanumanmedia.chubaspritelab",
     "productName": "Chuba Sprite Lab",
     "copyright": "Copyright © 2026 Hanuman Media Company — Demidenko Dmitriy. All rights reserved.",
-    "electronDist": "node_modules/electron/dist",
     "asar": false,
     "directories": {
       "output": "dist"
