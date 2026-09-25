@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: file:; style-src 'self'; script-src 'self';" />
+    <title>Chuba Sprite Lab</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="titlebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="brand-name">CHUBA SPRITE LAB</span>
+        <span id="versionBadge" class="version">1.2.1</span>
+      </div>
+      <div class="window-actions" aria-label="Управление окном">
+        <button id="aboutApp" class="window-button help" type="button" aria-label="О программе">?</button>
+        <button id="minimizeWindow" class="window-button" type="button" aria-label="Свернуть">—</button>
+        <button id="maximizeWindow" class="window-button" type="button" aria-label="Развернуть">□</button>
+        <button id="closeWindow" class="window-button close" type="button" aria-label="Закрыть">×</button>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="Этапы работы">
+      <button id="sourceTab" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="sourcePanel" data-tab="source"><span>01</span>Источник</button>
+      <button id="processTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="processPanel" data-tab="process"><span>02</span>Обработка</button>
+      <button id="exportTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="exportPanel" data-tab="export"><span>03</span>Экспорт</button>
+      <div class="tab-line" aria-hidden="true"></div>
+    </nav>
+
+    <main id="appShell" class="app-shell" aria-busy="false">
+      <section class="control-deck">
+        <div id="sourcePanel" class="panel active" role="tabpanel" aria-labelledby="sourceTab" data-panel="source">
+          <div class="panel-heading">
+            <p class="eyebrow">ИМПОРТ</p>
+            <h1>Добавьте движение</h1>
+            <p>Видео или последовательность кадров. Всё обрабатывается только на этом компьютере.</p>
+          </div>
+
+          <div id="dropZone" class="drop-zone" role="button" aria-label="Выбрать видео, изображения или папку с кадрами" tabindex="0">
+            <div class="drop-icon" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </div>
+            <strong>Перетащите файл или папку</strong>
+            <small>MP4 · WEBM · MOV · GIF · PNG · JPG · WEBP</small>
+          </div>
+
+          <div class="button-grid">
+            <button id="chooseSource" class="button primary" type="button">Выбрать источник</button>
+            <button id="chooseFolder" class="button secondary" type="button">Папка с кадрами</button>
+          </div>
+
+          <article id="sourceCard" class="source-card hidden">
+            <div class="source-badge" id="sourceBadge">VIDEO</div>
+            <div class="source-copy">
+              <strong id="sourceTitle">—</strong>
+              <span id="sourceDetail">—</span>
+            </div>
+            <button id="clearSource" class="icon-button" type="button" aria-label="Убрать источник">×</button>
+          </article>
+          <p id="batchNote" class="batch-note hidden">Настройки и предпросмотр берутся из первого ролика. При экспорте каждый ролик станет отдельным набором с именем исходного файла.</p>
+
+          <figure id="sourcePreview" class="source-preview hidden">
+            <img id="sourcePreviewImage" alt="Первый кадр источника" />
+            <figcaption><span class="live-dot"></span><span id="sourcePreviewLabel">ПЕРВЫЙ КАДР</span></figcaption>
+          </figure>
+
+          <div id="sourceRange" class="source-range hidden">
+            <div class="timeline-heading"><strong>ДИАПАЗОН ВИДЕО</strong><button id="resetTrim" type="button">Весь ролик</button></div>
+            <div class="timeline-sliders">
+              <input id="trimStartRange" type="range" min="0" max="1" step="0.04" value="0" aria-label="Начало диапазона" />
+              <input id="trimEndRange" type="range" min="0" max="1" step="0.04" value="1" aria-label="Конец диапазона" />
+            </div>
+            <div class="timeline-values">
+              <label><span>Начало</span><input id="trimStart" type="number" min="0" step="0.1" value="0" /></label>
+              <span id="trimDuration">0,0 с</span>
+              <label><span>Конец</span><input id="trimEnd" type="number" min="0" step="0.1" value="0" /></label>
+            </div>
+            <small id="trimError" class="field-error hidden"></small>
+          </div>
+
+          <article id="recommendationCard" class="recommendation-card hidden">
+            <header><span class="live-dot"></span><strong>АВТОНАСТРОЙКА ГОТОВА</strong><small id="recommendationConfidence"></small></header>
+            <p id="recommendationSummary"></p>
+            <div id="sampleStrip" class="sample-strip"></div>
+            <div class="recommendation-actions">
+              <button id="applyRecommendations" class="button primary" type="button">Применить</button>
+              <button id="manualSetup" class="button ghost" type="button">Настроить вручную</button>
+            </div>
+          </article>
+
+        </div>
+
+        <div id="processPanel" class="panel" role="tabpanel" aria-labelledby="processTab" aria-hidden="true" data-panel="process">
+          <div class="panel-heading compact">
+            <p class="eyebrow">ПОДГОТОВКА</p>
+            <h1>Чистые кадры</h1>
+            <p>Настройте фон, якорь и размер ячейки. Предпросмотр не меняет исходники.</p>
+          </div>
+
+          <div class="preset-bar" id="processPresets" aria-label="Профили обработки">
+            <button type="button" data-preset="character" class="selected">Персонаж</button>
+            <button type="button" data-preset="effect">Эффект</button>
+            <button type="button" data-preset="pixel">Пиксель-арт</button>
+            <button id="resetSettings" type="button" class="reset-preset" title="Вернуть рекомендуемые настройки">↺</button>
+          </div>
+
+          <div class="form-section">
+            <div class="section-label"><span>ФОН</span><small id="detectedBackground">удаление</small></div>
+            <div class="segmented six" id="keyMode">
+              <button type="button" data-value="auto" class="selected">Авто</button>
+              <button type="button" data-value="alpha" title="Фон уже прозрачный">Alpha</button>
+              <button type="button" data-value="white">Белый</button>
+              <button type="button" data-value="black">Чёрный</button>
+              <button type="button" data-value="green">Зелёный</button>
+              <button type="button" data-value="blue">Синий</button>
+            </div>
+            <p id="blackKeyNote" class="key-note hidden">Удаляется только чёрный фон от краёв кадра. Вокруг цветного силуэта сохраняется заданный защитный контур.</p>
+            <label id="blackOutlineRow" class="range-field hidden">
+              <span>Защитный контур <output id="blackOutlineValue">3 px</output></span>
+              <input id="blackOutline" type="range" min="0" max="8" value="3" />
+            </label>
+            <label id="blackFeatherRow" class="range-field hidden">
+              <span>Мягкость края <output id="blackFeatherValue">0 px</output></span>
+              <input id="blackFeather" type="range" min="0" max="3" value="0" />
+            </label>
+            <label class="range-field">
+              <span>Сила удаления фона <output id="toleranceValue">28</output></span>
+              <input id="tolerance" type="range" min="1" max="100" value="28" />
+            </label>
+          </div>
+
+          <div class="form-section">
+            <div class="section-label"><span>СТАБИЛИЗАЦИЯ</span><small>положение в ячейке</small></div>
+            <div class="anchor-grid" id="anchorMode">
+              <button type="button" data-value="ground" class="anchor-card selected"><i class="anchor-ground"></i><strong>Ноги на месте</strong><small>ходьба · атака</small></button>
+              <button type="button" data-value="center" class="anchor-card"><i class="anchor-center"></i><strong>Центр на месте</strong><small>эмоции · эффекты</small></button>
+              <button type="button" data-value="motion" class="anchor-card"><i class="anchor-motion"></i><strong>Сохранить движение</strong><small>прыжок · падение</small></button>
+            </div>
+          </div>
+
+          <div class="form-section quick-grid">
+            <label class="field"><span>FPS</span><input id="fps" type="number" min="1" max="60" value="8" /></label>
+            <label class="field"><span>Поля</span><input id="padding" type="number" min="0" max="512" value="20" /></label>
+          </div>
+
+          <div class="toggle-list">
+            <label class="toggle-row"><span><strong>Авторазмер ячейки</strong><small>по самому крупному силуэту</small></span><input id="autoSize" type="checkbox" checked /><i></i></label>
+            <label class="toggle-row"><span><strong>Автосетка</strong><small>компактное количество столбцов</small></span><input id="autoColumns" type="checkbox" checked /><i></i></label>
+          </div>
+
+          <details class="advanced-panel">
+            <summary><span>Расширенные настройки</span><small>сетка · размеры · оптимизация</small></summary>
+            <div class="form-grid advanced-grid">
+              <label class="field"><span>Столбцы</span><input id="columns" type="number" min="1" max="64" value="8" /></label>
+              <label class="field manual-size"><span>Ширина</span><input id="cellWidth" type="number" min="64" max="4096" value="600" /></label>
+              <label class="field manual-size"><span>Высота</span><input id="cellHeight" type="number" min="64" max="4096" value="400" /></label>
+              <label class="field"><span>Макс. кадров</span><input id="maxFrames" type="number" min="1" max="1000" value="192" /></label>
+            </div>
+            <div class="toggle-list">
+            <label class="toggle-row"><span><strong>Пиксельная резкость</strong><small>масштабирование без размытия</small></span><input id="pixelPerfect" type="checkbox" checked /><i></i></label>
+            <label class="toggle-row"><span><strong>Удалять точные дубли</strong><small>без потери промежуточного движения</small></span><input id="removeDuplicates" type="checkbox" checked /><i></i></label>
+            <label class="toggle-row"><span><strong>Белый итоговый фон</strong><small>выключено — прозрачный PNG</small></span><input id="whiteOutput" type="checkbox" /><i></i></label>
+            </div>
+          </details>
+
+          <div class="preview-help"><span class="live-dot"></span><span>Первый кадр обновляется автоматически. Кнопка ниже собирает всю анимацию.</span></div>
+
+          <button id="buildPreview" class="next-action accent" type="button" disabled>
+            Собрать предпросмотр
+            <span>↗</span>
+          </button>
+        </div>
+
+        <div id="exportPanel" class="panel" role="tabpanel" aria-labelledby="exportTab" aria-hidden="true" data-panel="export">
+          <div class="panel-heading">
+            <p class="eyebrow">ФИНАЛ</p>
+            <h1>Экспорт набора</h1>
+            <p>Один запуск создаст лист, отдельные кадры, JSON, отчёт и анимированное превью.</p>
+          </div>
+
+          <label class="field wide"><span id="spriteNameLabel">Имя набора</span><input id="spriteName" type="text" value="sprite-animation" spellcheck="false" /></label>
+
+          <label class="field wide"><span>Профиль экспорта</span>
+            <select id="exportPreset">
+              <option value="chuba">Chuba the Game</option>
+              <option value="sheet">Обычный спрайт-лист</option>
+              <option value="frames">Только кадры</option>
+              <option value="artist">Для художника</option>
+              <option value="engine">Для движка</option>
+              <option value="custom">Свой набор</option>
+            </select>
+          </label>
+
+          <div class="destination-card">
+            <div>
+              <span>ПАПКА НАЗНАЧЕНИЯ</span>
+              <strong id="outputFolder">Не выбрана</strong>
+            </div>
+            <button id="chooseOutput" class="button secondary" type="button">Выбрать</button>
+          </div>
+
+          <p id="exportComposition" class="export-composition">Будет создано: лист PNG, кадры, JSON и WebP.</p>
+          <details class="export-details">
+            <summary>Изменить состав файлов</summary>
+          <div class="export-list" aria-label="Форматы экспорта">
+            <label class="export-option">
+              <input id="exportSheet" type="checkbox" checked />
+              <i>PNG</i><span><strong>Спрайт-лист</strong><small>единая сетка одинаковых ячеек</small></span><b aria-hidden="true"></b>
+            </label>
+            <label class="export-option">
+              <input id="exportFrames" type="checkbox" checked />
+              <i>×N</i><span><strong>Отдельные кадры</strong><small>пронумерованные PNG</small></span><b aria-hidden="true"></b>
+            </label>
+            <label class="export-option">
+              <input id="exportMetadata" type="checkbox" checked />
+              <i>{ }</i><span><strong>Manifest + отчёт</strong><small>JSON для игры; спрайт-лист включается автоматически</small></span><b aria-hidden="true"></b>
+            </label>
+            <label class="export-option">
+              <input id="exportPreview" type="checkbox" checked />
+              <i>▶</i><span><strong>Анимированное превью</strong><small>lossless WebP с выбранным FPS</small></span><b aria-hidden="true"></b>
+            </label>
+          </div>
+          </details>
+
+          <label class="toggle-row export-open-row"><span><strong>Открыть папку после экспорта</strong><small>показывает готовый файл в Проводнике</small></span><input id="openAfterExport" type="checkbox" /><i></i></label>
+
+          <button id="exportSprites" class="export-action" type="button" disabled>
+            <span id="exportButtonTitle">ЭКСПОРТИРОВАТЬ</span>
+            <small id="exportHint">Выберите источник и папку</small>
+          </button>
+
+          <div id="completionActions" class="completion-actions hidden">
+            <button id="revealOutput" class="button ghost" type="button">Открыть</button>
+            <button id="copyOutputPath" class="button ghost" type="button">Копировать путь</button>
+            <button id="newSource" class="button ghost" type="button">Новый источник</button>
+          </div>
+          <div id="exportSummary" class="export-summary hidden"></div>
+        </div>
+      </section>
+
+      <section class="preview-deck">
+        <header class="preview-header">
+          <div>
+            <span class="live-dot"></span>
+            <strong>ПРЕДПРОСМОТР</strong>
+            <span id="previewFreshness" class="preview-freshness hidden">НУЖНО ПЕРЕСОБРАТЬ</span>
+          </div>
+          <div class="preview-switches">
+            <div id="framePreviewTabs" class="preview-group hidden"><span>КАДР</span><div class="preview-tabs">
+              <button type="button" data-preview="before">До</button>
+              <button type="button" class="selected" data-preview="after">После</button>
+              <button type="button" data-preview="compare">Сравнить</button>
+            </div></div>
+            <div id="resultPreviewTabs" class="preview-group hidden"><span>РЕЗУЛЬТАТ</span><div class="preview-tabs">
+              <button type="button" data-preview="animation">Движение</button>
+              <button type="button" data-preview="sheet">Лист</button>
+            </div></div>
+          </div>
+        </header>
+
+        <div class="preview-stage" id="previewStage">
+          <div id="previewEmpty" class="preview-empty">
+            <div class="frame-stack" aria-hidden="true"><i></i><i></i><i></i></div>
+            <strong>Здесь появится анимация</strong>
+            <span>Сначала добавьте видео или кадры,<br />затем соберите предпросмотр.</span>
+          </div>
+          <img id="previewImage" class="preview-image hidden" alt="Предпросмотр анимации" />
+          <div id="compareView" class="compare-view hidden">
+            <img id="compareBefore" alt="Исходный кадр" />
+            <div id="compareAfterWrap"><img id="compareAfter" alt="Обработанный кадр" /></div>
+            <i id="compareDivider"></i>
+            <input id="compareSlider" type="range" min="0" max="100" value="50" aria-label="Граница сравнения" />
+          </div>
+          <div id="guideLayer" class="guide-layer hidden"><i></i><b></b></div>
+          <aside id="errorCard" class="error-card hidden" role="alert" aria-live="assertive">
+            <strong>Не удалось выполнить операцию</strong><span id="errorText"></span>
+            <div><button id="showErrorFrame" type="button">Показать кадр</button><button id="safeSettings" type="button">Безопасные настройки</button><button id="closeError" type="button">×</button></div>
+          </aside>
+          <div class="stage-tools">
+            <button id="zoomOut" type="button" title="Уменьшить">−</button>
+            <span id="zoomValue">100%</span>
+            <button id="zoomIn" type="button" title="Увеличить">+</button>
+            <button id="zoomFit" type="button">Вписать</button>
+            <button id="toggleGuides" type="button">Направляющие</button>
+            <button id="cycleBackdrop" type="button">Фон</button>
+          </div>
+        </div>
+
+        <div id="filmstripBar" class="filmstrip-bar hidden">
+          <div id="filmstrip" class="filmstrip"></div>
+          <button id="excludeFrame" class="filmstrip-action" type="button">Исключить кадр</button>
+        </div>
+        <div id="filmstripNote" class="filmstrip-note hidden"></div>
+
+        <div class="preview-meta">
+          <div><span>КАДРЫ</span><strong id="metaFrames">—</strong></div>
+          <div><span>ЯЧЕЙКА</span><strong id="metaCell">—</strong></div>
+          <div><span>СЕТКА</span><strong id="metaGrid">—</strong></div>
+          <div><span>ЯКОРЬ</span><strong id="metaAnchor">—</strong></div>
+        </div>
+
+        <aside id="warningBox" class="warning-box hidden">
+          <header><span>!</span><strong>ПРОВЕРЬТЕ КАДРЫ</strong><small id="warningCount">0</small></header>
+          <ul id="warningList"></ul>
+        </aside>
+      </section>
+    </main>
+
+    <footer class="statusbar">
+      <div class="status-copy" role="status" aria-live="polite"><span id="statusLed"></span><strong id="statusText">Готов к работе</strong></div>
+      <div class="progress-track"><i id="progressBar"></i></div>
+      <button id="cancelJob" class="cancel-job hidden" type="button">Остановить</button>
+      <span id="statusPercent">0%</span>
+    </footer>
+
+    <div id="aboutModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+      <article class="about-card">
+        <button id="closeAbout" class="about-close" type="button" aria-label="Закрыть">×</button>
+        <div class="about-brand" aria-hidden="true">
+          <span class="brand-mark"><i></i><i></i><i></i></span>
+          <span>HANUMAN<br />MEDIA COMPANY</span>
+        </div>
+        <p class="eyebrow">О ПРОГРАММЕ</p>
+        <h2 id="aboutTitle">Chuba Sprite Lab</h2>
+        <p class="about-version">Версия <strong id="aboutVersion">1.2.1</strong></p>
+        <p class="about-lead">Локальный инструмент подготовки видео и последовательностей кадров в игровые спрайт-листы.</p>
+        <dl class="about-meta">
+          <div><dt>Автор и правообладатель</dt><dd>Hanuman Media Company<br />Demidenko Dmitriy</dd></div>
+          <div><dt>Год</dt><dd>2026</dd></div>
+          <div><dt>Технологии</dt><dd>Electron · Sharp · FFmpeg</dd></div>
+        </dl>
+        <p class="about-copyright">© 2026 Hanuman Media Company — Demidenko Dmitriy. Все права защищены.</p>
+        <div class="about-actions">
+          <button id="checkUpdates" class="button primary" type="button">Проверить обновления</button>
+          <button id="openRepository" class="button ghost" type="button">Открыть GitHub</button>
+        </div>
+        <p id="updateStatus" class="update-status" aria-live="polite">Обновления устанавливаются из официальных GitHub Releases с проверкой SHA-256.</p>
+      </article>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

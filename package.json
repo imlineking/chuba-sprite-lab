@@ -1,0 +1,73 @@
+{
+  "name": "chuba-sprite-lab",
+  "version": "1.2.1",
+  "private": true,
+  "type": "module",
+  "description": "Standalone Windows sprite-sheet preparation tool for Chuba the Game",
+  "author": "Hanuman Media Company — Demidenko Dmitriy",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/imlineking/chuba-sprite-lab.git"
+  },
+  "homepage": "https://github.com/imlineking/chuba-sprite-lab#readme",
+  "bugs": {
+    "url": "https://github.com/imlineking/chuba-sprite-lab/issues"
+  },
+  "build": {
+    "appId": "com.hanumanmedia.chubaspritelab",
+    "productName": "Chuba Sprite Lab",
+    "copyright": "Copyright © 2026 Hanuman Media Company — Demidenko Dmitriy. All rights reserved.",
+    "electronDist": "node_modules/electron/dist",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/ffmpeg.exe",
+        "to": "vendor/ffmpeg.exe"
+      }
+    ],
+    "win": {
+      "icon": "assets/app.ico",
+      "artifactName": "Chuba-Sprite-Lab-portable.exe",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "Chuba-Sprite-Lab-portable.exe",
+      "requestExecutionLevel": "user"
+    }
+  },
+  "main": "src/main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "prepare:vendor": "node scripts/prepare-vendor.mjs",
+    "test": "node --test --test-isolation=none test/*.test.mjs",
+    "verify": "node --check src/renderer.js && node --check src/main.mjs && node --check src/processor.mjs && node --check src/update-utils.mjs && node --check src/preload.cjs && npm test",
+    "pack": "node scripts/package.mjs",
+    "release:build": "node scripts/package.mjs && node scripts/create-release.mjs"
+  },
+  "dependencies": {
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3"
+  },
+  "allowScripts": {
+    "electron@44.4.5": true
+  }
+}
