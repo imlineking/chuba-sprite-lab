@@ -823,6 +823,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .atlas-settings .section-label { margin-bottom: 9px; }
 .atlas-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .atlas-grid .field select { height: 36px; padding: 0 8px; font-size: 12px; }
+.atlas-power-row { margin: 10px 0 7px; padding: 8px 0; gap: 12px; }
+.atlas-power-row > span { min-width: 0; }
+.atlas-power-row i { flex: 0 0 34px; }
 .atlas-hint { margin: 9px 1px 0; color: #929ba6; font-size: 11px; line-height: 1.45; }
 .atlas-warning { margin-top: 10px; padding: 11px 12px; border: 1px solid rgba(255,160,71,.45); border-radius: 10px; background: rgba(60,37,17,.45); }
 .atlas-warning.resolved { border-color: rgba(200,223,111,.35); background: rgba(200,223,111,.06); }

@@ -72,7 +72,7 @@ function captureStudioControls() {
     loopMode: $("#loopMode button.selected")?.dataset.loop || "loop",
     loopFrom: $("#loopFrom").value, loopTo: $("#loopTo").value,
     packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
-    atlasMaxSize: $("#atlasMaxSize").value, atlasOverflow: $("#atlasOverflow").value,
+    atlasMaxSize: $("#atlasMaxSize").value, atlasOverflow: $("#atlasOverflow").value, atlasPowerOfTwo: $("#atlasPowerOfTwo").checked,
     imageAlign: state.imageAlign,
   };
 }
@@ -83,6 +83,7 @@ function applyStudioControls(studio = {}) {
   if (studio.exportFormat) $("#exportFormat").value = studio.exportFormat;
   if (studio.atlasMaxSize != null) $("#atlasMaxSize").value = String(studio.atlasMaxSize);
   if (studio.atlasOverflow) $("#atlasOverflow").value = studio.atlasOverflow;
+  $("#atlasPowerOfTwo").checked = studio.atlasPowerOfTwo === true;
   $("#loopFrom").value = studio.loopFrom || "1";
   $("#loopTo").value = studio.loopTo || "";
   if (typeof setLoopMode === "function") setLoopMode(studio.loopMode || "loop", { silent: true });
@@ -888,7 +889,7 @@ function collectOptions() {
     timeline: timelineOption(state.timeline),
     ...loopOptions(),
     packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
-    atlasMaxSize: Number($("#atlasMaxSize").value) || 0, atlasOverflow: $("#atlasOverflow").value,
+    atlasMaxSize: Number($("#atlasMaxSize").value) || 0, atlasOverflow: $("#atlasOverflow").value, atlasPowerOfTwo: $("#atlasPowerOfTwo").checked,
     pixelate: $("#pixelateEnabled").checked ? {
       size: Number($("#pixelateSize").value),
       colors: Number($("#pixelateColors").value),

@@ -52,7 +52,7 @@ test("export reuses the cached preview render when only export settings change",
   const source = await inspectSource({ kind: "frames", paths, appRoot });
   const preview = await processSprites({ source, name: "reuse", appRoot, previewOnly: true, options: baseOptions });
   assert.equal(preview.reusedRender, false);
-  const exported = await processSprites({ source, outputDir: path.join(temp, "out"), name: "reuse", appRoot, options: { ...baseOptions, columns: 1, packing: "tight", exportFormat: "phaser3" } });
+  const exported = await processSprites({ source, outputDir: path.join(temp, "out"), name: "reuse", appRoot, options: { ...baseOptions, columns: 1, packing: "tight", atlasPowerOfTwo: true, exportFormat: "phaser3" } });
   assert.equal(exported.reusedRender, true);
   const changed = await processSprites({ source, name: "reuse", appRoot, previewOnly: true, options: { ...baseOptions, padding: 9 } });
   assert.equal(changed.reusedRender, false);
@@ -77,6 +77,44 @@ test("atlas limit: warn, recalculated columns, scale and split into pages", asyn
   assert.ok(split.pages.length > 1);
   assert.ok(split.pages.every((page) => page.width <= 2048 && page.height <= 2048));
   assert.equal(split.pages.reduce((sum, page) => sum + page.rects.length, 0), 40);
+});
+
+test("power-of-two pages pad dimensions without moving frames or crossing the limit", () => {
+  const group = () => [{ columns: 3, cellWidth: 70, cellHeight: 50, items: Array.from({ length: 9 }, () => ({ width: 70, height: 50 })) }];
+  const ordinary = planAtlas(group(), { maxSize: 300, overflow: "split" });
+  const padded = planAtlas(group(), { maxSize: 300, overflow: "split", powerOfTwo: true });
+  assert.equal(padded.powerOfTwo, true);
+  assert.ok(padded.pages.length >= ordinary.pages.length);
+  assert.ok(padded.pages.every((page) => page.width <= 300 && page.height <= 300));
+  assert.ok(padded.pages.every((page) => Number.isInteger(Math.log2(page.width)) && Number.isInteger(Math.log2(page.height))));
+  assert.equal(padded.pages.flatMap((page) => page.rects).length, 9);
+  const onePage = planAtlas(group().map((entry) => ({ ...entry, items: entry.items.slice(0, 3) })), { powerOfTwo: true });
+  assert.deepEqual([onePage.pages[0].width, onePage.pages[0].height], [256, 64]);
+  assert.deepEqual(onePage.pages[0].rects.map(({ x, y }) => [x, y]), [[0, 0], [70, 0], [140, 0]]);
+});
+
+test("power-of-two export writes padded PNG and matching JSON dimensions", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "csl-pot-"));
+  const paths = await makeFrames(path.join(temp, "in"), 3);
+  const source = await inspectSource({ kind: "frames", paths, appRoot });
+  const result = await processSprites({
+    source, outputDir: path.join(temp, "out"), name: "pot", appRoot,
+    options: { ...baseOptions, columns: 3, atlasPowerOfTwo: true, atlasMaxSize: 512 },
+  });
+  const ordinary = await processSprites({
+    source, outputDir: path.join(temp, "ordinary"), name: "pot", appRoot,
+    options: { ...baseOptions, columns: 3, atlasPowerOfTwo: false, atlasMaxSize: 512 },
+  });
+  const manifest = JSON.parse(await fs.readFile(result.manifestPath, "utf8"));
+  const report = JSON.parse(await fs.readFile(result.reportPath, "utf8"));
+  const ordinaryReport = JSON.parse(await fs.readFile(ordinary.reportPath, "utf8"));
+  const image = await sharp(result.sheetPaths[0]).metadata();
+  assert.equal(manifest.powerOfTwo, true);
+  assert.equal(manifest.pages[0].width, image.width);
+  assert.equal(manifest.pages[0].height, image.height);
+  assert.ok(Number.isInteger(Math.log2(image.width)) && Number.isInteger(Math.log2(image.height)));
+  assert.ok(manifest.frames.every((frame) => frame.x + frame.width <= image.width && frame.y + frame.height <= image.height));
+  assert.notEqual(report.recipe.hash, ordinaryReport.recipe.hash, "a padded atlas needs its own recipe fingerprint");
 });
 
 test("tight packing trims frames, splits pages and writes engine formats", async () => {

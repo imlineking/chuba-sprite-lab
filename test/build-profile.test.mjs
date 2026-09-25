@@ -55,6 +55,12 @@ test("enum values are validated", () => {
   }
 });
 
+test("power-of-two atlas setting accepts only a boolean", () => {
+  const parsed = readProfile(profile({ options: { atlasPowerOfTwo: true } }), { baseDir });
+  assert.equal(parsed.animations[0].options.atlasPowerOfTwo, true);
+  assert.throws(() => readProfile(profile({ options: { atlasPowerOfTwo: "yes" } }), { baseDir }), /atlasPowerOfTwo: ожидалось true или false/);
+});
+
 test("named animations override the shared options", () => {
   const parsed = readProfile(profile({
     animations: [

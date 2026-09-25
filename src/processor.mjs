@@ -1048,7 +1048,7 @@ const RENDER_CACHE_LIMIT = 4;
 const RENDER_CACHE_MAX_BYTES = 700 * 1024 * 1024;
 const postRenderOptionKeys = new Set([
   "exports", "cleanOutput", "previewFrameIndex", "attachmentPlacements", "columns", "autoColumns",
-  "atlasMaxSize", "atlasOverflow", "packing", "exportFormat", "timeline", "loopMode", "loopRange", "animationName",
+  "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo", "packing", "exportFormat", "timeline", "loopMode", "loopRange", "animationName",
   // Scheduling only: the pool width changes nothing about the produced atlas.
   "frameParallelism",
 ]);
@@ -1425,28 +1425,47 @@ function pagesExceed(pages, limit) {
   return Boolean(limit) && pages.some((page) => page.width > limit || page.height > limit);
 }
 
-export function planAtlas(groups, { packing = "grid", maxSize = 0, overflow = "warn" } = {}) {
+function floorPowerOfTwo(value) {
+  let size = 1;
+  while (size * 2 <= value) size *= 2;
+  return size;
+}
+
+function padAtlasPages(pages, powerOfTwo) {
+  if (!powerOfTwo) return pages;
+  const ceilPowerOfTwo = (value) => {
+    let size = 1;
+    while (size < value) size *= 2;
+    return size;
+  };
+  return pages.map((page) => ({ ...page, width: ceilPowerOfTwo(page.width), height: ceilPowerOfTwo(page.height) }));
+}
+
+export function planAtlas(groups, { packing = "grid", maxSize = 0, overflow = "warn", powerOfTwo = false } = {}) {
   const limit = Number(maxSize) > 0 ? Number(maxSize) : 0;
+  // A non-power-of-two CLI limit (for example 3000) can only fit a 2048 page.
+  const layoutLimit = limit && powerOfTwo ? floorPowerOfTwo(limit) : limit;
   const tight = packing === "tight";
-  const natural = layoutAtlas(groups, { packing, limitW: tight ? limit : 0 });
+  const layout = (plannedGroups, settings) => padAtlasPages(layoutAtlas(plannedGroups, settings), powerOfTwo);
+  const natural = layout(groups, { packing, limitW: tight ? layoutLimit : 0 });
   const naturalWidth = Math.max(...natural.map((page) => page.width));
   const naturalHeight = natural.reduce((sum, page) => Math.max(sum, page.height), 0);
   const exceeds = pagesExceed(natural, limit);
-  const base = { exceeds, limit, naturalWidth, naturalHeight, requested: overflow };
+  const base = { exceeds, limit, naturalWidth, naturalHeight, requested: overflow, powerOfTwo: Boolean(powerOfTwo) };
   if (!exceeds || !limit || overflow === "warn") {
     return { ...base, pages: natural, groups, scale: 1, applied: exceeds ? "warn" : "none", note: exceeds ? `Лист ${naturalWidth}×${naturalHeight} больше ${limit} px` : "" };
   }
   const largestItem = Math.max(...groups.flatMap((group) => group.items.map((item) => Math.max(item.width, item.height))));
   if (overflow === "columns" && !tight) {
-    const pages = layoutAtlas(groups, { packing, columnsOverride: (group) => Math.max(1, Math.floor(limit / group.cellWidth)) });
+    const pages = layout(groups, { packing, columnsOverride: (group) => Math.max(1, Math.floor(layoutLimit / group.cellWidth)) });
     if (!pagesExceed(pages, limit)) return { ...base, pages, groups, scale: 1, applied: "columns", note: "Столбцы пересчитаны под лимит" };
   }
   if (overflow === "scale") {
-    let scale = Math.min(1, limit / Math.max(1, naturalWidth), limit / Math.max(1, naturalHeight));
-    if (tight) scale = Math.min(1, Math.sqrt((limit * limit) / Math.max(1, naturalWidth * naturalHeight)));
+    let scale = Math.min(1, layoutLimit / Math.max(1, naturalWidth), layoutLimit / Math.max(1, naturalHeight));
+    if (tight) scale = Math.min(1, Math.sqrt((layoutLimit * layoutLimit) / Math.max(1, naturalWidth * naturalHeight)));
     for (let attempt = 0; attempt < 40; attempt += 1) {
       const scaledGroups = scaleGroups(groups, scale);
-      const pages = layoutAtlas(scaledGroups, { packing, limitW: tight ? limit : 0 });
+      const pages = layout(scaledGroups, { packing, limitW: tight ? layoutLimit : 0 });
       if (!pagesExceed(pages, limit) && pages.length === 1) {
         return { ...base, pages, groups: scaledGroups, scale, applied: "scale", note: `Кадры уменьшены до ${Math.round(scale * 100)}%` };
       }
@@ -1454,9 +1473,9 @@ export function planAtlas(groups, { packing = "grid", maxSize = 0, overflow = "w
     }
   }
   // Split into several pages; a single frame larger than the limit is scaled down first.
-  const scale = largestItem > limit ? limit / largestItem : 1;
+  const scale = largestItem > layoutLimit ? layoutLimit / largestItem : 1;
   const scaledGroups = scale < 1 ? scaleGroups(groups, scale) : groups;
-  const pages = layoutAtlas(scaledGroups, { packing, limitW: limit, limitH: limit });
+  const pages = layout(scaledGroups, { packing, limitW: layoutLimit, limitH: layoutLimit });
   const note = overflow === "columns" && !tight ? "Столбцы не помогли — лист разбит на страницы" : `Разбито на листов: ${pages.length}`;
   return { ...base, pages, groups: scaledGroups, scale, applied: "split", note: scale < 1 ? `${note} · кадры уменьшены до ${Math.round(scale * 100)}%` : note };
 }
@@ -2034,7 +2053,7 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
   }
   const itemsAt = performance.now();
   const maxSize = Number(options.atlasMaxSize) || 0;
-  const atlas = planAtlas(groups.map((group) => ({ ...group, items: group.items })), { packing, maxSize, overflow: options.atlasOverflow || "warn" });
+  const atlas = planAtlas(groups.map((group) => ({ ...group, items: group.items })), { packing, maxSize, overflow: options.atlasOverflow || "warn", powerOfTwo: options.atlasPowerOfTwo === true });
   // Map scaled items back to per-image lists in the same order.
   atlas.groups.forEach((group, groupIndex) => {
     const original = groups[groupIndex];
@@ -2124,6 +2143,7 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
     transparent: options.outputBackground !== "white",
     formatVersion: 2,
     packing,
+    powerOfTwo: atlas.powerOfTwo,
     scale: atlas.scale,
     pages: atlas.pages.map((page, index) => ({ image: pageFiles[index], width: page.width, height: page.height })),
     loop: primary.loop,
@@ -2162,12 +2182,21 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
   if (atlas.exceeds) report.atlas = { naturalWidth: atlas.naturalWidth, naturalHeight: atlas.naturalHeight, limit: atlas.limit, applied: atlas.applied, note: atlas.note };
   // Identifies the recipe behind this result: the same hash means the same sources and
   // the same settings, so two different atlases can be compared instead of guessed at.
+  const recipeSignature = stableStringify({
+    animations: animations.map((animation) => ({
+      name: animation.name,
+      renderKey: animation.built.key,
+      layoutOptions: Object.fromEntries(Object.entries(animation.options).filter(([key]) => postRenderOptionKeys.has(key) && key !== "frameParallelism")),
+    })),
+    atlas: { packing, maxSize, overflow: options.atlasOverflow || "warn", powerOfTwo: atlas.powerOfTwo, exportFormat },
+  });
   report.recipe = {
-    hash: crypto.createHash("sha1").update(animations.map((animation) => `${animation.name}|${animation.built.key}`).join("\n")).digest("hex").slice(0, 16),
+    hash: crypto.createHash("sha1").update(recipeSignature).digest("hex").slice(0, 16),
     appVersion: APP_VERSION,
     exportFormat,
     packing,
     atlasMaxSize: maxSize,
+    atlasPowerOfTwo: atlas.powerOfTwo,
   };
   // The limit is only re-checked when the plan claims to honour it: with "warn" the
   // user already saw the dedicated atlas card, so repeating it would be noise.

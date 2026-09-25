@@ -22,7 +22,7 @@ export const profileOptionKeys = new Set([
   "excludedFrames", "exports", "aiCutoff", "aiSoftness", "aiEdits", "previewFrameIndex",
   "fringeCleanup", "fringeStrength", "edgeDecontaminate", "keyColor", "aiProvider", "aiQuality", "aiForceModel", "pixelate", "frameParallelism", "attachments", "attachmentPlacements",
   "frameOverrides", "frameTransforms", "fitEachFrame", "timeline", "loopMode",
-  "loopRange", "packing", "exportFormat", "atlasMaxSize", "atlasOverflow",
+  "loopRange", "packing", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo",
   "cleanOutput", "animationName", "auxAI",
 ]);
 
@@ -63,6 +63,9 @@ function normalizeOptions(value, problem, label, baseDir) {
   for (const [key, allowed] of Object.entries(enumValues)) {
     if (options[key] === undefined) continue;
     if (!allowed.includes(options[key])) problem(`${label}.${key}: ожидается одно из ${allowed.join(", ")}.`);
+  }
+  if (options.atlasPowerOfTwo !== undefined && typeof options.atlasPowerOfTwo !== "boolean") {
+    problem(`${label}.atlasPowerOfTwo: ожидалось true или false.`);
   }
   if (options.exports !== undefined) {
     if (!isPlainObject(options.exports)) {

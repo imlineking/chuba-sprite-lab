@@ -29,7 +29,7 @@ function saveStudioPreferences() {
   try {
     localStorage.setItem("spriteLab.studio", JSON.stringify({
       packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
-      atlasMaxSize: $("#atlasMaxSize").value, atlasOverflow: $("#atlasOverflow").value,
+      atlasMaxSize: $("#atlasMaxSize").value, atlasOverflow: $("#atlasOverflow").value, atlasPowerOfTwo: $("#atlasPowerOfTwo").checked,
       onionOpacity: studio.onionOpacity, gameScale: studio.gameScale, hitbox: studio.hitbox,
     }));
   } catch { /* optional */ }
@@ -43,6 +43,7 @@ function loadStudioPreferences() {
     if (saved.exportFormat) $("#exportFormat").value = saved.exportFormat;
     if (saved.atlasMaxSize != null) $("#atlasMaxSize").value = String(saved.atlasMaxSize);
     if (saved.atlasOverflow) $("#atlasOverflow").value = saved.atlasOverflow;
+    if (saved.atlasPowerOfTwo != null) $("#atlasPowerOfTwo").checked = saved.atlasPowerOfTwo === true;
     if (saved.onionOpacity) { studio.onionOpacity = Number(saved.onionOpacity) || 0.35; $("#onionOpacity").value = String(Math.round(studio.onionOpacity * 100)); }
     if (saved.gameScale) studio.gameScale = Number(saved.gameScale) || 1;
     if (saved.hitbox === false) studio.hitbox = false;
@@ -979,7 +980,7 @@ $("#fps").addEventListener("input", () => { syncFrameDurationControl(selectedEnt
 $("#maskOnion").addEventListener("change", syncMaskOnion);
 $("#maskOnionOpacity").addEventListener("input", syncMaskOnion);
 
-for (const id of ["atlasPacking", "exportFormat", "atlasMaxSize", "atlasOverflow"]) {
+for (const id of ["atlasPacking", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo"]) {
   $(`#${id}`).addEventListener("change", () => {
     state.lastExportDir = null; updateExportFormatHint(); saveStudioPreferences(); updateActionState();
     if (id !== "exportFormat") markPreviewDirty();
