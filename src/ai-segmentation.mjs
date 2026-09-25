@@ -58,7 +58,10 @@ function applyMaskEdits(alpha, originalAlpha, width, height, edits, frameIndex) 
         const distance = Math.hypot(x - centerX, y - centerY);
         if (distance > radius) continue;
         const index = y * width + x;
-        const strength = clamp(1 - distance / radius, 0, 1);
+        const hardRadius = radius * 0.82;
+        const strength = distance <= hardRadius
+          ? 1
+          : clamp(1 - (distance - hardRadius) / Math.max(1, radius - hardRadius), 0, 1);
         if (edit.mode === "keep") alpha[index] = Math.max(alpha[index], Math.round(originalAlpha[index] * strength));
         else alpha[index] = Math.min(alpha[index], Math.round(alpha[index] * (1 - strength)));
       }
@@ -66,7 +69,7 @@ function applyMaskEdits(alpha, originalAlpha, width, height, edits, frameIndex) 
   }
 }
 
-export async function segmentSubject(inputPath, { appRoot, cutoff = 42, softness = 14, edits = [], frameIndex = 0 } = {}) {
+export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness = 0, edits = [], frameIndex = 0 } = {}) {
   if (!appRoot) throw new Error("Не указан путь к локальной ИИ-модели.");
   const session = await getSession(appRoot);
   const { data: source, info } = await sharp(inputPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -95,21 +98,34 @@ export async function segmentSubject(inputPath, { appRoot, cutoff = 42, softness
   const range = Math.max(1e-6, maximum - minimum);
   const smallMask = Buffer.alloc(plane);
   for (let index = 0; index < plane; index += 1) smallMask[index] = Math.round(clamp((prediction[index] - minimum) / range, 0, 1) * 255);
-  const mask = await sharp(smallMask, { raw: { width: INPUT_SIZE, height: INPUT_SIZE, channels: 1 } })
+  const { data: mask, info: maskInfo } = await sharp(smallMask, { raw: { width: INPUT_SIZE, height: INPUT_SIZE, channels: 1 } })
     .resize(info.width, info.height, { fit: "fill", kernel: sharp.kernel.lanczos3 })
+    .extractChannel(0)
     .raw()
-    .toBuffer();
+    .toBuffer({ resolveWithObject: true });
+  if (maskInfo.channels !== 1 || mask.length !== info.width * info.height) {
+    throw new Error("ИИ-маска имеет неверный формат. Обработка остановлена без изменения кадра.");
+  }
 
   const alpha = new Uint8Array(info.width * info.height);
   const originalAlpha = new Uint8Array(alpha.length);
-  const threshold = clamp(Number(cutoff) || 42, 1, 99) / 100;
-  const feather = Math.max(0.005, clamp(Number(softness) || 14, 1, 40) / 100);
+  const parsedCutoff = Number(cutoff);
+  const threshold = clamp(Number.isFinite(parsedCutoff) ? parsedCutoff : 50, 1, 99) / 100;
+  const parsedSoftness = Number(softness);
+  const edgeSoftness = clamp(Number.isFinite(parsedSoftness) ? parsedSoftness : 0, 0, 4);
+  const hardMask = Buffer.alloc(alpha.length);
+  for (let index = 0; index < alpha.length; index += 1) hardMask[index] = mask[index] / 255 >= threshold ? 255 : 0;
+  const matteMask = edgeSoftness > 0
+    ? await sharp(hardMask, { raw: { width: info.width, height: info.height, channels: 1 } })
+      .blur(Math.max(0.3, edgeSoftness * 0.55))
+      .extractChannel(0)
+      .raw()
+      .toBuffer()
+    : hardMask;
   for (let index = 0; index < alpha.length; index += 1) {
     const original = source[index * info.channels + 3];
     originalAlpha[index] = original;
-    const confidence = mask[index] / 255;
-    const matte = clamp((confidence - threshold + feather) / (feather * 2), 0, 1);
-    alpha[index] = Math.round(original * matte);
+    alpha[index] = Math.round(original * matteMask[index] / 255);
   }
   applyMaskEdits(alpha, originalAlpha, info.width, info.height, edits, frameIndex);
   for (let index = 0; index < alpha.length; index += 1) source[index * info.channels + 3] = alpha[index];

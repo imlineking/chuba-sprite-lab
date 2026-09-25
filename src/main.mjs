@@ -476,7 +476,7 @@ async function runSelfTest() {
   }
 }
 
-const hasInstanceLock = selfTestMode || app.requestSingleInstanceLock();
+const hasInstanceLock = selfTestMode || Boolean(startupProbePath) || app.requestSingleInstanceLock();
 
 if (!hasInstanceLock) {
   app.quit();

@@ -477,8 +477,8 @@ function resetRecommended() {
   $("#tolerance").value = "28"; $("#toleranceValue").textContent = "28";
   $("#blackOutline").value = "3"; $("#blackOutlineValue").textContent = "3 px";
   $("#blackFeather").value = "0"; $("#blackFeatherValue").textContent = "0 px";
-  $("#aiCutoff").value = "42"; $("#aiCutoffValue").textContent = "42";
-  $("#aiSoftness").value = "14"; $("#aiSoftnessValue").textContent = "14";
+  $("#aiCutoff").value = "50"; $("#aiCutoffValue").textContent = "50";
+  $("#aiSoftness").value = "0"; $("#aiSoftnessValue").textContent = "0 px";
   state.maskEdits = []; updateMaskEditSummary();
   $("#padding").value = "20"; $("#columns").value = "8"; $("#maxFrames").value = "192";
   $("#autoSize").checked = true; $("#autoColumns").checked = true; $("#pixelPerfect").checked = true; $("#removeDuplicates").checked = true; $("#whiteOutput").checked = false;
@@ -850,6 +850,7 @@ function savePreferences() {
     const controls = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness"];
     const checks = ["autoSize", "autoColumns", "pixelPerfect", "removeDuplicates", "whiteOutput", "openAfterExport"];
     localStorage.setItem("spriteLab.preferences", JSON.stringify({
+      schema: 2,
       keyMode: state.keyMode, anchor: state.anchor, outputFolder: state.outputFolder,
       values: Object.fromEntries(controls.map((id) => [id, $(`#${id}`).value])),
       checks: Object.fromEntries(checks.map((id) => [id, $(`#${id}`).checked])),
@@ -862,6 +863,12 @@ function loadPreferences() {
     const saved = JSON.parse(localStorage.getItem("spriteLab.preferences") || "null");
     if (!saved) return;
     Object.entries(saved.values || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).value = value; });
+    if (Number(saved.schema || 0) < 2) $("#aiSoftness").value = "0";
+    $("#toleranceValue").textContent = $("#tolerance").value;
+    $("#blackOutlineValue").textContent = `${$("#blackOutline").value} px`;
+    $("#blackFeatherValue").textContent = `${$("#blackFeather").value} px`;
+    $("#aiCutoffValue").textContent = $("#aiCutoff").value;
+    $("#aiSoftnessValue").textContent = `${$("#aiSoftness").value} px`;
     Object.entries(saved.checks || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).checked = Boolean(value); });
     if (saved.keyMode) setKeyMode(saved.keyMode);
     if (saved.anchor) setAnchor(saved.anchor);
@@ -907,7 +914,7 @@ $("#tolerance").addEventListener("input", (event) => { $("#toleranceValue").text
 $("#blackOutline").addEventListener("input", (event) => { $("#blackOutlineValue").textContent = `${event.target.value} px`; markPreviewDirty(); scheduleFramePreview(); });
 $("#blackFeather").addEventListener("input", (event) => { $("#blackFeatherValue").textContent = `${event.target.value} px`; markPreviewDirty(); scheduleFramePreview(); });
 $("#aiCutoff").addEventListener("input", (event) => { $("#aiCutoffValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(380); });
-$("#aiSoftness").addEventListener("input", (event) => { $("#aiSoftnessValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(380); });
+$("#aiSoftness").addEventListener("input", (event) => { $("#aiSoftnessValue").textContent = `${event.target.value} px`; markPreviewDirty(); scheduleFramePreview(380); });
 $("#openMaskEditor").addEventListener("click", async () => {
   try { await openMaskEditor(); } catch (error) { setStatus(error.message || "Не удалось открыть редактор маски", "error", 0); showError(error.message); }
 });

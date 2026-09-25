@@ -203,11 +203,25 @@ test("local AI segmentation produces an editable transparent mask", async (conte
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-lab-ai-test-"));
   const inputPath = path.join(temp, "subject.png");
   await makeFrame(inputPath, 20, 19);
+  const clean = await keyFrame(inputPath, "ai", 28, 3, 0, {
+    appRoot,
+    frameIndex: 0,
+    aiCutoff: 42,
+    aiSoftness: 0,
+    aiEdits: [],
+  });
+  const original = await sharp(inputPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const hard = await sharp(clean.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let index = 0; index < hard.info.width * hard.info.height; index += 1) {
+    const offset = index * hard.info.channels;
+    assert.ok(hard.data[offset + 3] === 0 || hard.data[offset + 3] === 255, "zero softness must produce a hard alpha mask");
+    assert.deepEqual([...hard.data.subarray(offset, offset + 3)], [...original.data.subarray(offset, offset + 3)], "AI cleanup must not alter source RGB pixels");
+  }
   const keyed = await keyFrame(inputPath, "ai", 28, 3, 0, {
     appRoot,
     frameIndex: 0,
     aiCutoff: 42,
-    aiSoftness: 14,
+    aiSoftness: 0,
     aiEdits: [{ x: 0.5, y: 0.5, radius: 0.16, mode: "erase", frameIndex: 0, applyAll: false, strokeId: 1 }],
   });
   const { data, info } = await sharp(keyed.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
