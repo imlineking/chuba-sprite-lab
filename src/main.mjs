@@ -17,6 +17,7 @@ import { resolveAIModel, segmentSubject } from "./ai-segmentation.mjs";
 import { finishSheetImport, makeTempWorkspace, pruneStaleTempWorkspaces } from "./temp-workspace.mjs";
 import { planSuggestions, planTaskScenarios } from "./copilot-rules.mjs";
 import { readProfile } from "./build-profile.mjs";
+import { formatFeedbackDraft } from "./feedback.mjs";
 import * as editorSession from "./editor-session.mjs";
 import * as autoPilot from "./auto-pilot.mjs";
 import { assertDownloadUrl, canDownload, modelById, modelFiles, rejectedModels, validateModelFile, verificationOf } from "./ai-models.mjs";
@@ -1020,6 +1021,15 @@ ipcMain.handle("output:copy-path", (_event, outputPath) => {
   if (typeof outputPath !== "string" || !outputPath) return false;
   clipboard.writeText(outputPath);
   return true;
+});
+
+ipcMain.handle("feedback:copy", (_event, request) => {
+  try {
+    clipboard.writeText(formatFeedbackDraft(request, app.getVersion()));
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
 });
 
 // The assistant's hints are computed in the main process so the rules stay a pure,

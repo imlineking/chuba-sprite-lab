@@ -92,6 +92,40 @@ const i18nSources = {
     "Проверить обновления": "Check for updates",
     "Обновления устанавливаются из официальных GitHub Releases с проверкой SHA-256.":
       "Updates are installed from the official GitHub Releases with SHA-256 verification.",
+
+    /* feedback draft */
+    "Ошибка или предложение": "Bug or suggestion",
+    "Сообщить об ошибке": "Report a bug",
+    "ОБРАТНАЯ СВЯЗЬ": "FEEDBACK",
+    "Расскажите нам": "Tell us about it",
+    "Опишите ошибку или идею. Черновик хранится только на этом компьютере.":
+      "Describe a bug or an idea. The draft stays on this computer.",
+    "Тип сообщения": "Feedback type",
+    "Ошибка": "Bug",
+    "Предложение": "Suggestion",
+    "Короткая тема": "Short subject",
+    "Описание": "Description",
+    "Например: обрезается край кадра": "For example: a frame edge gets clipped",
+    "Что произошло? Что ожидали увидеть? Или как можно улучшить программу?":
+      "What happened? What did you expect? Or how could we improve the app?",
+    "Отправка пока не подключена. Никакие файлы, журналы или адреса автоматически не прикладываются. Перед копированием проверьте текст на личные данные.":
+      "Sending is not available yet. No files, logs, or addresses are attached automatically. Check the text for personal information before copying.",
+    "Заполните форму — черновик сохранится автоматически.": "Fill in the form — your draft is saved automatically.",
+    "Черновик сохранён на этом компьютере.": "Draft saved on this computer.",
+    "Не удалось сохранить черновик. Скопируйте текст перед закрытием.":
+      "Could not save the draft. Copy the text before closing.",
+    "Есть сохранённый черновик. Очистите его, чтобы начать сообщение об ошибке.":
+      "A draft is already saved. Clear it to start a bug report.",
+    "Черновик очищен.": "Draft cleared.",
+    "Текст скопирован. Отправка из программы пока не подключена.":
+      "Text copied. Sending from the app is not available yet.",
+    "Не удалось скопировать текст.": "Could not copy the text.",
+    "Заполните форму обратной связи.": "Fill in the feedback form.",
+    "Выберите тип сообщения.": "Choose a feedback type.",
+    "Тема должна содержать от 4 до 120 символов.": "The subject must be 4 to 120 characters long.",
+    "Описание должно содержать от 20 до 4000 символов.": "The description must be 20 to 4000 characters long.",
+    "Очистить": "Clear",
+    "Скопировать текст": "Copy text",
   },
 };
 

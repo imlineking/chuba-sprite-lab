@@ -626,7 +626,7 @@
           <div id="guideLayer" class="guide-layer hidden"><i></i><b></b></div>
           <aside id="errorCard" class="error-card hidden" role="alert" aria-live="assertive">
             <strong>Не удалось выполнить операцию</strong><span id="errorText"></span>
-            <div><button id="showErrorFrame" type="button">Показать кадр</button><button id="safeSettings" type="button">Безопасные настройки</button><button id="closeError" type="button">×</button></div>
+            <div><button id="showErrorFrame" type="button">Показать кадр</button><button id="safeSettings" type="button">Безопасные настройки</button><button id="reportError" type="button">Сообщить об ошибке</button><button id="closeError" type="button">×</button></div>
           </aside>
           <section id="transformPanel" class="transform-panel hidden" aria-label="Трансформация объекта">
             <header><div><strong>ОБЪЕКТ В КАДРЕ</strong><small id="transformFrameLabel">кадр 1 · выделен по прозрачности</small></div><button id="closeTransform" type="button" aria-label="Закрыть">×</button></header>
@@ -747,8 +747,22 @@
         <div class="about-actions">
           <button id="checkUpdates" class="button primary" type="button">Проверить обновления</button>
           <button id="openRepository" class="button ghost" type="button">Открыть GitHub</button>
+          <button id="openFeedback" class="button secondary" type="button">Ошибка или предложение</button>
         </div>
         <p id="updateStatus" class="update-status" aria-live="polite">Обновления устанавливаются из официальных GitHub Releases с проверкой SHA-256.</p>
+      </article>
+    </div>
+
+    <div id="feedbackModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="feedbackTitle">
+      <article class="feedback-card">
+        <header><div><p class="eyebrow">ОБРАТНАЯ СВЯЗЬ</p><h2 id="feedbackTitle">Расскажите нам</h2></div><button id="closeFeedback" class="about-close" type="button" aria-label="Закрыть">×</button></header>
+        <p class="feedback-intro">Опишите ошибку или идею. Черновик хранится только на этом компьютере.</p>
+        <div id="feedbackKind" class="feedback-kind" role="group" aria-label="Тип сообщения"><button type="button" data-kind="bug" class="selected" aria-pressed="true">Ошибка</button><button type="button" data-kind="idea" aria-pressed="false">Предложение</button></div>
+        <label class="feedback-field"><span>Короткая тема</span><input id="feedbackSubject" type="text" maxlength="120" placeholder="Например: обрезается край кадра" /></label>
+        <label class="feedback-field"><span>Описание</span><textarea id="feedbackMessage" maxlength="4000" rows="7" placeholder="Что произошло? Что ожидали увидеть? Или как можно улучшить программу?"></textarea></label>
+        <p class="feedback-privacy">Отправка пока не подключена. Никакие файлы, журналы или адреса автоматически не прикладываются. Перед копированием проверьте текст на личные данные.</p>
+        <p id="feedbackStatus" class="feedback-status" role="status" aria-live="polite">Заполните форму — черновик сохранится автоматически.</p>
+        <footer><button id="clearFeedback" class="button ghost" type="button">Очистить</button><button id="copyFeedback" class="button primary" type="button">Скопировать текст</button></footer>
       </article>
     </div>
 
@@ -997,6 +1011,7 @@
           <button type="button" data-command="duplicate"><span>Дублировать кадр</span><kbd>Ctrl D</kbd></button>
           <button type="button" data-command="game"><span>Показать «В игре»</span><kbd>G</kbd></button>
           <button type="button" data-command="help"><span>Справка и горячие клавиши</span><kbd>F1</kbd></button>
+          <button type="button" data-command="feedback"><span>Ошибка или предложение</span><kbd></kbd></button>
           <p class="command-section">ГОРЯЧИЕ КЛАВИШИ</p>
           <div class="hotkey-list">
             <span><kbd>← →</kbd> выбрать кадр в ленте</span>
@@ -1059,5 +1074,6 @@
     <script src="./sprite-editor.js"></script>
     <script src="./auto-pilot.js"></script>
     <script src="./task-mode.js"></script>
+    <script src="./feedback.js"></script>
   </body>
 </html>

@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld("spriteLab", {
   previewPoster: (request) => ipcRenderer.invoke("source:poster", request),
   revealOutput: (outputPath) => ipcRenderer.invoke("output:reveal", outputPath),
   copyOutputPath: (outputPath) => ipcRenderer.invoke("output:copy-path", outputPath),
+  copyFeedback: (request) => ipcRenderer.invoke("feedback:copy", request),
   saveProfile: (request) => ipcRenderer.invoke("profile:save", request),
   // The built-in pixel editor keeps the document in the main process; the window sends operations
   // and receives one state object back.

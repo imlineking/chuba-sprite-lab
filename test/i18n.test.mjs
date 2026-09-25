@@ -10,7 +10,7 @@ import vm from "node:vm";
 const root = path.resolve(import.meta.dirname, "..");
 const i18nSource = readFileSync(path.join(root, "src", "i18n.js"), "utf8");
 const markupSource = readFileSync(path.join(root, "src", "index.html"), "utf8");
-const rendererSource = ["renderer.js", "studio.js", "sheet-editor.js", "frame-consistency.js", "copilot.js", "sprite-editor.js"]
+const rendererSource = ["renderer.js", "studio.js", "sheet-editor.js", "frame-consistency.js", "copilot.js", "sprite-editor.js", "feedback.js", "feedback.mjs"]
   .map((file) => readFileSync(path.join(root, "src", file), "utf8"))
   .join("\n");
 

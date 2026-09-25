@@ -385,6 +385,7 @@ function runCommand(command) {
     duplicate: () => typeof duplicateSelectedEntry === "function" && duplicateSelectedEntry(),
     game: () => { if (state.result) setPreviewMode("game"); },
     help: openAbout,
+    feedback: () => window.openFeedback?.("idea"),
   };
   commands[command]?.();
 }
@@ -2599,6 +2600,8 @@ window.addEventListener("blur", () => { state.spaceHand = false; stopViewportPan
 document.addEventListener("keydown", (event) => {
   const openModal = $$(".modal-backdrop:not(.hidden)")[0];
   if (openModal) trapModalFocus(openModal, event);
+  if (event.key === "Escape" && !$("#feedbackModal").classList.contains("hidden")) { window.closeFeedback?.(); return; }
+  if (!$("#feedbackModal").classList.contains("hidden")) return;
   if (event.key === "Escape" && state.transformPanelOpen) { setTransformPanel(false); return; }
   if (event.key === "Escape" && !$("#commandModal").classList.contains("hidden")) { closeCommandPalette(); return; }
   if (event.key === "Escape" && !$("#frameEditorModal").classList.contains("hidden")) { closeFrameEditor(); return; }
