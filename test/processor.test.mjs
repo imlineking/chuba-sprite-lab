@@ -192,6 +192,30 @@ test("exports only the selected artifact types", async () => {
   assert.equal(result.revealPath, result.framePaths[0]);
 });
 
+test("local AI segmentation produces an editable transparent mask", async (context) => {
+  const appRoot = path.resolve(".");
+  try {
+    await fs.access(path.join(appRoot, "models", "u2netp.onnx"));
+  } catch {
+    context.skip("local AI model is not prepared");
+    return;
+  }
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-lab-ai-test-"));
+  const inputPath = path.join(temp, "subject.png");
+  await makeFrame(inputPath, 20, 19);
+  const keyed = await keyFrame(inputPath, "ai", 28, 3, 0, {
+    appRoot,
+    frameIndex: 0,
+    aiCutoff: 42,
+    aiSoftness: 14,
+    aiEdits: [{ x: 0.5, y: 0.5, radius: 0.16, mode: "erase", frameIndex: 0, applyAll: false, strokeId: 1 }],
+  });
+  const { data, info } = await sharp(keyed.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  assert.equal(info.width, 64);
+  assert.equal(info.height, 64);
+  assert.equal(data[(32 * info.width + 32) * info.channels + 3], 0, "erase brush must clear the selected area");
+});
+
 test("black key removes only edge-connected background and keeps a three-pixel contour", async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-lab-black-key-test-"));
   const inputPath = path.join(temp, "black-background.png");

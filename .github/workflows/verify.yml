@@ -19,4 +19,5 @@ jobs:
         run: if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg --no-progress -y }
       - run: npm ci
       - run: npm run prepare:vendor
+      - run: npm run prepare:ai
       - run: npm run verify

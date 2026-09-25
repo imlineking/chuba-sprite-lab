@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import sharp from "sharp";
+import { segmentSubject } from "./ai-segmentation.mjs";
 
 export const supportedImageExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".avif"]);
 const naturalCompare = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare;
@@ -306,10 +307,33 @@ function erodeConnectedMask(mask, width, height, radius) {
   return eroded;
 }
 
-export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, blackFeather = 0) {
+export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, blackFeather = 0, context = {}) {
   const fileStats = await fs.stat(inputPath);
-  const cacheKey = `${inputPath}|${fileStats.mtimeMs}|${mode}|${tolerance}|${blackOutline}|${blackFeather}`;
+  const aiSignature = mode === "ai"
+    ? JSON.stringify([context.aiCutoff, context.aiSoftness, context.frameIndex, context.aiEdits || []])
+    : "";
+  const cacheKey = `${inputPath}|${fileStats.mtimeMs}|${mode}|${tolerance}|${blackOutline}|${blackFeather}|${aiSignature}`;
   if (frameKeyCache.has(cacheKey)) return frameKeyCache.get(cacheKey);
+
+  if (mode === "ai") {
+    const { data, info } = await segmentSubject(inputPath, {
+      appRoot: context.appRoot,
+      cutoff: context.aiCutoff,
+      softness: context.aiSoftness,
+      edits: context.aiEdits,
+      frameIndex: context.frameIndex,
+    });
+    const result = {
+      buffer: await sharp(data, { raw: info }).png().toBuffer(),
+      info,
+      bounds: alphaBounds(data, info),
+      keyColor: null,
+    };
+    frameKeyCache.set(cacheKey, result);
+    if (frameKeyCache.size > 64) frameKeyCache.delete(frameKeyCache.keys().next().value);
+    return result;
+  }
+
   const { data, info } = await sharp(inputPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   if (mode === "alpha") {
     const result = { buffer: await sharp(data, { raw: info }).png().toBuffer(), info, bounds: alphaBounds(data, info), keyColor: null };
@@ -638,7 +662,13 @@ export async function processSprites({ source, outputDir, name, options = {}, pr
       skipped.excluded += 1;
       continue;
     }
-    const keyed = await keyFrame(inputFrames[index], options.keyMode || "auto", options.tolerance ?? 28, options.blackOutline ?? 3, options.blackFeather ?? 0);
+    const keyed = await keyFrame(inputFrames[index], options.keyMode || "auto", options.tolerance ?? 28, options.blackOutline ?? 3, options.blackFeather ?? 0, {
+      appRoot,
+      frameIndex: index,
+      aiCutoff: options.aiCutoff,
+      aiSoftness: options.aiSoftness,
+      aiEdits: options.aiEdits,
+    });
     if (!keyed.bounds) {
       skipped.empty += 1;
       skipped.emptyIndexes.push(index);
@@ -657,7 +687,7 @@ export async function processSprites({ source, outputDir, name, options = {}, pr
     onProgress?.({
       stage: "key",
       value: 0.16 + (index + 1) / inputFrames.length * 0.34,
-      message: `Очищаю фон · ${index + 1}/${inputFrames.length}`,
+      message: `${options.keyMode === "ai" ? "ИИ выделяет объект" : "Очищаю фон"} · ${index + 1}/${inputFrames.length}`,
     });
   }
   if (!prepared.length) throw new Error("После удаления фона не осталось ни одного непустого кадра. Уменьшите допуск цвета.");
@@ -819,10 +849,16 @@ export async function processVideoBatch({ paths, outputDir, options = {}, appRoo
   };
 }
 
-export async function processFramePreview({ inputPath, options = {} }) {
+export async function processFramePreview({ inputPath, options = {}, appRoot }) {
   if (!inputPath) throw new Error("Нет кадра для быстрого предпросмотра.");
   const previewRoot = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-live-"));
-  const keyed = await keyFrame(inputPath, options.keyMode || "auto", options.tolerance ?? 28, options.blackOutline ?? 3, options.blackFeather ?? 0);
+  const keyed = await keyFrame(inputPath, options.keyMode || "auto", options.tolerance ?? 28, options.blackOutline ?? 3, options.blackFeather ?? 0, {
+    appRoot,
+    frameIndex: options.previewFrameIndex ?? 0,
+    aiCutoff: options.aiCutoff,
+    aiSoftness: options.aiSoftness,
+    aiEdits: options.aiEdits,
+  });
   const afterPath = path.join(previewRoot, "after.png");
   await fs.writeFile(afterPath, keyed.buffer);
   return {

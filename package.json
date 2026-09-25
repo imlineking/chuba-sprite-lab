@@ -1,6 +1,6 @@
 {
   "name": "chuba-sprite-lab",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
   "description": "Standalone Windows sprite-sheet preparation tool for Chuba the Game",
@@ -25,12 +25,19 @@
     "files": [
       "src/**/*",
       "assets/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/onnxruntime-node/bin/napi-v6/darwin/**/*",
+      "!node_modules/onnxruntime-node/bin/napi-v6/linux/**/*",
+      "!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**/*"
     ],
     "extraResources": [
       {
         "from": "vendor/ffmpeg.exe",
         "to": "vendor/ffmpeg.exe"
+      },
+      {
+        "from": "models/u2netp.onnx",
+        "to": "models/u2netp.onnx"
       }
     ],
     "win": {
@@ -54,12 +61,14 @@
   "scripts": {
     "start": "electron .",
     "prepare:vendor": "node scripts/prepare-vendor.mjs",
+    "prepare:ai": "node scripts/prepare-ai-model.mjs",
     "test": "node --test --test-concurrency=1 test/*.test.mjs",
-    "verify": "node --check src/renderer.js && node --check src/main.mjs && node --check src/processor.mjs && node --check src/update-utils.mjs && node --check src/preload.cjs && npm test",
+    "verify": "node --check src/renderer.js && node --check src/main.mjs && node --check src/processor.mjs && node --check src/ai-segmentation.mjs && node --check src/update-utils.mjs && node --check src/preload.cjs && npm test",
     "pack": "node scripts/package.mjs",
     "release:build": "node scripts/package.mjs && node scripts/create-release.mjs"
   },
   "dependencies": {
+    "onnxruntime-node": "1.30.0",
     "sharp": "^0.35.3"
   },
   "devDependencies": {
@@ -67,6 +76,7 @@
     "electron-builder": "26.15.3"
   },
   "allowScripts": {
-    "electron@44.4.5": true
+    "electron@44.4.5": true,
+    "onnxruntime-node@1.30.0": true
   }
 }

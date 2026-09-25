@@ -2,6 +2,8 @@ node_modules/
 dist/
 release/
 vendor/*.exe
+models/*.onnx
+models/*.download
 *.log
 *.tmp
 .DS_Store

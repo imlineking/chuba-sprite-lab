@@ -325,7 +325,7 @@ ipcMain.handle("sprites:cancel", () => {
 });
 
 ipcMain.handle("preview:frame", async (_event, request) => {
-  const result = await processFramePreview(request || {});
+  const result = await processFramePreview({ ...(request || {}), appRoot });
   return {
     ...result,
     beforeUrl: pathToFileURL(result.beforePath).href,
@@ -443,6 +443,7 @@ async function runSelfTest() {
     if (metadata.width !== 2 || metadata.height !== 2) throw new Error("Sharp returned invalid test image metadata.");
     const ffmpegPath = path.join(process.resourcesPath, "vendor", process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
     await fs.access(ffmpegPath);
+    await fs.access(path.join(process.resourcesPath, "models", "u2netp.onnx"));
     app.exit(0);
   } catch (error) {
     console.error(error);

@@ -6,6 +6,8 @@ const state = {
   busy: false, lastExportDir: null, lastRevealPath: null, framePreview: null, selectedFrameIndex: 0,
   excludedFrames: new Set(), quickTimer: null, quickToken: 0,
   zoom: 1, guides: false, backdrop: 0, timelineValid: true, sourceRevision: 0, resultDirty: false,
+  maskEdits: [], maskBrushMode: "erase", maskDrawing: false, maskStrokeId: 0,
+  maskEditorSnapshot: [], maskEditorImage: null,
 };
 let posterTimer = null;
 let aboutReturnFocus = null;
@@ -146,6 +148,7 @@ function updateActionState() {
   $("#exportButtonTitle").textContent = batchCount
     ? `ЭКСПОРТИРОВАТЬ ${batchCount} ВИДЕО`
     : state.result?.frameCount && !state.resultDirty ? `ЭКСПОРТИРОВАТЬ ${state.result.frameCount} КАДРОВ` : "ЭКСПОРТИРОВАТЬ";
+  $("#openMaskEditor").disabled = !hasSource || state.busy;
 }
 
 function currentFramePath() {
@@ -163,6 +166,7 @@ function setSource(source) {
   state.result = null;
   state.framePreview = null;
   state.excludedFrames.clear();
+  state.maskEdits = [];
   state.selectedFrameIndex = 0;
   state.lastExportDir = null;
   state.lastRevealPath = null;
@@ -180,6 +184,7 @@ function setSource(source) {
     $("#spriteName").disabled = false;
     $("#spriteNameLabel").textContent = "Имя набора";
     $("#sampleStrip").replaceChildren();
+    updateMaskEditSummary();
     resetPreview();
     $("#framePreviewTabs").classList.add("hidden");
     setStatus("Готов к работе");
@@ -241,7 +246,7 @@ function confidenceLabel(value) {
 }
 
 function modeLabel(mode) {
-  return ({ auto: "авто", alpha: "готовая прозрачность", white: "белый", black: "чёрный", green: "зелёный", blue: "синий" })[mode] || mode;
+  return ({ auto: "авто", alpha: "готовая прозрачность", white: "белый", black: "чёрный", green: "зелёный", blue: "синий", ai: "локальный ИИ" })[mode] || mode;
 }
 
 function renderRecommendations(source) {
@@ -353,6 +358,8 @@ function collectOptions() {
     pixelPerfect: $("#pixelPerfect").checked, removeDuplicates: $("#removeDuplicates").checked,
     outputBackground: $("#whiteOutput").checked ? "white" : "transparent",
     excludedFrames: [...state.excludedFrames], exports: collectExports(),
+    aiCutoff: Number($("#aiCutoff").value), aiSoftness: Number($("#aiSoftness").value),
+    aiEdits: state.maskEdits, previewFrameIndex: state.result ? state.selectedFrameIndex : 0,
   };
 }
 
@@ -388,6 +395,8 @@ function setKeyMode(mode) {
   $("#blackKeyNote").classList.toggle("hidden", mode !== "black");
   $("#blackOutlineRow").classList.toggle("hidden", mode !== "black");
   $("#blackFeatherRow").classList.toggle("hidden", mode !== "black");
+  $("#toleranceRow").classList.toggle("hidden", mode === "ai");
+  $("#aiCleanupPanel").classList.toggle("hidden", mode !== "ai");
   markPreviewDirty();
 }
 
@@ -433,6 +442,9 @@ function resetRecommended() {
   $("#tolerance").value = "28"; $("#toleranceValue").textContent = "28";
   $("#blackOutline").value = "3"; $("#blackOutlineValue").textContent = "3 px";
   $("#blackFeather").value = "0"; $("#blackFeatherValue").textContent = "0 px";
+  $("#aiCutoff").value = "42"; $("#aiCutoffValue").textContent = "42";
+  $("#aiSoftness").value = "14"; $("#aiSoftnessValue").textContent = "14";
+  state.maskEdits = []; updateMaskEditSummary();
   $("#padding").value = "20"; $("#columns").value = "8"; $("#maxFrames").value = "192";
   $("#autoSize").checked = true; $("#autoColumns").checked = true; $("#pixelPerfect").checked = true; $("#removeDuplicates").checked = true; $("#whiteOutput").checked = false;
   syncAutoSize(); applyProcessPreset("character"); scheduleFramePreview();
@@ -507,6 +519,119 @@ function selectFrame(sourceIndex, activateFrameView = true) {
     : state.excludedFrames.has(state.selectedFrameIndex) ? "Вернуть кадр" : "Исключить кадр";
   if (activateFrameView) setPreviewMode("after");
   requestFramePreview(currentFramePath());
+}
+
+function activeMaskFrameIndex() {
+  return state.result?.allSourceFramePaths?.length ? state.selectedFrameIndex : 0;
+}
+
+function maskEditApplies(edit, frameIndex = activeMaskFrameIndex()) {
+  return Boolean(edit?.applyAll) || Number(edit?.frameIndex) === Number(frameIndex);
+}
+
+function updateMaskEditSummary() {
+  const strokes = new Set(state.maskEdits.map((edit) => edit.strokeId)).size;
+  $("#clearMaskEdits").disabled = strokes === 0;
+  $("#maskEditSummary").textContent = strokes
+    ? `Ручных исправлений: ${strokes}. Они применятся вместе с ИИ-маской.`
+    : "Ручных исправлений пока нет.";
+}
+
+function updateMaskEditorStatus() {
+  const frameIndex = activeMaskFrameIndex();
+  const relevant = state.maskEdits.filter((edit) => maskEditApplies(edit, frameIndex));
+  const strokes = new Set(relevant.map((edit) => edit.strokeId)).size;
+  $("#maskEditorStatus").textContent = `Кадр ${frameIndex + 1} · ${strokes ? `${strokes} исправл.` : "без исправлений"}`;
+  $("#undoMaskStroke").disabled = strokes === 0;
+  $("#resetMaskStrokes").disabled = relevant.length === 0;
+}
+
+function redrawMaskCanvas() {
+  const canvas = $("#maskCanvas");
+  const context = canvas.getContext("2d");
+  if (!state.maskEditorImage || !canvas.width || !canvas.height) return;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(state.maskEditorImage, 0, 0, canvas.width, canvas.height);
+  for (const edit of state.maskEdits) {
+    if (!maskEditApplies(edit)) continue;
+    context.beginPath();
+    context.arc(edit.x * canvas.width, edit.y * canvas.height, edit.radius * Math.max(canvas.width, canvas.height), 0, Math.PI * 2);
+    context.fillStyle = edit.mode === "keep" ? "rgba(200, 223, 111, .34)" : "rgba(255, 92, 98, .34)";
+    context.fill();
+    context.strokeStyle = edit.mode === "keep" ? "rgba(220, 239, 143, .72)" : "rgba(255, 126, 130, .72)";
+    context.lineWidth = Math.max(1, Math.max(canvas.width, canvas.height) / 700);
+    context.stroke();
+  }
+  updateMaskEditorStatus();
+}
+
+async function openMaskEditor() {
+  if (!state.source || state.busy) return;
+  if (state.keyMode !== "ai") setKeyMode("ai");
+  setStatus("ИИ анализирует выбранный кадр…", "busy", 0.12);
+  await requestFramePreview(currentFramePath());
+  const imageUrl = state.framePreview?.beforeUrl || state.source.previewUrl;
+  if (!imageUrl) {
+    setStatus("Не удалось открыть кадр для редактора", "error", 0);
+    return;
+  }
+  state.maskEditorSnapshot = state.maskEdits.map((edit) => ({ ...edit }));
+  const image = new Image();
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error("Не удалось загрузить кадр в редактор маски."));
+    image.src = imageUrl;
+  });
+  state.maskEditorImage = image;
+  const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+  const canvas = $("#maskCanvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  redrawMaskCanvas();
+  $("#aiMaskModal").classList.remove("hidden");
+  $("#applyMaskEditor").focus();
+  setStatus("Редактор маски открыт", "done", 0);
+}
+
+function closeMaskEditor({ discard = false } = {}) {
+  if (discard) state.maskEdits = state.maskEditorSnapshot.map((edit) => ({ ...edit }));
+  state.maskDrawing = false;
+  state.maskEditorImage = null;
+  $("#aiMaskModal").classList.add("hidden");
+  updateMaskEditSummary();
+  $("#openMaskEditor").focus();
+}
+
+function addMaskPoint(event) {
+  if (!state.maskDrawing || !state.maskEditorImage) return;
+  const canvas = $("#maskCanvas");
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
+  const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / Math.max(1, rect.height)));
+  const radius = Number($("#maskBrushSize").value) / Math.max(rect.width, rect.height, 1);
+  const previous = state.maskEdits.at(-1);
+  if (previous?.strokeId === state.maskStrokeId && Math.hypot(previous.x - x, previous.y - y) < radius * 0.32) return;
+  state.maskEdits.push({
+    x, y, radius,
+    mode: state.maskBrushMode,
+    frameIndex: activeMaskFrameIndex(),
+    applyAll: $("#maskApplyAll").checked,
+    strokeId: state.maskStrokeId,
+  });
+  redrawMaskCanvas();
+}
+
+function undoMaskStroke() {
+  const relevant = state.maskEdits.filter((edit) => maskEditApplies(edit));
+  const strokeId = relevant.at(-1)?.strokeId;
+  if (strokeId == null) return;
+  state.maskEdits = state.maskEdits.filter((edit) => edit.strokeId !== strokeId);
+  redrawMaskCanvas();
+}
+
+function clearCurrentMaskStrokes() {
+  state.maskEdits = state.maskEdits.filter((edit) => !maskEditApplies(edit));
+  redrawMaskCanvas();
 }
 
 function toggleSelectedFrame() {
@@ -612,11 +737,14 @@ async function requestFramePreview(inputPath) {
     hideError();
     if (["before", "after", "compare"].includes(state.previewMode)) setPreviewMode(state.previewMode);
     else if (!state.result) setPreviewMode("after");
+    if (!state.busy && state.keyMode === "ai") setStatus("ИИ-маска обновлена", "done", 0);
+    return result;
   } catch (error) {
     if (token === state.quickToken && revision === state.sourceRevision) {
       setStatus(error.message || "Не удалось обновить кадр", "error", 0);
       showError(error.message || "Не удалось обновить кадр.");
     }
+    return null;
   }
 }
 
@@ -684,7 +812,7 @@ async function runBuild(previewOnly) {
 
 function savePreferences() {
   try {
-    const controls = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "blackOutline", "blackFeather"];
+    const controls = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness"];
     const checks = ["autoSize", "autoColumns", "pixelPerfect", "removeDuplicates", "whiteOutput", "openAfterExport"];
     localStorage.setItem("spriteLab.preferences", JSON.stringify({
       keyMode: state.keyMode, anchor: state.anchor, outputFolder: state.outputFolder,
@@ -743,6 +871,38 @@ $("#resetSettings").addEventListener("click", resetRecommended);
 $("#tolerance").addEventListener("input", (event) => { $("#toleranceValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(); });
 $("#blackOutline").addEventListener("input", (event) => { $("#blackOutlineValue").textContent = `${event.target.value} px`; markPreviewDirty(); scheduleFramePreview(); });
 $("#blackFeather").addEventListener("input", (event) => { $("#blackFeatherValue").textContent = `${event.target.value} px`; markPreviewDirty(); scheduleFramePreview(); });
+$("#aiCutoff").addEventListener("input", (event) => { $("#aiCutoffValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(380); });
+$("#aiSoftness").addEventListener("input", (event) => { $("#aiSoftnessValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(380); });
+$("#openMaskEditor").addEventListener("click", async () => {
+  try { await openMaskEditor(); } catch (error) { setStatus(error.message || "Не удалось открыть редактор маски", "error", 0); showError(error.message); }
+});
+$("#clearMaskEdits").addEventListener("click", () => {
+  state.maskEdits = []; updateMaskEditSummary(); markPreviewDirty(); scheduleFramePreview(0);
+});
+$("#maskBrushMode").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-mode]");
+  if (!button) return;
+  state.maskBrushMode = button.dataset.mode;
+  $$("#maskBrushMode button").forEach((item) => item.classList.toggle("selected", item === button));
+});
+$("#maskBrushSize").addEventListener("input", (event) => { $("#maskBrushSizeValue").textContent = `${event.target.value} px`; });
+$("#maskCanvas").addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  state.maskDrawing = true;
+  state.maskStrokeId += 1;
+  event.currentTarget.setPointerCapture(event.pointerId);
+  addMaskPoint(event);
+});
+$("#maskCanvas").addEventListener("pointermove", addMaskPoint);
+for (const eventName of ["pointerup", "pointercancel"]) $("#maskCanvas").addEventListener(eventName, () => { state.maskDrawing = false; });
+$("#undoMaskStroke").addEventListener("click", undoMaskStroke);
+$("#resetMaskStrokes").addEventListener("click", clearCurrentMaskStrokes);
+$("#closeMaskEditor").addEventListener("click", () => closeMaskEditor({ discard: true }));
+$("#cancelMaskEditor").addEventListener("click", () => closeMaskEditor({ discard: true }));
+$("#applyMaskEditor").addEventListener("click", () => {
+  closeMaskEditor(); markPreviewDirty(); setStatus("Исправления маски применены · проверяю кадр", "busy", 0.1); scheduleFramePreview(0);
+});
+$("#aiMaskModal").addEventListener("click", (event) => { if (event.target === $("#aiMaskModal")) closeMaskEditor({ discard: true }); });
 $("#autoSize").addEventListener("change", () => { syncAutoSize(); savePreferences(); });
 $("#autoColumns").addEventListener("change", () => { syncAutoSize(); savePreferences(); });
 $("#buildPreview").addEventListener("click", () => runBuild(true));
@@ -808,6 +968,7 @@ for (const id of ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFr
 $("#openAfterExport").addEventListener("change", savePreferences);
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !$("#aiMaskModal").classList.contains("hidden")) { closeMaskEditor({ discard: true }); return; }
   if (event.key === "Escape" && !$("#aboutModal").classList.contains("hidden")) { closeAbout(); return; }
   if (event.key === "Escape" && state.busy) window.spriteLab.cancelBuild();
   if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); runBuild(true); }
@@ -822,7 +983,7 @@ window.spriteLab.onUpdateProgress((progress) => {
 });
 
 $$("button.selected").forEach((button) => button.setAttribute("aria-pressed", "true"));
-loadPreferences(); syncAutoSize(); updateActionState(); syncExportDependencies(""); setPreviewMode("after"); setStatus("Готов к работе");
+loadPreferences(); syncAutoSize(); updateMaskEditSummary(); updateActionState(); syncExportDependencies(""); setPreviewMode("after"); setStatus("Готов к работе");
 window.spriteLab.getAppInfo().then((info) => {
   $("#versionBadge").textContent = info.version;
   $("#aboutVersion").textContent = info.version;
