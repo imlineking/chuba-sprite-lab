@@ -23,14 +23,32 @@ async function findFile(directory, fileName, depth = 5) {
 }
 
 async function resolveOnPath(name) {
+  const candidates = [];
+  if (process.platform === "win32" && process.env.ChocolateyInstall) {
+    const chocolateyPackage = await findFile(path.join(process.env.ChocolateyInstall, "lib"), `${name}.exe`, 8);
+    if (chocolateyPackage) candidates.push(chocolateyPackage);
+  }
+
   const result = spawnSync(process.platform === "win32" ? "where.exe" : "which", [name], { encoding: "utf8", windowsHide: true });
-  if (result.status === 0) return result.stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+  if (result.status === 0) candidates.push(...result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean));
+
   if (process.platform === "win32" && process.env.LOCALAPPDATA) {
     const wingetPackages = path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages");
     const found = await findFile(wingetPackages, `${name}.exe`);
-    if (found) return found;
+    if (found) candidates.push(found);
   }
-  throw new Error(`${name} не найден ни в PATH, ни среди пакетов WinGet.`);
+
+  // Chocolatey's PATH entry is commonly a tiny redirector that stops working
+  // after being copied. Prefer the actual static binary for a portable build.
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      const info = await fs.stat(candidate);
+      if (process.platform !== "win32" || info.size > 1024 * 1024) return candidate;
+    } catch {
+      // Try the next installation candidate.
+    }
+  }
+  throw new Error(`${name} не найден как автономный исполняемый файл.`);
 }
 
 export async function prepareVendor(appRoot) {
