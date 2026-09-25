@@ -540,7 +540,7 @@ function renderAtlasStatus(result) {
   const pages = atlas.pages?.length || 1;
   $("#metaAtlas").textContent = `${atlas.width}×${atlas.height}${pages > 1 ? ` · ${pages} л.` : ""}`;
   cell.classList.toggle("warn", atlas.exceeds && atlas.applied === "warn");
-  cell.title = atlas.exceeds ? (atlas.applied === "warn" ? `Больше лимита ${atlas.limit} px — откройте «Экспорт»` : atlas.note || "") : "Размер спрайт-листа";
+  cell.title = atlas.exceeds ? (atlas.applied === "warn" ? `Больше лимита ${atlas.limit} px — откройте «Экспорт»` : atlas.note || "") : "Размер спрайт-листа · нажмите, чтобы открыть настройки атласа";
   const card = $("#atlasWarning");
   if (!atlas.exceeds) { card.classList.add("hidden"); return; }
   const unresolved = atlas.applied === "warn";
@@ -550,6 +550,34 @@ function renderAtlasStatus(result) {
     ? `Лист ${atlas.naturalWidth} × ${atlas.naturalHeight} px больше лимита ${atlas.limit} px. Многие видеокарты и движки такой лист не загрузят. Выберите решение — предпросмотр пересоберётся без повторной обработки кадров.`
     : `${atlas.note || "Лист подогнан под лимит"} · было ${atlas.naturalWidth} × ${atlas.naturalHeight} px, лимит ${atlas.limit} px.`;
   $$("#atlasWarningActions button").forEach((button) => button.classList.toggle("selected", button.dataset.overflow === atlas.applied));
+  card.classList.remove("hidden");
+}
+
+// The inspector compares the written JSON against the pages an engine will read. Only its
+// errors reach the warning list, so the full result lives next to the atlas settings.
+function renderAtlasInspection(result) {
+  const card = $("#atlasInspection");
+  const issues = result?.atlasIssues || [];
+  if (!issues.length) { card.classList.add("hidden"); return; }
+  const errors = issues.filter((issue) => issue.severity === "error");
+  const headline = errors.length
+    ? `ПРОВЕРКА НАБОРА: ОШИБОК ${errors.length}`
+    : `ПРОВЕРКА НАБОРА: ЗАМЕЧАНИЙ ${issues.length}`;
+  $("#atlasInspectionTitle").textContent = headline;
+  $("#atlasInspectionText").textContent = errors.length
+    ? "Расхождения между JSON и листом помешают движку прочитать набор. Нажмите на строку, чтобы перейти к кадру."
+    : "Критичных расхождений нет. Нажмите на строку, чтобы перейти к кадру.";
+  const list = $("#atlasInspectionList");
+  list.replaceChildren();
+  issues.slice(0, 12).forEach((issue) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = issue.message;
+    button.className = issue.severity === "error" ? "selected" : "";
+    button.title = issue.code;
+    if (issue.sourceFrameIndex != null) button.addEventListener("click", () => selectFrame(issue.sourceFrameIndex));
+    list.append(button);
+  });
   card.classList.remove("hidden");
 }
 
@@ -625,7 +653,11 @@ function renderAnimationBar() {
   add.addEventListener("click", () => startAnimationName("add"));
   chips.append(add);
   const count = state.animations.length;
-  $("#animationBarHint").textContent = count > 1 ? `${count} · экспорт в один атлас с тегами` : "idle · run · jump — в один атлас";
+  // Name the active animation explicitly: switching a chip replaces the whole document,
+  // which is easy to miss otherwise.
+  const activeEntry = activeAnimation();
+  const activeLabel = activeEntry ? `активная: ${activeEntry.name}` : "текущая анимация";
+  $("#animationBarHint").textContent = count > 1 ? `${activeLabel} · ${count} шт. → один атлас с тегами` : `${activeLabel} · idle/run/jump — в один атлас`;
   updateAnimationExportNote();
 }
 
@@ -733,13 +765,29 @@ function optionsFromDocument(doc, base = {}) {
     padding: number("padding", 20), maxFrames: number("maxFrames", 192), tolerance: number("tolerance", 28),
     blackOutline: number("blackOutline", 3), blackFeather: number("blackFeather", 0),
     trimStart: doc.source?.kind === "video" ? number("trimStart", 0) : 0, trimEnd: doc.source?.kind === "video" ? number("trimEnd", 0) : 0,
-    keyMode: controls.keyMode || "auto", anchor: controls.anchor || "ground",
+    keyMode: controls.keyMode || "auto", keyScope: values.keyScope || "exterior", anchor: controls.anchor || "ground",
     autoSize: checks.autoSize !== false, autoColumns: checks.autoColumns !== false,
     pixelPerfect: Boolean(checks.pixelPerfect), removeDuplicates: checks.removeDuplicates !== false,
     outputBackground: base.outputBackground || (checks.whiteOutput ? "white" : "transparent"),
     excludedFrames: doc.excludedFrames || [],
-    aiCutoff: number("aiCutoff", 50), aiSoftness: number("aiSoftness", 0), aiEdits: doc.maskEdits || [], previewFrameIndex: 0,
+    aiCutoff: checks.aiAutoCutoff !== false ? "auto" : number("aiCutoff", 50),
+    aiSoftness: number("aiSoftness", 0),
+    aiQuality: values.aiQuality || "balanced",
+    pixelate: checks.pixelateEnabled ? {
+      size: number("pixelateSize", 4),
+      colors: number("pixelateColors", 16),
+      palette: values.pixelatePalette || "auto",
+      mode: values.pixelateMode || "clean",
+      dither: values.pixelateDither || "none",
+      shadingSteps: number("pixelateShading", 4),
+    } : null,
+    toning: checks.toningEnabled ? { color: values.toningColor || "#8bb8ff", strength: number("toningStrength", 35) } : null,
+    aiEdits: doc.maskEdits || [], previewFrameIndex: 0,
     fringeCleanup: Boolean(checks.fringeCleanup), fringeStrength: number("fringeStrength", 55),
+    edgeDecontaminate: Boolean(checks.edgeDecontaminate),
+    edgeRefine: { mode: values.edgeRefineMode || "none", width: number("edgeRefineWidth", 1), depth: number("edgeRefineDepth", 2), whiteOnly: checks.edgeRefineWhiteOnly !== false },
+    aiProvider: values.aiProvider || "auto",
+    keyColor: /^#[0-9a-f]{6}$/i.test(String(controls.solidKeyMode || "")) ? hexToRgb(controls.solidKeyMode) : undefined,
     attachments: (doc.attachments || []).filter((attachment) => attachment.enabled !== false), attachmentPlacements: null,
     frameOverrides: doc.frameOverrides || {}, frameTransforms: doc.frameTransforms || {},
     fitEachFrame: (doc.source?.kind === "sheet" && checks.sheetFitEach !== false) || (doc.source?.kind === "frames" && controls.studio?.imageAlign === "fit"),
@@ -853,9 +901,14 @@ function renderImageSheetControls() {
   });
   if (images.length > 60) { const more = document.createElement("li"); more.textContent = `…и ещё ${images.length - 60}`; list.append(more); }
   $("#imageRemoveBackground").checked = state.keyMode !== "alpha";
-  $("#imageBackgroundHint").textContent = opaque
-    ? "у JPG нет прозрачности — без удаления фон останется в кадре"
-    : "картинки уже прозрачные — удалять фон не нужно";
+  // An alpha channel is not the same as a transparent background: a PNG may carry alpha
+  // while its background is fully opaque. Only the border sample knows which case it is.
+  const alreadyTransparent = source.suggestedKeyMode === "alpha";
+  $("#imageBackgroundHint").textContent = alreadyTransparent
+    ? "картинки уже прозрачные — удалять фон не нужно"
+    : opaque
+      ? "у JPG нет прозрачности — без удаления фон останется в кадре"
+      : "прозрачность есть, но фон в кадре непрозрачный — включите удаление, если он лишний";
   setImageAlign(state.anchor === "center" ? (state.imageAlign === "fit" ? "fit" : "center") : "ground", { silent: true });
 }
 
@@ -942,7 +995,7 @@ $("#atlasWarningActions").addEventListener("click", (event) => {
   saveStudioPreferences(); updateExportFormatHint();
   runBuild(true);
 });
-$("#metaAtlasCell").addEventListener("click", () => { if (state.result?.atlas?.exceeds) setTab("export"); });
+$("#metaAtlasCell").addEventListener("click", () => { if (state.result) setTab("export"); });
 
 $("#confirmAnimationName").addEventListener("click", confirmAnimationName);
 $("#cancelAnimationName").addEventListener("click", closeAnimationName);
@@ -952,7 +1005,8 @@ $("#animationNameInput").addEventListener("keydown", (event) => {
 });
 $("#newProject").addEventListener("click", () => { state.animations = []; state.activeAnimationId = null; renderAnimationBar(); });
 
-$("#chooseImages").addEventListener("click", () => chooseSource("chooseFrames"));
+// The separate "собрать лист из картинок" entry point is gone: the same file picker
+// already accepts images of different sizes, and the alignment panel appears by itself.
 $("#imageAlignMode").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-image-align]");
   if (button) setImageAlign(button.dataset.imageAlign);

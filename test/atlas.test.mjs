@@ -90,6 +90,8 @@ test("tight packing trims frames, splits pages and writes engine formats", async
     });
     const manifest = JSON.parse(await fs.readFile(result.manifestPath, "utf8"));
     assert.equal(manifest.packing, "tight");
+    const tightReport = JSON.parse(await fs.readFile(result.reportPath, "utf8"));
+    assert.equal(tightReport.atlasIssues, undefined, `a tight ${format} build must not report atlas issues`);
     assert.ok(manifest.frames.every((frame) => frame.trimmed && frame.width < frame.sourceSize.w && frame.sourceSize.w === 200));
     assert.ok(result.sheetPaths.length > 1, "tiny limit must split into several sheets");
     for (const sheetPath of result.sheetPaths) {
@@ -101,7 +103,49 @@ test("tight packing trims frames, splits pages and writes engine formats", async
     if (format === "godot") assert.match(text, /\[gd_resource type="SpriteFrames"/);
     else if (format === "phaser3") assert.ok(JSON.parse(text).textures.length === result.sheetPaths.length);
     else assert.ok(Object.keys(JSON.parse(text).frames).length > 0);
+
+    // Collision data must reach the engine for every format, not only the Chuba JSON.
+    const hitboxPath = result.engineFiles.find((file) => file.endsWith(".hitboxes.json"));
+    assert.ok(hitboxPath, `${format}: the hitbox sidecar must be exported`);
+    const hitboxes = JSON.parse(await fs.readFile(hitboxPath, "utf8"));
+    assert.equal(hitboxes.meta.hitboxSpace, "cell");
+    assert.equal(Object.keys(hitboxes.frames).length, manifest.frames.length);
+    for (const frame of manifest.frames) {
+      const entry = hitboxes.frames[frame.name];
+      assert.ok(entry?.hitbox && entry.hitbox.width > 0 && entry.hitbox.height > 0, `${format}: missing hitbox for ${frame.name}`);
+      assert.ok(entry.hitbox.x + entry.hitbox.width <= frame.sourceSize.w);
+    }
   }
+});
+
+test("the Unity export carries a slicing script with converted coordinates", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "csl-unity-"));
+  const paths = await makeFrames(path.join(temp, "in"), 3);
+  const source = await inspectSource({ kind: "frames", paths, appRoot });
+  const result = await processSprites({
+    source, outputDir: path.join(temp, "out"), name: "unity", appRoot,
+    options: { ...baseOptions, anchor: "ground", padding: 8, autoSize: true, autoColumns: true, exportFormat: "unity", atlasMaxSize: 4096, exports: { sheet: true, frames: false, metadata: true, preview: false } },
+  });
+  const manifest = JSON.parse(await fs.readFile(result.manifestPath, "utf8"));
+  const slicerPath = result.engineFiles.find((file) => file.endsWith(".unity-slicer.cs"));
+  assert.ok(slicerPath, "the slicing script must be exported");
+  const text = await fs.readFile(slicerPath, "utf8");
+  assert.match(text, /using UnityEditor;/);
+  assert.match(text, /\[MenuItem\("Tools\/Chuba Sprite Lab\//);
+  assert.match(text, /importer\.spritesheet = metadatas\.ToArray\(\);/);
+  // Every frame must appear with its own rectangle, and the rectangle origin must be flipped:
+  // Unity counts from the bottom-left, the manifest from the top-left.
+  const pageHeight = manifest.pages[0].height;
+  for (const frame of manifest.frames) {
+    assert.ok(text.includes(`name = "${frame.name}"`), `missing slice ${frame.name}`);
+    const expectedY = pageHeight - frame.y - frame.height;
+    assert.ok(text.includes(`y = ${expectedY}f`), `frame ${frame.name} must use the flipped y ${expectedY}`);
+  }
+  // A ground pivot sits on the ground line, which is the padding above the bottom of the cell.
+  const expectedPivotY = 8 / manifest.frameHeight;
+  assert.ok(text.includes(`pivotY = ${expectedPivotY.toFixed(4)}f`), `a ground pivot must sit ${expectedPivotY} of the sprite height above its bottom`);
+  assert.ok(text.includes("pivotX = 0.5000f"), "a centred pivot stays centred");
+  assert.ok(result.engineFiles.some((file) => file.endsWith(".hitboxes.json")), "the hitbox sidecar still ships");
 });
 
 test("named animations are exported into one atlas with tags", async () => {
@@ -116,6 +160,8 @@ test("named animations are exported into one atlas with tags", async () => {
   assert.deepEqual(manifest.animations.map((tag) => [tag.name, tag.from, tag.to, tag.direction]), [["idle", 0, 1, "forward"], ["run", 2, 4, "pingpong"]]);
   assert.equal(manifest.frames.length, 5);
   assert.equal(result.sheetPaths.length, 1);
+  const setReport = JSON.parse(await fs.readFile(result.reportPath, "utf8"));
+  assert.equal(setReport.atlasIssues, undefined, "a multi-animation build must not report atlas issues");
   const tp = JSON.parse(await fs.readFile(result.engineFiles[0], "utf8"));
   assert.deepEqual(tp.meta.frameTags.map((tag) => tag.name), ["idle", "run"]);
   assert.ok((await fs.readdir(path.join(result.outputDir, "frames"))).includes("run"));

@@ -51,12 +51,49 @@ async function resolveOnPath(name) {
   throw new Error(`${name} не найден как автономный исполняемый файл.`);
 }
 
+async function fileSize(candidate) {
+  try {
+    return (await fs.stat(candidate)).size;
+  } catch {
+    return -1;
+  }
+}
+
+// A 200 MB binary is copied through a temporary name and retried: on Windows a virus scanner or
+// a synced folder can hold the destination for a moment and fail the copy with EBUSY. A
+// half-written FFmpeg would be worse than a failed build, hence the rename.
+async function copyWithRetry(source, target, attempts = 6) {
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const temporary = `${target}.copying`;
+    try {
+      await fs.copyFile(source, temporary);
+      await fs.rename(temporary, target);
+      return target;
+    } catch (error) {
+      lastError = error;
+      await fs.rm(temporary, { force: true }).catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 export async function prepareVendor(appRoot) {
   const vendorDir = path.join(appRoot, "vendor");
   const executable = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+  const target = path.join(vendorDir, executable);
   await fs.mkdir(vendorDir, { recursive: true });
-  await fs.copyFile(await resolveOnPath("ffmpeg"), path.join(vendorDir, executable));
+  const source = await resolveOnPath("ffmpeg");
+  const [sourceSize, targetSize] = await Promise.all([fileSize(source), fileSize(target)]);
+  // The same machine resolves the same FFmpeg, so an equal size means the copy is already done.
+  if (sourceSize > 0 && sourceSize === targetSize) {
+    await fs.rm(path.join(vendorDir, "ffprobe.exe"), { force: true });
+    return target;
+  }
+  await copyWithRetry(source, target);
   await fs.rm(path.join(vendorDir, "ffprobe.exe"), { force: true });
+  return target;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

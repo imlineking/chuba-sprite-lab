@@ -63,7 +63,9 @@
     "prepare:vendor": "node scripts/prepare-vendor.mjs",
     "prepare:ai": "node scripts/prepare-ai-model.mjs",
     "test": "node --test --test-concurrency=1 test/*.test.mjs",
-    "verify": "node --check src/renderer.js && node --check src/studio.js && node --check src/main.mjs && node --check src/processor.mjs && node --check src/ai-segmentation.mjs && node --check src/mask-edits.mjs && node --check src/edge-cleanup.mjs && node --check src/attachment-tracker.mjs && node --check src/sheet-slicer.mjs && node --check src/update-utils.mjs && node --check src/preload.cjs && npm test",
+    "lint": "eslint .",
+    "cli": "node scripts/cli.mjs",
+    "verify": "node --check src/i18n.js && node --check src/renderer.js && node --check src/studio.js && node --check src/sheet-editor.js && node --check src/frame-consistency.js && node --check src/copilot.js && node --check src/copilot-rules.mjs && node --check src/sprite-editor.js && node --check src/ai-models.mjs && node --check src/auto-pilot.mjs && node --check src/auto-pilot.js && node --check src/task-mode.js && node --check src/aux-ai.mjs && node --check src/sprite-document.mjs && node --check src/editor-session.mjs && node --check src/pixelate.mjs && node --check src/main.mjs && node --check src/processor.mjs && node --check src/temp-workspace.mjs && node --check src/ai-segmentation.mjs && node --check src/mask-edits.mjs && node --check src/edge-cleanup.mjs && node --check src/attachment-tracker.mjs && node --check src/sheet-slicer.mjs && node --check src/sheet-metadata.mjs && node --check src/atlas-inspector.mjs && node --check src/source-describe.mjs && node --check src/build-profile.mjs && node --check src/watch.mjs && node --check scripts/cli.mjs && node --check src/update-utils.mjs && node --check src/preload.cjs && npm run lint && npm test",
     "pack": "node scripts/package.mjs",
     "release:build": "node scripts/package.mjs && node scripts/create-release.mjs"
   },
@@ -73,7 +75,9 @@
   },
   "devDependencies": {
     "electron": "44.4.5",
-    "electron-builder": "26.15.3"
+    "electron-builder": "26.15.3",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0"
   },
   "allowScripts": {
     "electron@44.4.5": true,

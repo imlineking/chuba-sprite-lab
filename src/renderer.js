@@ -2,7 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
 const state = {
-  source: null, outputFolder: null, result: null, previewMode: "after", keyMode: "auto", anchor: "ground",
+  source: null, outputFolder: null, result: null, previewMode: "after", keyMode: "auto", anchor: "ground", auxMaskPath: null,
   busy: false, lastExportDir: null, lastRevealPath: null, framePreview: null, selectedFrameIndex: 0,
   excludedFrames: new Set(), quickTimer: null, quickToken: 0,
   zoom: 1, guides: false, backdrop: "checker", backdropBeforeGame: "checker", timelineValid: true, sourceRevision: 0, resultDirty: false,
@@ -12,9 +12,9 @@ const state = {
   attachmentPoints: [], attachmentPointCount: 1, attachmentEditingId: null, attachmentReferenceFrame: 0,
   frameOverrides: {}, externalEdit: null, externalEditTimer: null,
   solidKeyMode: "black", projectPath: null, history: [], historyIndex: -1, historyTimer: null, historyApplying: false,
-  warnings: [], warningIndex: 0, batchItems: [], pendingSession: null, preferredEditor: "photopea",
+  warnings: [], warningIndex: 0, warningRefs: new Map(), batchItems: [], pendingSession: null, preferredEditor: "photopea",
   viewportPanX: 0, viewportPanY: 0, spaceHand: false, handToolLocked: false, viewportPanning: false, panPointerId: null,
-  frameTransforms: {}, transformScope: "frame", transformPanelOpen: false,
+  frameTransforms: {}, transformScope: "frame", transformPanelOpen: false, sheetDraftCells: [],
   timeline: null, selectedEntryId: null, processPreset: "character", imageAlign: "ground",
   animations: [], activeAnimationId: null, animationSwitching: false, fitScale: 1,
 };
@@ -33,8 +33,8 @@ const exportPresets = {
   artist: { sheet: false, frames: true, metadata: false, preview: true },
   engine: { sheet: true, frames: false, metadata: true, preview: false },
 };
-const preferenceValueIds = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness", "fringeStrength", "trimStart", "trimEnd"];
-const preferenceCheckIds = ["autoSize", "autoColumns", "pixelPerfect", "removeDuplicates", "whiteOutput", "openAfterExport", "fringeCleanup", "sheetFitEach"];
+const preferenceValueIds = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "keyScope", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness", "aiProvider", "aiQuality", "fringeStrength", "edgeRefineMode", "edgeRefineWidth", "edgeRefineDepth", "trimStart", "trimEnd", "pixelateSize", "pixelateColors", "pixelateShading", "pixelatePalette", "pixelateMode", "pixelateDither", "toningColor", "toningStrength", "locale"];
+const preferenceCheckIds = ["autoSize", "autoColumns", "pixelPerfect", "removeDuplicates", "whiteOutput", "openAfterExport", "fringeCleanup", "edgeDecontaminate", "edgeRefineWhiteOnly", "aiAutoCutoff", "pixelateEnabled", "toningEnabled", "sheetFitEach", "auxRife", "auxEsrgan", "auxDepth"];
 
 function sourceDescriptor(source = state.source) {
   if (!source) return null;
@@ -44,9 +44,10 @@ function sourceDescriptor(source = state.source) {
     sheetPath: source.sheetPath || null,
     sheetMode: source.sheetMode || null,
     sheetOptions: source.kind === "sheet" ? {
-      mode: source.sheetMode || "objects",
+      mode: $("#sheetSliceMode button.selected")?.dataset.sheetMode || source.sheetMode || "objects",
       columns: Number($("#sheetColumns").value) || 4,
       rows: Number($("#sheetRows").value) || 4,
+      cells: state.sheetDraftCells.map((cell) => ({ ...cell })),
     } : null,
   };
 }
@@ -60,6 +61,7 @@ function captureControlState() {
     solidKeyMode: state.solidKeyMode,
     anchor: state.anchor,
     preset: state.processPreset,
+    auxMaskPath: state.auxMaskPath,
     studio: captureStudioControls(),
   };
 }
@@ -135,6 +137,9 @@ function applyControlState(controls = {}) {
   Object.entries(controls.values || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).value = value; });
   Object.entries(controls.checks || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).checked = Boolean(value); });
   Object.entries(controls.exports || {}).forEach(([name, value]) => { const selector = exportControls[name]; if (selector) $(selector).checked = Boolean(value); });
+  state.auxMaskPath = controls.auxMaskPath || null;
+  $("#lamaMaskName").textContent = state.auxMaskPath ? `Маска: ${state.auxMaskPath.split(/[\\/]/).at(-1)}` : "Маска не выбрана";
+  $("#clearLamaMask").classList.toggle("hidden", !state.auxMaskPath);
   state.solidKeyMode = controls.solidKeyMode || (controls.keyMode && !["auto", "alpha", "ai"].includes(controls.keyMode) ? controls.keyMode : "black");
   setKeyMode(controls.keyMode || "auto");
   setAnchor(controls.anchor || "ground");
@@ -193,6 +198,7 @@ function captureHistoryState(label = "Изменение") {
     frameOverrides: { ...state.frameOverrides },
     frameTransforms: structuredClone(state.frameTransforms),
     timeline: state.timeline ? structuredClone(state.timeline) : null,
+    sheetDraftCells: state.sheetDraftCells ? state.sheetDraftCells.map((cell) => ({ ...cell })) : [],
   };
 }
 
@@ -235,7 +241,9 @@ function applyHistorySnapshot(snapshot) {
   state.frameOverrides = { ...(snapshot.frameOverrides || {}) };
   state.frameTransforms = structuredClone(snapshot.frameTransforms || {});
   state.timeline = snapshot.timeline ? structuredClone(snapshot.timeline) : null;
+  state.sheetDraftCells = Array.isArray(snapshot.sheetDraftCells) ? snapshot.sheetDraftCells.map((cell) => ({ ...cell })) : [];
   state.historyApplying = false;
+  if (typeof renderSheetCellList === "function") { renderSheetCellList(); drawSheetCells(); }
   updateMaskEditSummary(); renderAttachmentList();
   if (state.result) { buildFilmstrip(state.result); if (typeof refreshPlayer === "function") refreshPlayer(); }
   markPreviewDirty(); scheduleFramePreview(0); updateHistoryActions(); saveSessionSoon();
@@ -605,6 +613,8 @@ function currentFramePath() {
 }
 
 function setSource(source) {
+  resetFrameConsistency();
+  if (source?.kind === "sheet" && source.sheetPath !== state.source?.sheetPath) $("#sheetFitEach").checked = false;
   clearTimeout(posterTimer);
   clearTimeout(state.quickTimer);
   state.sourceRevision += 1;
@@ -649,6 +659,7 @@ function setSource(source) {
     setStatus("Готов к работе");
     updateActionState();
     state.history = []; state.historyIndex = -1; updateHistoryActions(); saveSessionSoon(); updateStepStates();
+    window.taskOnSource?.(null);
     return;
   }
   $("#sourceCard").classList.remove("hidden");
@@ -669,6 +680,7 @@ function setSource(source) {
     $$("#sheetSliceMode button").forEach((button) => button.classList.toggle("selected", button.dataset.sheetMode === source.sheetMode));
     $("#sheetGridFields").classList.toggle("hidden", source.sheetMode !== "grid");
   }
+  renderSheetEditor(source);
   configureTimeline(source);
   if (source.previewUrl) {
     $("#sourcePreviewImage").src = source.previewUrl;
@@ -698,9 +710,12 @@ function setSource(source) {
   state.previewMode = "after";
   setPreviewMode("after");
   scheduleFramePreview(0);
-  requestAnimationFrame(() => $("#sourceCard").scrollIntoView({ block: "nearest", behavior: "smooth" }));
+  requestAnimationFrame(() => {
+    if ($("#sourcePanel").classList.contains("active")) (document.body.dataset.task ? $("#taskGuide") : $("#sourceCard")).scrollIntoView({ block: "start", behavior: "instant" });
+  });
   if (typeof renderImageSheetControls === "function") renderImageSheetControls();
   if (typeof renderAnimationBar === "function") renderAnimationBar();
+  window.taskOnSource?.(source);
 }
 
 function resetPreview() {
@@ -717,6 +732,7 @@ function resetPreview() {
   $("#warningBox").classList.add("hidden");
   $("#completionActions").classList.add("hidden");
   $("#resultPreviewTabs").classList.add("hidden");
+  $("#depthPreviewTab").classList.add("hidden");
   $("#exportSummary").classList.add("hidden");
   state.resultDirty = false;
   $("#previewFreshness").classList.add("hidden");
@@ -742,12 +758,14 @@ function modeLabel(mode) {
 function renderRecommendations(source) {
   const recommendation = source.recommendations;
   if (!recommendation) return;
-  $("#recommendationConfidence").textContent = confidenceLabel(recommendation.confidence);
+  $("#recommendationConfidence").textContent = recommendation.keyMode === "ai"
+    ? "сложный фон"
+    : confidenceLabel(recommendation.confidence);
   const sizeText = recommendation.cellWidth && recommendation.cellHeight ? `ячейка около ${recommendation.cellWidth} × ${recommendation.cellHeight}` : "размер ячейки автоматически";
   const frameText = recommendation.estimatedFrames ? ` · примерно ${recommendation.estimatedFrames} кадров` : "";
-  const anchorText = ({ ground: "ноги на месте", center: "центр на месте", motion: "сохранить движение" })[recommendation.anchor] || "ноги на месте";
+  const anchorText = ({ ground: "ноги на месте", center: "центр на месте", body: "тело на месте", motion: "сохранить движение" })[recommendation.anchor] || "ноги на месте";
   const batchText = source.kind === "video-batch" ? " · по первому видео" : "";
-  $("#recommendationSummary").textContent = `Фон: ${modeLabel(recommendation.keyMode)} · ${recommendation.fps} FPS · ${anchorText} · ${sizeText}${frameText}${batchText}`;
+  $("#recommendationSummary").textContent = `Фон: ${modeLabel(recommendation.keyMode)} · ${recommendation.fps} FPS · ${anchorText} · ${sizeText}${frameText}${batchText}${recommendation.keyMode === "ai" ? ". Края кадра неоднородны: проверьте результат локального ИИ в превью." : ""}`;
   $("#detectedBackground").textContent = `обнаружен: ${modeLabel(recommendation.keyMode)}`;
   const strip = $("#sampleStrip");
   strip.replaceChildren();
@@ -845,13 +863,24 @@ function collectOptions() {
     tolerance: Number($("#tolerance").value), blackOutline: Number($("#blackOutline").value), blackFeather: Number($("#blackFeather").value),
     trimStart: isBatch ? 0 : Number($("#trimStart").value) || 0,
     trimEnd: isBatch ? 0 : Number($("#trimEnd").value) || 0,
-    keyMode: state.keyMode, anchor: state.anchor, autoSize: $("#autoSize").checked, autoColumns: $("#autoColumns").checked,
+    keyMode: state.keyMode, keyScope: $("#keyScope").value, anchor: state.anchor, autoSize: $("#autoSize").checked, autoColumns: $("#autoColumns").checked,
     pixelPerfect: $("#pixelPerfect").checked, removeDuplicates: $("#removeDuplicates").checked,
     outputBackground: $("#whiteOutput").checked ? "white" : "transparent",
     excludedFrames: [...state.excludedFrames], exports: collectExports(),
-    aiCutoff: Number($("#aiCutoff").value), aiSoftness: Number($("#aiSoftness").value),
+    aiCutoff: $("#aiAutoCutoff").checked ? "auto" : Number($("#aiCutoff").value), aiSoftness: Number($("#aiSoftness").value),
+    aiQuality: $("#aiQuality").value,
     aiEdits: state.maskEdits, previewFrameIndex: state.result ? state.selectedFrameIndex : 0,
     fringeCleanup: $("#fringeCleanup").checked, fringeStrength: Number($("#fringeStrength").value),
+    edgeDecontaminate: $("#edgeDecontaminate").checked,
+    edgeRefine: { mode: $("#edgeRefineMode").value, width: Number($("#edgeRefineWidth").value), depth: Number($("#edgeRefineDepth").value), whiteOnly: $("#edgeRefineWhiteOnly").checked },
+    aiProvider: $("#aiProvider").value, aiModel: $("#aiModel").value,
+    auxAI: {
+      interpolate: $("#auxRife").checked,
+      upscale: $("#auxEsrgan").checked,
+      depth: $("#auxDepth").checked,
+      inpaintMaskPath: state.auxMaskPath || null,
+    },
+    keyColor: state.keyMode === "custom" ? hexToRgb(state.solidKeyMode) : undefined,
     attachments: state.attachments.filter((attachment) => attachment.enabled !== false), attachmentPlacements: state.resultDirty ? null : state.result?.attachmentPlacements || null,
     frameOverrides: state.frameOverrides,
     frameTransforms: state.frameTransforms,
@@ -860,6 +889,15 @@ function collectOptions() {
     ...loopOptions(),
     packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
     atlasMaxSize: Number($("#atlasMaxSize").value) || 0, atlasOverflow: $("#atlasOverflow").value,
+    pixelate: $("#pixelateEnabled").checked ? {
+      size: Number($("#pixelateSize").value),
+      colors: Number($("#pixelateColors").value),
+      palette: $("#pixelatePalette").value,
+      mode: $("#pixelateMode").value,
+      dither: $("#pixelateDither").value,
+      shadingSteps: Number($("#pixelateShading").value),
+    } : null,
+    toning: $("#toningEnabled").checked ? { color: $("#toningColor").value, strength: Number($("#toningStrength").value) } : null,
   };
 }
 
@@ -900,11 +938,16 @@ function applyExportPreset(name) {
   savePreferences();
 }
 
+function hexToRgb(value) {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(value || ""));
+  return match ? [1, 2, 3].map((index) => Number.parseInt(match[index], 16)) : null;
+}
+
 function setKeyMode(mode) {
-  if (mode === "solid") state.keyMode = state.solidKeyMode || "black";
+  if (mode === "solid") state.keyMode = hexToRgb(state.solidKeyMode) ? "custom" : (state.solidKeyMode || "black");
   else if (["white", "black", "green", "blue"].includes(mode)) { state.solidKeyMode = mode; state.keyMode = mode; }
   else state.keyMode = mode;
-  const displayMode = ["white", "black", "green", "blue"].includes(state.keyMode) ? "solid" : state.keyMode;
+  const displayMode = ["white", "black", "green", "blue", "custom"].includes(state.keyMode) ? "solid" : state.keyMode;
   $$("#keyMode button").forEach((item) => {
     const selected = item.dataset.value === displayMode;
     item.classList.toggle("selected", selected);
@@ -914,12 +957,17 @@ function setKeyMode(mode) {
     const selected = item.dataset.keyColor === state.solidKeyMode;
     item.classList.toggle("selected", selected); item.setAttribute("aria-pressed", String(selected));
   });
+  const customSwatch = $("#customKeyColor");
+  if (customSwatch && hexToRgb(state.solidKeyMode)) customSwatch.value = state.solidKeyMode;
   $("#solidKeyPanel").classList.toggle("hidden", displayMode !== "solid");
+  $("#keyScopeRow").classList.toggle("hidden", displayMode === "alpha" || displayMode === "ai");
   $("#blackKeyNote").classList.toggle("hidden", state.keyMode !== "black");
   $("#blackOutlineRow").classList.toggle("hidden", state.keyMode !== "black");
   $("#blackFeatherRow").classList.toggle("hidden", state.keyMode !== "black");
   $("#toleranceRow").classList.toggle("hidden", state.keyMode === "ai");
   $("#aiCleanupPanel").classList.toggle("hidden", state.keyMode !== "ai");
+  const autoCutoff = $("#aiAutoCutoff");
+  if (autoCutoff) $("#aiCutoff").disabled = autoCutoff.checked;
   markPreviewDirty();
 }
 
@@ -981,6 +1029,10 @@ function resetRecommended() {
 }
 
 function warningSourceIndex(warning) {
+  // The processor reports the source index directly now; parsing the message is only a
+  // fallback for a report written before that field existed.
+  const explicit = state.warningRefs?.get(warning);
+  if (explicit != null) return explicit;
   const match = String(warning || "").match(/Кадр\s+(\d+)/i);
   if (!match) return null;
   const outputIndex = Number(match[1]) - 1;
@@ -995,34 +1047,55 @@ function selectWarning(delta = 0) {
   if (sourceIndex != null) selectFrame(sourceIndex);
 }
 
-function showWarnings(warnings) {
+function showWarnings(warnings, frameIssues = []) {
   const list = $("#warningList");
   list.replaceChildren();
   state.warnings = warnings || []; state.warningIndex = 0;
+  state.warningRefs = new Map((frameIssues || [])
+    .filter((issue) => issue && issue.message && issue.frameIndex != null)
+    .map((issue) => [issue.message, issue.frameIndex]));
   if (!state.warnings.length) { $("#warningBox").classList.add("hidden"); return; }
   const groups = new Map();
   state.warnings.forEach((warning) => {
-    const key = warning.includes("касается края") ? "Персонаж касается края"
-      : warning.includes("ширина силуэта") ? "Скачок ширины силуэта"
-        : warning.includes("высота силуэта") ? "Скачок высоты силуэта"
-          : warning.includes("уверенность привязки") ? "Проверьте привязку PNG"
-            : warning.includes("умная область") ? "Проверьте удаление объекта" : warning.replace(/Кадр\s+\d+:?\s*/i, "");
-    const match = warning.match(/Кадр\s+(\d+)/i);
+    const key = warning.includes("Лист:") ? "Проверка атласа"
+      : warning.includes("касается края") ? "Персонаж касается края"
+        : warning.includes("ширина силуэта") ? "Скачок ширины силуэта"
+          : warning.includes("высота силуэта") ? "Скачок высоты силуэта"
+            : warning.includes("уверенность привязки") ? "Проверьте привязку PNG"
+              : warning.includes("умная область") ? "Проверьте удаление объекта" : warning.replace(/Кадр\s+\d+:?\s*/i, "");
     if (!groups.has(key)) groups.set(key, []);
-    if (match) groups.get(key).push(Number(match[1]) - 1);
+    // Groups carry source indexes, so a click needs no further mapping.
+    const sourceIndex = warningSourceIndex(warning);
+    if (sourceIndex != null) groups.get(key).push(sourceIndex);
   });
   [...groups.entries()].slice(0, 12).forEach(([label, frameIndexes]) => {
     const item = document.createElement("li");
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = frameIndexes.length ? `${label} · ${frameIndexes.length} кадр.` : label;
-    button.className = label.includes("края") || label.includes("привязку") || label.includes("удаление") ? "severity-error" : "severity-info";
-    if (frameIndexes.length) button.addEventListener("click", () => {
-      const outputIndex = frameIndexes[0];
-      selectFrame(state.result?.sourceFrameIndexes?.[outputIndex] ?? outputIndex);
-    });
+    const severe = label.includes("края") || label.includes("привязку") || label.includes("удаление") || label.includes("атласа");
+    button.className = severe ? "severity-error" : "severity-info";
+    button.title = frameIndexes.length ? "Перейти к первому проблемному кадру" : label;
+    if (frameIndexes.length) button.addEventListener("click", () => selectFrame(frameIndexes[0]));
     item.append(button); list.append(item);
   });
+  // Offer the fix next to the problem: the silhouette comparison used to be a separate
+  // collapsed block that had to be remembered and opened by hand.
+  if (state.warnings.some((warning) => warning.includes("ширина силуэта") || warning.includes("высота силуэта"))) {
+    const item = document.createElement("li");
+    const action = document.createElement("button");
+    action.type = "button";
+    action.textContent = "Согласовать размер кадров";
+    action.className = "severity-info";
+    action.title = "Открыть анализ силуэтов и предложенный масштаб";
+    action.addEventListener("click", () => {
+      const panel = $("#consistencyPanel");
+      if (panel) panel.open = true;
+      panel?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      $("#analyzeFrameSizes").click();
+    });
+    item.append(action); list.append(item);
+  }
   $("#warningCount").textContent = String(state.warnings.length);
   $("#warningPosition").textContent = `1 / ${state.warnings.length}`;
   $("#warningBox").classList.remove("hidden");
@@ -1227,6 +1300,7 @@ function redrawMaskCanvas() {
   if (!state.maskEditorImage || !canvas.width || !canvas.height) return;
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.drawImage(state.maskEditorImage, 0, 0, canvas.width, canvas.height);
+  if (state.maskProposalOverlay) context.drawImage(state.maskProposalOverlay, 0, 0);
   if (typeof drawMaskOnion === "function") drawMaskOnion(context, canvas);
   for (const edit of state.maskEdits) {
     if (!maskEditApplies(edit)) continue;
@@ -1260,11 +1334,19 @@ function redrawMaskCanvas() {
   updateMaskEditorStatus();
 }
 
-async function openMaskEditor() {
+async function openMaskEditor({ review = false } = {}) {
   if (!state.source || state.busy) return;
+  $("#aiMaskTitle").textContent = review ? "Проверьте предложенный контур" : "Уберите лишнее один раз";
+  $("#maskModalIntro").textContent = review
+    ? "Бирюзовая линия показывает будущую вырезку. Защитите белые буквы, молнии и цветы; удалите оставшийся фон кистью. Затем примените и проверьте результат."
+    : "Выберите область — программа найдёт её в серии. Кисти оставлены для точной доводки.";
+  setMaskTool(review ? "keep" : "smart");
   setStatus("Готовлю выбранный кадр…", "busy", 0.12);
-  await requestFramePreview(currentFramePath());
-  const imageUrl = state.framePreview?.beforeUrl || state.source.previewUrl;
+  clearTimeout(state.quickTimer);
+  let proposal = await requestFramePreview(currentFramePath());
+  if (!proposal) proposal = await requestFramePreview(currentFramePath());
+  if (review && !proposal?.afterUrl) throw new Error("Контур ещё не построен. Повторите просмотр кадра.");
+  const imageUrl = proposal?.beforeUrl || state.source.previewUrl;
   if (!imageUrl) {
     setStatus("Не удалось открыть кадр для редактора", "error", 0);
     return;
@@ -1285,6 +1367,31 @@ async function openMaskEditor() {
   sourceContext.clearRect(0, 0, canvas.width, canvas.height);
   sourceContext.drawImage(image, 0, 0, canvas.width, canvas.height);
   state.maskEditorPixels = sourceContext.getImageData(0, 0, canvas.width, canvas.height).data.slice();
+  state.maskProposalOverlay = null;
+  if (proposal?.afterUrl) {
+    const afterImage = await loadUiImage(proposal.afterUrl, "Не удалось загрузить предложенный контур.");
+    const afterCanvas = document.createElement("canvas");
+    afterCanvas.width = canvas.width; afterCanvas.height = canvas.height;
+    const afterContext = afterCanvas.getContext("2d", { willReadFrequently: true });
+    afterContext.drawImage(afterImage, 0, 0, canvas.width, canvas.height);
+    const pixels = afterContext.getImageData(0, 0, canvas.width, canvas.height).data;
+    const overlay = afterContext.createImageData(canvas.width, canvas.height);
+    for (let y = 0; y < canvas.height; y += 1) for (let x = 0; x < canvas.width; x += 1) {
+      const index = y * canvas.width + x;
+      if (pixels[index * 4 + 3] < 16) {
+        if (state.maskEditorPixels[index * 4 + 3] >= 8) overlay.data.set([42, 48, 55, 150], index * 4);
+        continue;
+      }
+      const edge = x === 0 || y === 0 || x === canvas.width - 1 || y === canvas.height - 1
+        || pixels[(index - 1) * 4 + 3] < 16 || pixels[(index + 1) * 4 + 3] < 16
+        || pixels[(index - canvas.width) * 4 + 3] < 16 || pixels[(index + canvas.width) * 4 + 3] < 16;
+      if (!edge) continue;
+      overlay.data.set([0, 201, 205, 230], index * 4);
+    }
+    afterContext.clearRect(0, 0, canvas.width, canvas.height);
+    afterContext.putImageData(overlay, 0, 0);
+    state.maskProposalOverlay = afterCanvas;
+  }
   redrawMaskCanvas();
   setModalOpen($("#aiMaskModal"), true, $("#applyMaskEditor"), $("#openMaskEditor"));
   setStatus("Редактор маски открыт", "done", 0);
@@ -1295,6 +1402,7 @@ function closeMaskEditor({ discard = false } = {}) {
   state.maskDrawing = false;
   state.maskEditorImage = null;
   state.maskEditorPixels = null;
+  state.maskProposalOverlay = null;
   setModalOpen($("#aiMaskModal"), false, null, $("#openMaskEditor"));
   updateMaskEditSummary();
 }
@@ -1659,12 +1767,14 @@ function updatePreview(result) {
   $("#metaFrames").textContent = String(result.frameCount);
   $("#metaCell").textContent = `${result.cellWidth} × ${result.cellHeight}`;
   $("#metaGrid").textContent = `${result.columns} × ${result.rows}`;
-  $("#metaAnchor").textContent = ({ ground: "Земля", center: "Центр", motion: "Движение" })[state.anchor] || state.anchor;
+  $("#metaAnchor").textContent = ({ ground: "Земля", center: "Центр", body: "Тело", motion: "Движение" })[state.anchor] || state.anchor;
   if (typeof renderAtlasStatus === "function") renderAtlasStatus(result);
+  if (typeof renderAtlasInspection === "function") renderAtlasInspection(result);
   if (typeof loadPlayerFrames === "function") loadPlayerFrames(result);
-  showWarnings(result.warnings); buildFilmstrip(result);
+  showWarnings(result.warnings, result.frameIssues); buildFilmstrip(result);
   renderAttachmentList();
   $("#resultPreviewTabs").classList.remove("hidden");
+  $("#depthPreviewTab").classList.toggle("hidden", !result.depthUrls?.length);
   state.previewMode = result.frameUrls?.length || result.previewUrl ? "animation" : "sheet";
   setPreviewMode(state.previewMode);
   if (result.allSourceFramePaths?.length) selectFrame(result.sourceFrameIndexes?.[0] ?? 0, false);
@@ -1705,6 +1815,35 @@ function applyZoom() {
   $("#zoomValue").textContent = `${Math.round(realScale * 100)}%`;
   $("#zoomValue").title = state.previewMode === "game" ? "Масштаб в игре" : `Реальный масштаб: вписано ${Math.round(state.fitScale * 100)}% × зум ${Math.round(state.zoom * 100)}%`;
   if (typeof drawPlayer === "function") drawPlayer();
+  updateGuideGrid();
+}
+
+function updateGuideGrid() {
+  const layer = $("#guideLayer");
+  const image = $("#previewImage");
+  const shown = Boolean(state.guides && !image.classList.contains("hidden") && image.naturalWidth);
+  layer.classList.toggle("hidden", !shown);
+  $("#gridSpacingLabel").classList.toggle("hidden", !state.guides);
+  if (!shown) return;
+  const style = getComputedStyle(image);
+  const padLeft = parseFloat(style.paddingLeft) || 0;
+  const padRight = parseFloat(style.paddingRight) || 0;
+  const padTop = parseFloat(style.paddingTop) || 0;
+  const padBottom = parseFloat(style.paddingBottom) || 0;
+  const spaceWidth = image.clientWidth - padLeft - padRight;
+  const spaceHeight = image.clientHeight - padTop - padBottom;
+  const fit = containScale(image.naturalWidth, image.naturalHeight, spaceWidth, spaceHeight);
+  const renderedWidth = image.naturalWidth * fit;
+  const renderedHeight = image.naturalHeight * fit;
+  const imageRect = image.getBoundingClientRect();
+  const stageRect = $("#previewStage").getBoundingClientRect();
+  const zoom = state.zoom;
+  layer.style.left = `${imageRect.left - stageRect.left + (padLeft + (spaceWidth - renderedWidth) / 2) * zoom}px`;
+  layer.style.top = `${imageRect.top - stageRect.top + (padTop + (spaceHeight - renderedHeight) / 2) * zoom}px`;
+  layer.style.width = `${renderedWidth * zoom}px`;
+  layer.style.height = `${renderedHeight * zoom}px`;
+  const spacing = Math.max(2, Number($("#gridSpacing").value) * fit * zoom);
+  layer.style.backgroundSize = `${spacing}px ${spacing}px`;
 }
 
 function handToolActive() {
@@ -1724,7 +1863,7 @@ function stopViewportPan() {
 }
 
 function defaultFrameTransform() {
-  return { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0, skewX: 0, fill: null };
+  return { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0, skewX: 0, skewY: 0, fill: null };
 }
 
 function activeTransformKey() {
@@ -1743,6 +1882,7 @@ function syncTransformControls() {
   $("#transformWidth").value = String(width); $("#transformWidthValue").textContent = `${width}%`;
   $("#transformHeight").value = String(height); $("#transformHeightValue").textContent = `${height}%`;
   $("#transformSkew").value = String(Math.round(transform.skewX)); $("#transformSkewValue").textContent = `${Math.round(transform.skewX)}°`;
+  $("#transformSkewY").value = String(Math.round(transform.skewY)); $("#transformSkewYValue").textContent = `${Math.round(transform.skewY)}°`;
   $("#transformOffsetX").value = String(Math.round(transform.offsetX)); $("#transformOffsetY").value = String(Math.round(transform.offsetY));
   $("#transformFill").classList.toggle("active", transform.fill === "stretch");
   $("#transformFrameLabel").textContent = state.transformScope === "all" ? "вся анимация · выделено по прозрачности" : `кадр ${state.selectedFrameIndex + 1} · выделен по прозрачности`;
@@ -1759,6 +1899,7 @@ function writeTransformFromControls(changedAxis = null) {
     offsetX: Number($("#transformOffsetX").value) || 0,
     offsetY: Number($("#transformOffsetY").value) || 0,
     skewX: Number($("#transformSkew").value) || 0,
+    skewY: Number($("#transformSkewY").value) || 0,
     fill: null,
   };
   state.frameTransforms[activeTransformKey()] = transform;
@@ -1834,6 +1975,7 @@ function setPreviewMode(mode) {
   if (mode === "after") url = inspection?.afterUrl;
   if (mode === "animation") url = state.result?.previewUrl;
   if (mode === "sheet") url = state.result?.sheetUrl;
+  if (mode === "depth") url = state.result?.depthUrls?.[0];
   if (mode === "compare" && inspection) {
     $("#previewEmpty").classList.add("hidden");
     $("#compareBefore").src = inspection.beforeUrl; $("#compareAfter").src = inspection.afterUrl;
@@ -1990,6 +2132,7 @@ function loadPreferences() {
     $("#aiCutoffValue").textContent = $("#aiCutoff").value;
     $("#aiSoftnessValue").textContent = `${$("#aiSoftness").value} px`;
     $("#fringeStrengthValue").textContent = $("#fringeStrength").value;
+    $("#toningStrengthValue").textContent = `${$("#toningStrength").value}%`;
     Object.entries(saved.checks || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).checked = Boolean(value); });
     $("#fringeStrengthRow").classList.toggle("hidden", !$("#fringeCleanup").checked);
     state.solidKeyMode = saved.solidKeyMode || state.solidKeyMode;
@@ -2035,6 +2178,7 @@ $("#sheetSliceMode").addEventListener("click", (event) => {
   if (!button) return;
   $$("#sheetSliceMode button").forEach((item) => item.classList.toggle("selected", item === button));
   $("#sheetGridFields").classList.toggle("hidden", button.dataset.sheetMode !== "grid");
+  $("#sheetManualEditor").classList.toggle("hidden", button.dataset.sheetMode !== "manual");
 });
 $("#resliceSheet").addEventListener("click", async () => {
   if (!state.source?.sheetPath || state.busy) return;
@@ -2043,7 +2187,7 @@ $("#resliceSheet").addEventListener("click", async () => {
     setStatus("Ищу отдельные объекты на листе…", "busy", 0.1);
     const source = await window.spriteLab.resliceSheet({
       sheetPath: state.source.sheetPath,
-      options: { mode, columns: Number($("#sheetColumns").value), rows: Number($("#sheetRows").value) },
+      options: { mode, columns: Number($("#sheetColumns").value), rows: Number($("#sheetRows").value), cells: state.sheetDraftCells },
     });
     setSource(source);
   } catch (error) { setStatus(error.message || "Не удалось перенарезать лист", "error", 0); showError(error.message); }
@@ -2065,6 +2209,22 @@ $("#solidKeyColor").addEventListener("click", (event) => {
   if (!button) return;
   state.solidKeyMode = button.dataset.keyColor; setKeyMode(state.solidKeyMode); scheduleFramePreview(); pushHistory("Цвет фона изменён");
 });
+// Any colour can be the key, not only the four common ones.
+$("#customKeyColor").addEventListener("input", (event) => {
+  const value = String(event.target.value || "").toLowerCase();
+  if (!hexToRgb(value)) return;
+  state.solidKeyMode = value;
+  setKeyMode("custom");
+  scheduleFramePreview(200);
+});
+$("#customKeyColor").addEventListener("change", () => { savePreferences(); scheduleHistory("Свой цвет фона"); });
+$("#keyScope").addEventListener("change", () => { savePreferences(); markPreviewDirty(); scheduleFramePreview(0); pushHistory("Область удаления фона изменена"); });
+$("#inspectContour").addEventListener("click", async () => {
+  try { await openMaskEditor({ review: true }); } catch (error) { setStatus(error.message || "Не удалось открыть контур", "error", 0); showError(error.message); }
+});
+for (const id of ["edgeRefineMode", "edgeRefineWidth", "edgeRefineDepth", "edgeRefineWhiteOnly"]) {
+  $(`#${id}`).addEventListener("change", () => { savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Очистка кромки изменена"); });
+}
 $("#anchorMode").addEventListener("click", (event) => { const button = event.target.closest("button[data-value]"); if (button) { setAnchor(button.dataset.value); savePreferences(); pushHistory("Стабилизация изменена"); } });
 $("#processPresets").addEventListener("click", (event) => { const button = event.target.closest("button[data-preset]"); if (button) applyProcessPreset(button.dataset.preset); });
 $("#resetSettings").addEventListener("click", resetRecommended);
@@ -2073,6 +2233,28 @@ $("#blackOutline").addEventListener("input", (event) => { $("#blackOutlineValue"
 $("#blackFeather").addEventListener("input", (event) => { $("#blackFeatherValue").textContent = `${event.target.value} px`; markPreviewDirty(); scheduleFramePreview(); });
 $("#aiCutoff").addEventListener("input", (event) => { $("#aiCutoffValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(380); });
 $("#aiSoftness").addEventListener("input", (event) => { $("#aiSoftnessValue").textContent = `${event.target.value} px`; markPreviewDirty(); scheduleFramePreview(380); });
+$("#aiAutoCutoff").addEventListener("change", () => {
+  $("#aiCutoff").disabled = $("#aiAutoCutoff").checked;
+  savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Порог ИИ изменён");
+});
+$("#aiQuality").addEventListener("change", () => {
+  savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Качество ИИ изменено");
+});
+$("#pixelateEnabled").addEventListener("change", () => {
+  savePreferences(); markPreviewDirty(); scheduleFramePreview(0); pushHistory($("#pixelateEnabled").checked ? "Пиксель-арт включён" : "Пиксель-арт выключен");
+});
+for (const id of ["toningEnabled", "toningColor", "toningStrength"]) {
+  $(`#${id}`).addEventListener(id === "toningStrength" ? "input" : "change", () => {
+    $("#toningStrengthValue").textContent = `${$("#toningStrength").value}%`;
+    savePreferences(); markPreviewDirty(); scheduleFramePreview(180); scheduleHistory("Тонировка изменена");
+  });
+}
+for (const id of ["pixelateSize", "pixelateColors", "pixelateShading"]) {
+  $(`#${id}`).addEventListener("change", () => { savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Настройки пиксель-арта изменены"); });
+}
+for (const id of ["pixelatePalette", "pixelateMode", "pixelateDither"]) {
+  $(`#${id}`).addEventListener("change", () => { savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Стиль пиксель-арта изменён"); });
+}
 $("#fringeCleanup").addEventListener("change", (event) => {
   $("#fringeStrengthRow").classList.toggle("hidden", !event.target.checked);
   updateFinishingSummary();
@@ -2222,6 +2404,26 @@ $("#copyOutputPath").addEventListener("click", async () => {
 });
 $("#exportPreset").addEventListener("change", (event) => applyExportPreset(event.target.value));
 $("#saveExportProfile").addEventListener("click", () => { $("#saveExportProfile").classList.add("hidden"); $("#profileNameRow").classList.remove("hidden"); $("#profileName").focus(); });
+// The recipe is the same file the command line reads, so a session built by hand here
+// can be repeated without the interface.
+$("#saveBuildRecipe").addEventListener("click", async () => {
+  if (!state.source) { setStatus("Сначала выберите источник", "error", 0); return; }
+  try {
+    const profile = {
+      format: "chuba-sprite-lab-profile",
+      version: 1,
+      name: $("#spriteName").value || "sprite-animation",
+      ...(state.outputFolder ? { outputDir: state.outputFolder } : {}),
+      source: sourceDescriptor(),
+      options: collectOptions(),
+    };
+    const saved = await window.spriteLab.saveProfile({ profile });
+    if (saved) setStatus(`Рецепт сборки сохранён: ${saved.path}`, "done", 0);
+  } catch (error) {
+    setStatus(error.message || "Не удалось сохранить рецепт сборки", "error", 0);
+    showError(error.message || "Не удалось сохранить рецепт сборки.");
+  }
+});
 $("#confirmProfile").addEventListener("click", saveCurrentExportProfile);
 $("#deleteExportProfile").addEventListener("click", () => {
   const key = $("#exportPreset").value;
@@ -2268,10 +2470,27 @@ $("#transformScope").addEventListener("click", (event) => {
 $("#transformWidth").addEventListener("input", () => writeTransformFromControls("x"));
 $("#transformHeight").addEventListener("input", () => writeTransformFromControls("y"));
 $("#transformSkew").addEventListener("input", () => writeTransformFromControls("skew"));
+$("#transformSkewY").addEventListener("input", () => writeTransformFromControls("skew"));
 $("#transformOffsetX").addEventListener("change", () => writeTransformFromControls("offset"));
 $("#transformOffsetY").addEventListener("change", () => writeTransformFromControls("offset"));
+let transformDrag = null;
+$("#previewImage").addEventListener("pointerdown", (event) => {
+  if (!state.transformPanelOpen || handToolActive() || event.button !== 0 || !state.result) return;
+  event.preventDefault();
+  transformDrag = { x: event.clientX, y: event.clientY, offsetX: Number($("#transformOffsetX").value) || 0, offsetY: Number($("#transformOffsetY").value) || 0 };
+  event.currentTarget.setPointerCapture(event.pointerId);
+});
+$("#previewImage").addEventListener("pointermove", (event) => {
+  if (!transformDrag) return;
+  const width = Math.max(1, state.result.cellWidth * state.fitScale * state.zoom);
+  const height = Math.max(1, state.result.cellHeight * state.fitScale * state.zoom);
+  $("#transformOffsetX").value = String(Math.round(Math.max(-100, Math.min(100, transformDrag.offsetX + (event.clientX - transformDrag.x) / width * 100))));
+  $("#transformOffsetY").value = String(Math.round(Math.max(-100, Math.min(100, transformDrag.offsetY + (event.clientY - transformDrag.y) / height * 100))));
+  writeTransformFromControls("offset");
+});
+for (const name of ["pointerup", "pointercancel"]) $("#previewImage").addEventListener(name, () => { transformDrag = null; });
 $("#transformFill").addEventListener("click", () => {
-  state.frameTransforms[activeTransformKey()] = { ...activeFrameTransform(), fill: "stretch", scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0, skewX: 0 };
+  state.frameTransforms[activeTransformKey()] = { ...activeFrameTransform(), fill: "stretch", scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0, skewX: 0, skewY: 0 };
   syncTransformControls(); markPreviewDirty(); scheduleFramePreview(0); pushHistory("Объект растянут до краёв");
 });
 $("#transformShrink").addEventListener("click", () => {
@@ -2307,10 +2526,11 @@ $("#zoomFit").addEventListener("click", () => { state.zoom = 1; state.viewportPa
 new ResizeObserver(() => applyZoom()).observe($("#previewStage"));
 $("#toggleGuides").addEventListener("click", () => {
   state.guides = !state.guides;
-  $("#guideLayer").classList.toggle("hidden", !state.guides);
   $("#toggleGuides").classList.toggle("active", state.guides);
   $("#toggleGuides").setAttribute("aria-pressed", String(state.guides));
+  updateGuideGrid();
 });
+$("#gridSpacing").addEventListener("change", updateGuideGrid);
 $("#backdropToggle").addEventListener("click", () => {
   const open = $("#backdropMenu").classList.toggle("hidden") === false;
   $("#backdropToggle").setAttribute("aria-expanded", String(open));

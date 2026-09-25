@@ -6,6 +6,10 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: file:; style-src 'self'; script-src 'self';" />
     <title>Chuba Sprite Lab</title>
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./copilot.css" />
+    <link rel="stylesheet" href="./editor.css" />
+    <link rel="stylesheet" href="./theme.css" />
+    <script src="./theme.js"></script>
   </head>
   <body>
     <header class="titlebar">
@@ -23,6 +27,7 @@
         <button id="openCommands" type="button" aria-label="Открыть список команд">Команды <kbd>Ctrl K</kbd></button>
       </div>
       <div class="window-actions" aria-label="Управление окном">
+        <button id="themeToggle" class="window-button theme-toggle" type="button" aria-label="Включить светлую тему" aria-pressed="false" title="Светлая тема"><svg class="ui-icon theme-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="ui-icon theme-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5a8.5 8.5 0 1 0 12 12Z"/></svg></button>
         <button id="aboutApp" class="window-button help" type="button" aria-label="О программе"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2.5-2.5 4.5M12 17.5h.01"/></svg></button>
         <button id="minimizeWindow" class="window-button" type="button" aria-label="Свернуть"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14"/></svg></button>
         <button id="maximizeWindow" class="window-button" type="button" aria-label="Развернуть"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
@@ -38,6 +43,17 @@
           <button id="exportTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="exportPanel" data-tab="export" data-help="Сохраните спрайт-лист, кадры и данные для игры"><span>03</span>Экспорт</button>
         </nav>
         <div id="sourcePanel" class="panel active" role="tabpanel" aria-labelledby="sourceTab" data-panel="source">
+          <section id="taskWelcome" class="task-welcome">
+            <div><span class="ai-chip">ПОМОЩНИК</span><strong>Что хотите сделать?</strong><small>Выберите задачу — покажем только нужные шаги.</small></div>
+            <button id="openTaskPicker" class="button primary" type="button">Выбрать задачу</button>
+          </section>
+          <section id="taskGuide" class="task-guide hidden" aria-live="polite">
+            <div class="task-guide-top"><span class="ai-chip">ЗАДАЧА</span><button id="changeTask" type="button">Сменить задачу</button></div>
+            <h2 id="taskGuideTitle">Разнести объекты по сетке</h2>
+            <p id="taskGuideText"></p>
+            <label id="taskObjectField" class="field hidden"><span>Объект из листа</span><select id="taskObjectSelect" aria-label="Выбрать объект из листа"></select></label>
+            <div class="task-guide-actions"><button id="taskPrimary" class="button primary" type="button"></button><button id="taskSecondary" class="button secondary hidden" type="button"></button><button id="taskAdvanced" class="button ghost" type="button">Все настройки</button></div>
+          </section>
           <div class="panel-heading">
             <p class="eyebrow">ИМПОРТ</p>
             <h1>Добавьте движение</h1>
@@ -59,11 +75,11 @@
           </div>
 
           <div class="button-grid">
-            <button id="chooseSource" class="button primary" type="button">Выбрать источник</button>
+            <button id="chooseSource" class="button primary" type="button">Добавить файлы</button>
             <button id="chooseFolder" class="button secondary" type="button">Папка с кадрами</button>
-            <button id="chooseImages" class="button secondary span-2 sheet-source-button images-source-button" type="button"><span>Собрать лист из картинок</span><small>JPG · PNG · WEBP вперемешку · разный размер · порядок по имени</small></button>
             <button id="chooseSheet" class="button secondary span-2 sheet-source-button" type="button"><span>Разобрать спрайт-лист</span><small>умно найдёт объекты сложной формы</small></button>
           </div>
+          <p class="atlas-hint">«Добавить файлы» принимает видео, GIF и отдельные кадры — в том числе картинки разного размера вперемешку. Порядок — по имени с учётом чисел.</p>
 
           <button id="openProjectImport" class="project-open-card" type="button">
             <span class="project-open-icon" aria-hidden="true">↗</span>
@@ -85,14 +101,23 @@
             <div id="sheetSliceMode" class="segmented sheet-mode">
               <button type="button" data-sheet-mode="objects" class="selected">Умные объекты</button>
               <button type="button" data-sheet-mode="grid">Ровная сетка</button>
+              <button type="button" data-sheet-mode="manual">Свои рамки</button>
             </div>
             <div id="sheetGridFields" class="sheet-grid-fields hidden">
               <label class="field"><span>Столбцы</span><input id="sheetColumns" type="number" min="1" max="64" value="4" /></label>
               <label class="field"><span>Строки</span><input id="sheetRows" type="number" min="1" max="64" value="4" /></label>
             </div>
-            <label class="sheet-fit-row"><span><strong>Подогнать объекты</strong><small>каждый заполняет свою ячейку</small></span><input id="sheetFitEach" type="checkbox" checked /><i></i></label>
-            <button id="resliceSheet" class="button ghost" type="button">Перенарезать лист</button>
-            <p>Умный режим группирует близкие части одного объекта, поэтому сложная лапа или раздельный эффект останутся одним кадром.</p>
+            <div id="sheetManualEditor" class="sheet-manual-editor hidden">
+              <div class="sheet-editor-heading"><strong>РАМКИ КАДРОВ</strong><small id="sheetCellCount">0 кадр.</small></div>
+              <div class="manual-grid-controls"><label><input id="sheetShowGrid" type="checkbox" checked /> Бирюзовая сетка</label><label>Шаг <select id="sheetGridSpacing"><option value="10">10 px</option><option value="25">25 px</option><option value="50" selected>50 px</option><option value="100">100 px</option><option value="200">200 px</option><option value="500">500 px</option></select></label></div>
+              <div id="sheetEditorStage" class="sheet-editor-stage"><img id="sheetEditorImage" alt="Исходный спрайт-лист с рамками кадров" /><div id="sheetManualGrid" class="sheet-manual-grid"></div><div id="sheetCellOverlay" class="sheet-cell-overlay"></div></div>
+              <div class="sheet-editor-actions"><button id="sheetDrawCell" type="button">Нарисовать рамку</button><button id="sheetAddCell" type="button">+ Рамка</button></div>
+              <div id="sheetCellList" class="sheet-cell-list"></div>
+              <p>Координаты задаются в пикселях исходного листа. Новая нарезка сохранит оригинал без изменений.</p>
+            </div>
+            <label class="sheet-fit-row"><span><strong>Растянуть каждый кадр</strong><small>может вызвать скачок размера в анимации</small></span><input id="sheetFitEach" type="checkbox" /><i></i></label>
+            <button id="resliceSheet" class="button ghost" type="button">Нарезать по выбранным рамкам</button>
+            <p>Автообнаружение берёт полный объект без захвата соседней ячейки. После нарезки соберите новый лист и JSON на вкладке «Экспорт».</p>
           </article>
 
           <article id="imageSheetControls" class="image-sheet-controls hidden" aria-label="Лист из картинок">
@@ -144,6 +169,33 @@
         </div>
 
         <div id="processPanel" class="panel" role="tabpanel" aria-labelledby="processTab" aria-hidden="true" data-panel="process">
+          <article id="autoPilotPanel" class="auto-pilot">
+            <header>
+              <span class="ai-chip">АВТО</span>
+              <strong>Подобрать инструменты под задачу</strong>
+              <small>смотрит на кадры и решает, что применить</small>
+            </header>
+            <p>Режим сам измеряет кадры — однотонность фона, сложность края, долю полупрозрачных пикселей, плотность мелких деталей и переходы цвета — и по этим числам выбирает инструмент для каждого шага. Правила локальные и объяснимые: рядом с каждым шагом написано, почему он выбран.</p>
+            <div class="auto-pilot-actions">
+              <button id="runAutoPilot" class="button primary" type="button">Разобрать кадры</button>
+              <button id="applyAutoPilot" class="button secondary" type="button" disabled>Применить план</button>
+              <button id="openModels" class="button ghost" type="button">Модели ИИ</button>
+            </div>
+            <p id="autoPilotSummary" class="auto-pilot-summary" aria-live="polite">План ещё не построен.</p>
+            <ol id="autoPilotPlan" class="auto-pilot-plan"></ol>
+            <div id="autoPilotNeeded" class="auto-pilot-needed"></div>
+          </article>
+
+          <details class="form-section tool-details" id="auxAITools">
+            <summary><span><strong>ИИ-этапы сборки</strong><small>локальные модели · исходники остаются без изменений</small></span></summary>
+            <p class="key-note">Авто-режим включает нужные установленные модели. При ручной работе выберите этапы сами; копилот подскажет по кадрам.</p>
+            <label class="toggle-row"><span><strong>RIFE · плавнее движение</strong><small>вставить кадр между соседними кадрами</small></span><input id="auxRife" type="checkbox" /><i></i></label>
+            <label class="toggle-row"><span><strong>Real-ESRGAN · ×4</strong><small>увеличить мелкие кадры до раскладки</small></span><input id="auxEsrgan" type="checkbox" /><i></i></label>
+            <label class="toggle-row"><span><strong>Depth Anything V2</strong><small>сохранить отдельные PNG-карты глубины</small></span><input id="auxDepth" type="checkbox" /><i></i></label>
+            <div class="aux-mask-row"><span><strong>LaMa · дорисовать область</strong><small>белым на PNG-маске отмечено место для заполнения</small></span><button id="chooseLamaMask" class="button secondary" type="button">Выбрать маску</button><button id="clearLamaMask" class="button ghost hidden" type="button" aria-label="Убрать маску">×</button></div>
+            <p id="lamaMaskName" class="key-note" aria-live="polite">Маска не выбрана</p>
+          </details>
+
           <div class="panel-heading compact">
             <p class="eyebrow">ПОДГОТОВКА</p>
             <h1>Чистые кадры</h1>
@@ -183,8 +235,11 @@
                 <button type="button" data-key-color="green">Зелёный</button>
                 <button type="button" data-key-color="blue">Синий</button>
               </div>
+              <label class="field"><span>Свой цвет фона</span><input id="customKeyColor" type="color" value="#ffffff" /></label>
             </div>
-            <p id="blackKeyNote" class="key-note hidden">Удаляется только чёрный фон от краёв кадра. Защита контура автоматически масштабируется под разрешение исходника.</p>
+            <label id="keyScopeRow" class="field"><span>Где удалять цвет</span><select id="keyScope"><option value="exterior">Только фон от края кадра</option><option value="all">Весь похожий цвет</option></select><small>«От края» бережёт замкнутые белые детали. Если контур открыт, защитите текст или блики кистью маски.</small></label>
+            <button id="inspectContour" class="button secondary" type="button">Проверить и исправить контур</button>
+            <p id="blackKeyNote" class="key-note hidden">При выборе «Только фон от края» чёрный контур защищён, а толщина защиты подстраивается под разрешение.</p>
             <label id="blackOutlineRow" class="range-field hidden">
               <span>Защита чёрного контура <output id="blackOutlineValue">3</output></span>
               <input id="blackOutline" type="range" min="0" max="12" value="3" />
@@ -200,6 +255,7 @@
             <article id="aiCleanupPanel" class="ai-cleanup hidden">
               <header><span class="ai-chip">LOCAL AI</span><strong>Умная очистка</strong><small>кадры не покидают компьютер</small></header>
               <p>Однотонный фон снимается быстрым точным контуром. Нейросеть включается только для сложного фона и меняет лишь прозрачность.</p>
+              <label class="toggle-row"><span><strong>Границу подбирать самому</strong><small>порог по гистограмме кадра вместо фиксированных 50%</small></span><input id="aiAutoCutoff" type="checkbox" checked /><i></i></label>
               <label class="range-field">
                 <span>Граница силуэта <output id="aiCutoffValue">50</output></span>
                 <input id="aiCutoff" type="range" min="10" max="90" value="50" />
@@ -207,6 +263,26 @@
               <label class="range-field">
                 <span>Сглаживание края <output id="aiSoftnessValue">0 px</output></span>
                 <input id="aiSoftness" type="range" min="0" max="4" step="1" value="0" />
+              </label>
+              <label class="toggle-row"><span><strong>Убрать ореол от фона</strong><small>снимает цвет старого фона с мягкого края — заметно на мехе и волосах</small></span><input id="edgeDecontaminate" type="checkbox" /><i></i></label>
+              <label class="field"><span>Модель выделения</span>
+                <select id="aiModel">
+                  <option value="u2netp">U²-Net small — в комплекте</option>
+                </select>
+              </label>
+              <label class="field"><span>Качество маски</span>
+                <select id="aiQuality">
+                  <option value="balanced">Сбалансированно — тайлы для крупных кадров</option>
+                  <option value="fast">Быстро — один проход</option>
+                  <option value="max">Максимум — тайлы и зеркальная проверка</option>
+                </select>
+              </label>
+              <label class="field"><span>Ускоритель</span>
+                <select id="aiProvider">
+                  <option value="auto">Авто — GPU, если доступен</option>
+                  <option value="dml">Только GPU (DirectML)</option>
+                  <option value="cpu">Только процессор</option>
+                </select>
               </label>
             </article>
           </div>
@@ -241,6 +317,16 @@
               <span>Сила очистки <output id="fringeStrengthValue">55</output></span>
               <input id="fringeStrength" type="range" min="1" max="100" value="55" />
             </label>
+            <div class="advanced-panel edge-refine-controls">
+              <div class="section-label"><span>КРОМКА В ПИКСЕЛЯХ</span><small>видно в предпросмотре · исходник не меняется</small></div>
+              <div class="form-grid">
+                <label class="field"><span>Действие</span><select id="edgeRefineMode"><option value="none">Не менять</option><option value="trim">Срезать кромку</option><option value="recolor">Перекрасить изнутри</option></select></label>
+                <label class="field"><span>Ширина</span><select id="edgeRefineWidth"><option value="1">1 пиксель</option><option value="3">3 пикселя</option></select></label>
+                <label class="field"><span>Брать цвет с глубины</span><select id="edgeRefineDepth"><option value="2">2 пикселя</option><option value="5">5 пикселей</option></select></label>
+              </div>
+              <label class="toggle-row"><span><strong>Беречь цветные края</strong><small>Перекрашивать только почти белые пиксели; белые детали внутри не затрагиваются.</small></span><input id="edgeRefineWhiteOnly" type="checkbox" checked /><i></i></label>
+              <p class="atlas-hint">Срез удаляет все цвета на 1–3 пикселях вдоль прозрачной границы, включая тонкие линии. Для открытого комиксного контура сначала проверьте маску и защитите буквы или молнии.</p>
+            </div>
           </details>
 
           <div class="form-section">
@@ -248,8 +334,20 @@
             <div class="anchor-grid" id="anchorMode">
               <button type="button" data-value="ground" class="anchor-card selected"><i class="anchor-ground"></i><strong>Ноги на месте</strong><small>ходьба · атака</small></button>
               <button type="button" data-value="center" class="anchor-card"><i class="anchor-center"></i><strong>Центр на месте</strong><small>эмоции · эффекты</small></button>
+              <button type="button" data-value="body" class="anchor-card"><i class="anchor-center"></i><strong>Тело на месте</strong><small>длинная нить · хвост</small></button>
               <button type="button" data-value="motion" class="anchor-card"><i class="anchor-motion"></i><strong>Сохранить движение</strong><small>прыжок · падение</small></button>
             </div>
+          </div>
+
+          <div class="form-section">
+            <details id="consistencyPanel" class="consistency-panel">
+              <summary>Согласовать размер кадров <span>опорный кадр · силуэт · точка привязки</span></summary>
+              <p>Выберите эталон. Программа сравнит габарит контура каждого кадра с ним и предложит масштаб для похожих поз. Разные позы остаются для ручной проверки.</p>
+              <div class="form-grid"><label class="field"><span>Опорный кадр</span><input id="consistencyReference" type="number" min="1" max="256" value="1" /></label><label class="field"><span>Опорная точка силуэта</span><select id="consistencyAnchor"><option value="center">Центр</option><option value="ground">Низ</option></select></label></div>
+              <button id="analyzeFrameSizes" class="button ghost" type="button">Анализировать кадры</button>
+              <div id="frameSizeList" class="frame-size-list"></div>
+              <button id="applyFrameSizes" class="button secondary hidden" type="button">Применить выбранный масштаб</button>
+            </details>
           </div>
 
           <div class="form-section quick-grid">
@@ -257,10 +355,57 @@
             <label class="field"><span>Поля</span><input id="padding" type="number" min="0" max="512" value="20" /></label>
           </div>
 
-          <div class="toggle-list">
-            <label class="toggle-row"><span><strong>Авторазмер ячейки</strong><small>по самому крупному силуэту</small></span><input id="autoSize" type="checkbox" checked /><i></i></label>
-            <label class="toggle-row"><span><strong>Автосетка</strong><small>компактное количество столбцов</small></span><input id="autoColumns" type="checkbox" checked /><i></i></label>
-          </div>
+          <details class="advanced-panel" id="toningPanel">
+            <summary><span>Тонировка</span><small>цвет кадра без изменения прозрачности</small></summary>
+            <label class="toggle-row"><span><strong>Тонировать спрайты</strong><small>Сохраняет светлые и тёмные области на прежних местах</small></span><input id="toningEnabled" type="checkbox" /><i></i></label>
+            <div class="form-grid advanced-grid">
+              <label class="field"><span>Цвет</span><input id="toningColor" type="color" value="#8bb8ff" /></label>
+            </div>
+            <label class="range-field"><span>Сила тонировки <output id="toningStrengthValue">35%</output></span><input id="toningStrength" type="range" min="0" max="100" value="35" /></label>
+            <p class="atlas-hint">Тонировка меняет оттенок. Перенос нарисованных теней и бликов требует отдельной карты освещения.</p>
+          </details>
+
+          <details class="advanced-panel" id="pixelatePanel">
+            <summary><span>Пиксель-арт</span><small>перерисовать кадры: палитра · стиль · дизеринг</small></summary>
+            <label class="toggle-row"><span><strong>Включить перерисовку</strong><small>кадры превращаются в пиксель-арт после удаления фона</small></span><input id="pixelateEnabled" type="checkbox" /><i></i></label>
+            <div class="form-grid advanced-grid">
+              <label class="field"><span>Размер пикселя</span><input id="pixelateSize" type="number" min="2" max="64" value="4" /></label>
+              <label class="field"><span>Цветов (своя палитра)</span><input id="pixelateColors" type="number" min="2" max="256" value="16" /></label>
+              <label class="field"><span>Палитра</span>
+                <select id="pixelatePalette">
+                  <option value="auto">Своя — по картинке</option>
+                  <option value="gameboy">Game Boy — 4 цвета</option>
+                  <option value="pico8">PICO-8 — 16</option>
+                  <option value="c64">Commodore 64 — 16</option>
+                  <option value="cga">CGA — 4</option>
+                  <option value="zx">ZX Spectrum — 8</option>
+                  <option value="grayscale4">Оттенки серого — 4</option>
+                  <option value="grayscale16">Оттенки серого — 16</option>
+                </select>
+              </label>
+              <label class="field"><span>Стиль рисования</span>
+                <select id="pixelateMode">
+                  <option value="clean">Чистый — только палитра</option>
+                  <option value="shaded">Плоский тон — ступени цвета</option>
+                  <option value="outline">С контуром — как в спрайте</option>
+                  <option value="lineart">Штриховой — тушь по контуру</option>
+                  <option value="stitch">Стежок — узорный дизеринг</option>
+                </select>
+              </label>
+              <label class="field"><span>Дизеринг</span>
+                <select id="pixelateDither">
+                  <option value="none">Без дизеринга</option>
+                  <option value="bayer2">Упорядоченный 2×2</option>
+                  <option value="bayer4">Упорядоченный 4×4</option>
+                  <option value="bayer8">Упорядоченный 8×8</option>
+                  <option value="floyd">Диффузия Флойда — Штейнберга</option>
+                  <option value="atkinson">Диффузия Аткинсона</option>
+                </select>
+              </label>
+              <label class="field"><span>Ступеней тона</span><input id="pixelateShading" type="number" min="2" max="8" value="4" /></label>
+            </div>
+            <p class="atlas-hint">Для палитр старого железа лучше подходит упорядоченный дизеринг: диффузия на насыщенных 16 цветах рассыпается в крапинки. Штриховой стиль игнорирует палитру и берёт из неё только цвет туши и бумаги.</p>
+          </details>
 
           <details class="advanced-panel">
             <summary><span>Расширенные настройки</span><small>сетка · размеры · оптимизация</small></summary>
@@ -271,6 +416,8 @@
               <label class="field"><span>Макс. кадров</span><input id="maxFrames" type="number" min="1" max="1000" value="192" /></label>
             </div>
             <div class="toggle-list">
+            <label class="toggle-row"><span><strong>Авторазмер ячейки</strong><small>по самому крупному силуэту</small></span><input id="autoSize" type="checkbox" checked /><i></i></label>
+            <label class="toggle-row"><span><strong>Автосетка</strong><small>компактное количество столбцов</small></span><input id="autoColumns" type="checkbox" checked /><i></i></label>
             <label class="toggle-row"><span><strong>Пиксельная резкость</strong><small>масштабирование без размытия</small></span><input id="pixelPerfect" type="checkbox" checked /><i></i></label>
             <label class="toggle-row"><span><strong>Удалять точные дубли</strong><small>без потери промежуточного движения</small></span><input id="removeDuplicates" type="checkbox" checked /><i></i></label>
             <label class="toggle-row"><span><strong>Белый итоговый фон</strong><small>выключено — прозрачный PNG</small></span><input id="whiteOutput" type="checkbox" /><i></i></label>
@@ -305,7 +452,7 @@
 
           <label class="field wide"><span id="spriteNameLabel">Имя набора</span><input id="spriteName" type="text" value="sprite-animation" spellcheck="false" /></label>
 
-          <label class="field wide"><span>Профиль экспорта</span>
+          <label class="field wide"><span>Состав файлов</span>
             <select id="exportPreset">
               <option value="chuba">Chuba the Game</option>
               <option value="sheet">Обычный спрайт-лист</option>
@@ -316,10 +463,12 @@
             </select>
           </label>
           <div class="profile-actions">
-            <button id="saveExportProfile" class="button ghost" type="button">Сохранить текущий профиль</button>
-            <button id="deleteExportProfile" class="button ghost hidden" type="button">Удалить профиль</button>
-            <div id="profileNameRow" class="profile-name-row hidden"><input id="profileName" type="text" maxlength="32" placeholder="Название профиля" /><button id="confirmProfile" type="button">Сохранить</button><button id="cancelProfile" type="button">×</button></div>
+            <button id="saveExportProfile" class="button ghost" type="button">Сохранить состав</button>
+            <button id="deleteExportProfile" class="button ghost hidden" type="button">Удалить состав</button>
+            <div id="profileNameRow" class="profile-name-row hidden"><input id="profileName" type="text" maxlength="32" placeholder="Название состава" /><button id="confirmProfile" type="button">Сохранить</button><button id="cancelProfile" type="button">×</button></div>
           </div>
+          <button id="saveBuildRecipe" class="button ghost" type="button" title="Сохранить все настройки как рецепт для сборки без интерфейса">Сохранить рецепт сборки…</button>
+          <p class="atlas-hint">Рецепт — обычный JSON: тот же набор можно собрать командой <code>npm run cli -- --profile файл.recipe.json</code>.</p>
 
           <div class="destination-card">
             <div>
@@ -361,6 +510,7 @@
                   <option value="phaser3">Phaser 3 (multiatlas)</option>
                   <option value="godot">Godot 4 (SpriteFrames)</option>
                   <option value="texturepacker">TexturePacker JSON-hash</option>
+                  <option value="unity">Unity (C# для нарезки)</option>
                 </select>
               </label>
               <label class="field"><span>Упаковка</span>
@@ -395,6 +545,11 @@
                 <button type="button" data-overflow="columns">Пересчитать столбцы</button>
                 <button type="button" data-overflow="split">Разбить на листы</button>
               </div>
+            </article>
+            <article id="atlasInspection" class="atlas-warning hidden" role="status">
+              <header><span>✓</span><strong id="atlasInspectionTitle">ПРОВЕРКА НАБОРА</strong></header>
+              <p id="atlasInspectionText"></p>
+              <div id="atlasInspectionList" class="atlas-warning-actions"></div>
             </article>
             <p id="animationExportNote" class="animation-export-note hidden"></p>
           </section>
@@ -432,6 +587,7 @@
             <div id="resultPreviewTabs" class="preview-group hidden"><span>РЕЗУЛЬТАТ</span><div class="preview-tabs">
               <button type="button" data-preview="animation">Движение</button>
               <button type="button" data-preview="sheet">Лист</button>
+              <button id="depthPreviewTab" type="button" data-preview="depth" class="hidden">Глубина</button>
               <button type="button" data-preview="game" title="Игровой масштаб и проверка на фоне уровня">В игре</button>
             </div></div>
           </div>
@@ -476,12 +632,14 @@
             <label class="transform-lock"><input id="transformLock" type="checkbox" checked /><span>Сохранять пропорции</span></label>
             <label><span>Ширина <output id="transformWidthValue">100%</output></span><input id="transformWidth" type="range" min="25" max="250" value="100" /></label>
             <label><span>Высота <output id="transformHeightValue">100%</output></span><input id="transformHeight" type="range" min="25" max="250" value="100" /></label>
-            <label><span>Наклон перспективы <output id="transformSkewValue">0°</output></span><input id="transformSkew" type="range" min="-35" max="35" value="0" /></label>
+            <label><span>Наклон по X <output id="transformSkewValue">0°</output></span><input id="transformSkew" type="range" min="-35" max="35" value="0" /></label>
+            <label><span>Наклон по Y <output id="transformSkewYValue">0°</output></span><input id="transformSkewY" type="range" min="-35" max="35" value="0" /></label>
             <div class="transform-offsets"><label><span>По X</span><input id="transformOffsetX" type="number" min="-100" max="100" value="0" /></label><label><span>По Y</span><input id="transformOffsetY" type="number" min="-100" max="100" value="0" /></label></div>
             <div class="transform-actions"><button id="transformFill" type="button">До краёв</button><button id="transformShrink" type="button">Уменьшить</button><button id="transformReset" type="button">Сбросить</button></div>
             <p>Значения X/Y — проценты от размера ячейки. Инструмент меняет итоговый спрайт, а «Рука» двигает только обзор.</p>
           </section>
-          <div class="stage-tools">
+        </div>
+        <div class="stage-tools" role="toolbar" aria-label="Инструменты предпросмотра">
             <button id="handTool" type="button" title="Рука: удерживайте Пробел и перетаскивайте" aria-label="Инструмент Рука" aria-pressed="false"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 13V6a1.5 1.5 0 0 1 3 0v5-7a1.5 1.5 0 0 1 3 0v7-5a1.5 1.5 0 0 1 3 0v5-2a1.5 1.5 0 0 1 3 0v5c0 4-2.5 6-6.5 6H11c-2 0-3.1-.7-4.2-2.1L4 14.4a1.6 1.6 0 0 1 2.3-2.2L8 14"/></svg></button>
             <button id="transformTool" type="button" title="Выделить и изменить объект" aria-label="Трансформация объекта" aria-pressed="false"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1" stroke-dasharray="3 2"/><path d="M9 2v6M6 5h6M15 22v-6m3 3h-6"/></svg></button>
             <span class="stage-tool-divider" aria-hidden="true"></span>
@@ -490,7 +648,8 @@
             <button id="zoomIn" type="button" title="Увеличить" aria-label="Увеличить"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
             <button id="zoomFit" type="button">Вписать</button>
             <span class="stage-tool-divider" aria-hidden="true"></span>
-            <button id="toggleGuides" type="button" aria-pressed="false"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 4v16M4 12h16"/></svg><span>Сетка</span></button>
+            <button id="toggleGuides" type="button" aria-pressed="false" title="Вспомогательная сетка 32 px поверх предпросмотра; экспорт не меняется"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 4v16M4 12h16"/></svg><span>Сетка</span></button>
+            <label id="gridSpacingLabel" class="grid-spacing hidden"><span>Шаг</span><select id="gridSpacing" aria-label="Шаг сетки в пикселях изображения"><option value="10">10 px</option><option value="25">25 px</option><option value="50" selected>50 px</option><option value="100">100 px</option><option value="200">200 px</option><option value="500">500 px</option></select></label>
             <div class="backdrop-control">
               <button id="backdropToggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="backdropMenu" title="Подложка только для просмотра"><span id="backdropCurrentSwatch" class="backdrop-swatch checker" aria-hidden="true"></span><span>Подложка</span><svg class="ui-icon chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
               <div id="backdropMenu" class="backdrop-menu hidden" role="group" aria-label="Подложка предпросмотра">
@@ -505,7 +664,6 @@
               </div>
             </div>
           </div>
-        </div>
 
         <div id="filmstripBar" class="filmstrip-bar hidden">
           <div id="filmstrip" class="filmstrip"></div>
@@ -515,6 +673,7 @@
             <button id="duplicateFrame" class="filmstrip-action" type="button" title="Повторить кадр в таймлайне (Ctrl+D)">Дублировать</button>
             <button id="excludeFrame" class="filmstrip-action" type="button">Исключить кадр</button>
             <button id="editFrame" class="filmstrip-action edit" type="button">Редактировать кадр</button>
+            <button id="openPixelEditor" class="filmstrip-action edit" type="button" title="Встроенный пиксельный редактор">Пиксельный редактор</button>
           </div>
         </div>
 
@@ -551,12 +710,18 @@
       <article class="about-card">
         <button id="closeAbout" class="about-close" type="button" aria-label="Закрыть">×</button>
         <div class="about-brand" aria-hidden="true">
-          <img class="brand-logo" src="../assets/hanuman-media-mark.png" alt="" />
+          <img class="brand-logo" src="../assets/hanuman-media-logo.png" alt="" />
           <span>HANUMAN<br />MEDIA COMPANY</span>
         </div>
         <p class="eyebrow">О ПРОГРАММЕ</p>
         <h2 id="aboutTitle">Chuba Sprite Lab</h2>
         <p class="about-version">Версия <strong id="aboutVersion">1.7.0</strong></p>
+        <label class="about-locale"><span>Язык интерфейса</span>
+          <select id="locale" aria-label="Язык интерфейса">
+            <option value="ru">Русский</option>
+            <option value="en">English</option>
+          </select>
+        </label>
         <p class="about-lead">Локальный инструмент подготовки видео и последовательностей кадров в игровые спрайт-листы.</p>
         <dl class="about-meta">
           <div><dt>Автор и правообладатель</dt><dd>Hanuman Media Company<br />Demidenko Dmitriy</dd></div>
@@ -591,21 +756,21 @@
           <div>
             <p class="eyebrow">УМНОЕ УДАЛЕНИЕ · ЛОКАЛЬНО</p>
             <h2 id="aiMaskTitle">Уберите лишнее один раз</h2>
-            <p>Выберите область — программа найдёт её в серии. Кисти оставлены для точной доводки.</p>
+            <p id="maskModalIntro">Выберите область — программа найдёт её в серии. Кисти оставлены для точной доводки.</p>
           </div>
           <button id="closeMaskEditor" class="about-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <div class="mask-editor-layout">
           <div class="mask-canvas-shell">
             <canvas id="maskCanvas" aria-label="Редактор маски выбранного кадра"></canvas>
-            <div class="mask-canvas-legend"><span class="track-dot"></span> отслеживать <span class="erase-dot"></span> удалить <span class="keep-dot"></span> защитить</div>
+            <div class="mask-canvas-legend"><span style="color:#00c9cd">▰</span> предлагаемый контур · затемнено удалится <span class="track-dot"></span> область <span class="erase-dot"></span> удалить <span class="keep-dot"></span> защитить</div>
           </div>
           <aside class="mask-tools">
             <div class="section-label"><span>ИНСТРУМЕНТ</span><small>выберите действие</small></div>
             <div id="maskBrushMode" class="mask-mode" role="group" aria-label="Режим кисти">
               <button type="button" data-mode="smart" class="selected"><i></i><span><strong>Умная область</strong><small>найти во всех кадрах</small></span></button>
               <button type="button" data-mode="erase"><i></i><span><strong>Удалить кистью</strong><small>ручная доводка</small></span></button>
-              <button type="button" data-mode="keep"><i></i><span><strong>Защитить</strong><small>деталь персонажа</small></span></button>
+              <button type="button" data-mode="keep"><i></i><span><strong>Защитить</strong><small>букву, цветок или блик</small></span></button>
             </div>
             <label id="smartRegionRow" class="range-field mask-size">
               <span>Чувствительность области <output id="smartRegionToleranceValue">42</output></span>
@@ -674,6 +839,94 @@
           <span id="attachmentEditorStatus">PNG не выбран</span>
           <div><button id="cancelAttachmentEditor" class="button ghost" type="button">Отмена</button><button id="saveAttachment" class="button primary" type="button" disabled>Добавить к анимации</button></div>
         </footer>
+      </article>
+    </div>
+
+    <div id="pixelEditorModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="pixelEditorTitle">
+      <article class="pixel-editor-card">
+        <header class="pixel-editor-head">
+          <h2 id="pixelEditorTitle">Пиксельный редактор</h2>
+          <span id="pixelEditorBadge" class="pixel-editor-badge">КАДР 1</span>
+          <span id="pixelEditorSize" class="pixel-editor-size">—</span>
+          <button id="closePixelEditor" class="about-close" type="button" aria-label="Закрыть">×</button>
+        </header>
+
+        <div class="pixel-editor-stage">
+          <div class="pixel-toolbar" role="toolbar" aria-label="Инструменты пиксельного редактора">
+            <button id="pixelToolPencil" class="pixel-tool" type="button" title="Карандаш (P)">✎</button>
+            <button id="pixelToolEraser" class="pixel-tool" type="button" title="Ластик (E)">⌫</button>
+            <button id="pixelToolFill" class="pixel-tool" type="button" title="Заливка (G)">▨</button>
+            <button id="pixelToolPicker" class="pixel-tool" type="button" title="Пипетка (I)">⌖</button>
+            <label class="pixel-tool-group">Кисть
+              <input id="pixelBrushSize" type="range" min="1" max="16" step="1" value="1" />
+              <span id="pixelBrushValue">1 px</span>
+            </label>
+            <label class="pixel-tool-group">Цвет
+              <input id="pixelInkColor" type="color" value="#111111" />
+            </label>
+            <label class="pixel-tool-group" title="Насколько похожими должны быть цвета для заливки и какую кайму считать прозрачной">Разброс
+              <input id="pixelTolerance" type="range" min="0" max="255" step="1" value="24" />
+              <span id="pixelToleranceValue">24</span>
+            </label>
+            <button id="pixelEraseTransparent" class="pixel-tool-button" type="button" title="Стереть почти прозрачную кайму вокруг спрайта">Стереть кайму</button>
+            <div class="pixel-tool-group">
+              <button id="pixelZoomOut" class="pixel-tool-button" type="button" title="Уменьшить масштаб (-)">−</button>
+              <span id="pixelZoomValue">8×</span>
+              <button id="pixelZoomIn" class="pixel-tool-button" type="button" title="Увеличить масштаб (+)">+</button>
+              <button id="pixelZoomFit" class="pixel-tool-button" type="button" title="Вписать кадр в окно">Вписать</button>
+            </div>
+            <div class="pixel-tool-group">
+              <button id="pixelUndo" class="pixel-tool-button" type="button" title="Отменить (Ctrl+Z)">↶ Отменить</button>
+              <button id="pixelRedo" class="pixel-tool-button" type="button" title="Вернуть (Ctrl+Shift+Z)">↷ Вернуть</button>
+            </div>
+            <label class="pixel-tool-group">
+              <input id="pixelGrid" type="checkbox" checked /> Сетка
+            </label>
+          </div>
+          <div id="pixelCanvasWrap" class="pixel-canvas-wrap">
+            <canvas id="pixelCanvas" width="64" height="64"></canvas>
+          </div>
+        </div>
+
+        <aside class="pixel-editor-side">
+          <section class="pixel-panel">
+            <header>Цвета кадра</header>
+            <div id="pixelPalette" class="pixel-palette"></div>
+          </section>
+          <section class="pixel-panel">
+            <header>Слои <span id="pixelLayerCount">1</span>
+              <button id="pixelAddLayer" class="pixel-tool-button" type="button" title="Добавить слой">＋</button>
+              <button id="pixelRemoveLayer" class="pixel-tool-button" type="button" title="Удалить активный слой">−</button>
+            </header>
+            <ul id="pixelLayers" class="pixel-layers"></ul>
+          </section>
+          <section class="pixel-panel">
+            <header>Подсказка</header>
+            <p id="pixelEditorHint" class="pixel-editor-hint">Откройте кадр из полосы кадров.</p>
+            <p class="pixel-editor-hint">Ctrl+Z — отменить, Ctrl+Shift+Z — вернуть, Ctrl+S — сохранить кадр в спрайт-лист, Esc — закрыть.</p>
+          </section>
+        </aside>
+
+        <footer class="pixel-editor-foot">
+          <span id="pixelCursorInfo">—</span>
+          <span id="pixelEditorStatus" class="pixel-editor-status ready">Откройте кадр из полосы кадров.</span>
+          <button id="pixelSaveFrame" class="button primary pixel-editor-save" type="button">Сохранить кадр</button>
+        </footer>
+      </article>
+    </div>
+
+    <div id="modelsModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modelsTitle">
+      <article class="models-card">
+        <button id="closeModels" class="about-close" type="button" aria-label="Закрыть">×</button>
+        <p class="eyebrow">ЛОКАЛЬНЫЕ МОДЕЛИ</p>
+        <h2 id="modelsTitle">Модели ИИ</h2>
+        <p class="models-lead">Веса не входят в сборку: они скачиваются по требованию и проверяются дважды — по размеру файла и, когда издатель публикует её, по контрольной сумме SHA-256. Отдельная кнопка запускает модель и проверяет, что она действительно работает. В списке только то, что разрешено использовать коммерчески.</p>
+        <div class="models-toolbar">
+          <button id="openModelsFolder" class="button secondary" type="button">Открыть папку моделей</button>
+          <span id="modelsDirectory" class="models-directory"></span>
+        </div>
+        <div id="modelsList" class="models-list" aria-live="polite"></div>
+        <details class="models-rejected"><summary>Что не взяли и почему</summary><div id="modelsRejected"></div></details>
       </article>
     </div>
 
@@ -759,7 +1012,49 @@
       <div><span class="drop-icon"><span></span><span></span><span></span></span><strong>Отпустите файлы</strong><small>видео, кадры, GIF или папка — в любом месте окна</small></div>
     </div>
 
+    <button id="copilotPet" class="copilot-pet" type="button" aria-label="Помощник" aria-expanded="false" data-mood="idle">
+      <img class="copilot-pet-art" src="../assets/mascot.png" alt="" />
+      <span id="copilotBadge" class="copilot-badge hidden">0</span>
+    </button>
+    <button id="copilotRestore" class="copilot-restore hidden" type="button" title="Вернуть помощника" aria-label="Вернуть помощника">
+      <img class="copilot-pet-art" src="../assets/mascot.png" alt="" />
+    </button>
+
+    <aside id="copilotPanel" class="copilot-panel hidden" aria-label="Помощник">
+      <header>
+        <img src="../assets/mascot.png" alt="" />
+        <div><strong>Помощник</strong><small id="copilotStatus">Замечаний нет</small></div>
+        <button id="copilotRefresh" type="button" title="Обновить подсказки">Обновить</button>
+        <button id="copilotHide" type="button" title="Скрыть помощника до следующего запуска">Скрыть</button>
+        <button id="copilotClose" type="button" aria-label="Закрыть панель">×</button>
+      </header>
+      <section class="copilot-tasks" aria-label="Выбор задачи">
+        <strong>Выберите задачу</strong>
+        <article data-task="layout"><strong>Разнести объекты по сетке</strong><small>Готовый лист → отдельные кадры → новый лист и JSON</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="remove"><strong>Убрать объект из кадров</strong><small>Лист или видео → выделить лишнее → новый лист</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="background"><strong>Удалить фон</strong><small>Прозрачность и чистый край</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="animation"><strong>Собрать анимацию</strong><small>Видео или кадры → атлас</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="combine"><strong>Собрать общий атлас объектов</strong><small>Несколько PNG/JPG/WebP → один лист + JSON координат</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="extract"><strong>Вырезать один объект из листа</strong><small>PNG/JPG/WebP с объектами → отдельный PNG</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="objectEdit"><strong>Изменить объект и вернуть в лист</strong><small>Лист → выбранный объект → редактор → новый лист + JSON</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="match"><strong>Выровнять размеры персонажа</strong><small>Лист или кадры → опорный кадр → единый габарит</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="edit"><strong>Править кадры</strong><small>Размер, контур, ручные исправления</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="cutout"><strong>Вырезать объект</strong><small>JPG · PNG · WebP → прозрачный PNG</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="stylize"><strong>Стилизовать в пиксель-арт</strong><small>Фото или кадр → пиксельный PNG</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="depth"><strong>Построить карту глубины</strong><small>Фото или кадры → PNG глубины</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="upscale"><strong>Увеличить небольшой спрайт</strong><small>Рисунок → Real-ESRGAN ×4 → PNG</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+      </section>
+      <div id="copilotList" class="copilot-list"></div>
+    </aside>
+
+    <script src="./i18n.js"></script>
     <script src="./renderer.js"></script>
     <script src="./studio.js"></script>
+    <script src="./sheet-editor.js"></script>
+    <script src="./frame-consistency.js"></script>
+    <script src="./copilot.js"></script>
+    <script src="./sprite-editor.js"></script>
+    <script src="./auto-pilot.js"></script>
+    <script src="./task-mode.js"></script>
   </body>
 </html>

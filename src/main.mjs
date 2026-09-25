@@ -8,9 +8,17 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sharp from "sharp";
-import { inspectSource, makeSourcePreview, processAnimationSet, processFramePreview, processSprites, processVideoBatch, supportedImageExtensions } from "./processor.mjs";
+import { analyzeFrameConsistency, inspectSource, makeSourcePreview, processAnimationSet, processFramePreview, processSprites, processVideoBatch, resolveBinary, supportedImageExtensions } from "./processor.mjs";
 import { sliceSpriteSheet } from "./sheet-slicer.mjs";
+import { matchSheetFrameNames, readSheetFrameRects } from "./sheet-metadata.mjs";
+import { describePaths as describePathsFrom, describeSpriteSheet as describeSpriteSheetFrom, describeVideoBatch as describeVideoBatchFrom } from "./source-describe.mjs";
 import { assertGitHubDownloadUrl, compareVersions, parseSha256 } from "./update-utils.mjs";
+import { resolveAIModel, segmentSubject } from "./ai-segmentation.mjs";
+import { finishSheetImport, makeTempWorkspace, pruneStaleTempWorkspaces } from "./temp-workspace.mjs";
+import { planSuggestions, planTaskScenarios } from "./copilot-rules.mjs";
+import * as editorSession from "./editor-session.mjs";
+import * as autoPilot from "./auto-pilot.mjs";
+import { assertDownloadUrl, canDownload, modelById, modelFiles, rejectedModels, validateModelFile, verificationOf } from "./ai-models.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, "..");
@@ -18,6 +26,17 @@ let mainWindow = null;
 let activeJob = null;
 const selfTestMode = process.argv.includes("--self-test") || process.env.CHUBA_SPRITE_SELF_TEST === "1";
 const startupProbePath = process.env.CHUBA_SPRITE_STARTUP_PROBE || "";
+
+function argumentValue(name) {
+  const index = process.argv.indexOf(name);
+  return index >= 0 && process.argv[index + 1] ? process.argv[index + 1] : "";
+}
+
+// Screenshot mode renders the window offscreen and writes a PNG, so the interface can be
+// reviewed without a desktop session and without capturing anything else on the screen.
+const screenshotArgument = argumentValue("--screenshot") || process.env.CHUBA_SPRITE_SCREENSHOT || "";
+const screenshotPath = screenshotArgument ? path.resolve(screenshotArgument) : "";
+const screenshotScript = argumentValue("--screenshot-js") || process.env.CHUBA_SPRITE_SCREENSHOT_JS || "";
 const videoExtensions = new Set([".mp4", ".webm", ".mov", ".mkv", ".avi", ".gif"]);
 const repositoryUrl = "https://github.com/imlineking/chuba-sprite-lab";
 const latestReleaseApi = "https://api.github.com/repos/imlineking/chuba-sprite-lab/releases/latest";
@@ -137,6 +156,21 @@ async function installPortableUpdate(downloadedFile) {
   setTimeout(() => app.quit(), 500);
 }
 
+// The very first capture of a freshly created window can fail inside Chromium's
+// compositor ("UnknownVizError") before it has produced a frame, so it is retried.
+async function capturePageWithRetry(attempts = 6) {
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await mainWindow.webContents.capturePage();
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  throw lastError;
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -176,6 +210,32 @@ function createWindow() {
       setTimeout(() => app.exit(result.visible ? 0 : 1), 250);
     });
   }
+  if (screenshotPath) {
+    // capturePage() renders the page into an offscreen buffer, so the result does not
+    // depend on window focus, on the active desktop, or on what else is on the screen.
+    const captureTimeout = setTimeout(() => {
+      console.error("Снимок интерфейса не сделан: страница не загрузилась за 20 секунд.");
+      app.exit(1);
+    }, 20_000);
+    mainWindow.webContents.once("did-finish-load", async () => {
+      try {
+        // Let the renderer scripts finish their first paint before capturing.
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        if (screenshotScript) {
+          await mainWindow.webContents.executeJavaScript(await fs.readFile(screenshotScript, "utf8"), true);
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+        const image = await capturePageWithRetry();
+        await fs.writeFile(screenshotPath, image.toPNG());
+        clearTimeout(captureTimeout);
+        app.exit(0);
+      } catch (error) {
+        clearTimeout(captureTimeout);
+        console.error(error);
+        app.exit(1);
+      }
+    });
+  }
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
     reportStartupFailure("renderer-gone", new Error(`Процесс интерфейса завершился: ${details.reason}.`));
   });
@@ -183,47 +243,11 @@ function createWindow() {
   mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
 }
 
-async function describePaths(kind, paths) {
-  if (!paths?.length) return null;
-  const source = await inspectSource({ kind, paths, appRoot });
-  return {
-    ...source,
-    previewUrl: source.previewPath ? pathToFileURL(source.previewPath).href : null,
-    sampleUrls: (source.samplePaths || []).map((item) => pathToFileURL(item).href),
-  };
-}
-
-async function describeVideoBatch(paths) {
-  const first = await describePaths("video", [paths[0]]);
-  return {
-    ...first,
-    kind: "video-batch",
-    paths,
-    batchCount: paths.length,
-    title: `${paths.length} видео`,
-    detail: `${paths.length} роликов · настройки по ${path.basename(paths[0])}`,
-  };
-}
-
-async function describeSpriteSheet(sheetPath, options = {}) {
-  const root = path.join(app.getPath("temp"), "Chuba Sprite Lab", "sheet-imports");
-  await fs.mkdir(root, { recursive: true });
-  const outputDir = await fs.mkdtemp(path.join(root, "sheet-"));
-  const sliced = await sliceSpriteSheet(sheetPath, outputDir, options);
-  const source = await describePaths("frames", sliced.framePaths);
-  return {
-    ...source,
-    kind: "sheet",
-    sheetPath,
-    sheetMode: sliced.mode,
-    sheetCells: sliced.cells,
-    sheetBackground: sliced.background,
-    title: path.basename(sheetPath),
-    detail: `${sliced.width}×${sliced.height} · найдено объектов: ${sliced.framePaths.length}`,
-    estimatedFrames: sliced.framePaths.length,
-    recommendations: { ...source.recommendations, anchor: "center" },
-  };
-}
+// The desktop window and the command line share one implementation, so a source is
+// described identically in both. These wrappers only bind the application root.
+const describePaths = (kind, paths) => describePathsFrom(appRoot, kind, paths);
+const describeVideoBatch = (paths) => describeVideoBatchFrom(appRoot, paths);
+const describeSpriteSheet = (sheetPath, options = {}) => describeSpriteSheetFrom(appRoot, sheetPath, options);
 
 async function restoreProjectSource(descriptor = {}) {
   const paths = Array.isArray(descriptor.paths) ? descriptor.paths.map((item) => path.resolve(String(item))) : [];
@@ -284,30 +308,27 @@ ipcMain.handle("source:any", async () => {
   return describePaths(videoPaths.length ? "video" : "frames", result.filePaths);
 });
 
-ipcMain.handle("source:video", async () => {
+ipcMain.handle("source:add-images", async (_event, existingPaths = []) => {
+  if (!Array.isArray(existingPaths) || existingPaths.length > 4096) throw new Error("Неверный список изображений.");
+  const existing = existingPaths.map((item) => path.resolve(String(item)));
+  for (const item of existing) {
+    if (!supportedImageExtensions.has(path.extname(item).toLowerCase()) || !(await fs.stat(item)).isFile()) throw new Error("Добавлять можно только существующие изображения.");
+  }
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: "Выберите видео с анимацией",
-    properties: ["openFile"],
-    filters: [
-      { name: "Видео", extensions: ["mp4", "webm", "mov", "mkv", "avi", "gif"] },
-      { name: "Все файлы", extensions: ["*"] },
-    ],
+    title: "Добавьте кадры или отдельные объекты",
+    properties: ["openFile", "multiSelections"],
+    filters: [{ name: "Изображения", extensions: [...supportedImageExtensions].map((ext) => ext.slice(1)) }],
   });
-  if (result.canceled) return null;
-  return describePaths("video", result.filePaths);
+  if (result.canceled || !result.filePaths.length) return null;
+  const all = [...new Set([...existing, ...result.filePaths.map((item) => path.resolve(item))])];
+  if (all.length === existing.length) throw new Error("Выбранные изображения уже добавлены.");
+  return describePaths("frames", all);
 });
 
-ipcMain.handle("source:frames", async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    title: "Выберите картинки для спрайт-листа — JPG, PNG, WEBP (можно вперемешку)",
-    properties: ["openFile", "multiSelections"],
-    filters: [
-      { name: "Картинки JPG · PNG · WEBP", extensions: ["jpg", "jpeg", "png", "webp"] },
-      { name: "Все изображения", extensions: [...supportedImageExtensions].map((ext) => ext.slice(1)) },
-    ],
-  });
-  if (result.canceled) return null;
-  return describePaths("frames", result.filePaths);
+ipcMain.handle("source:use-image-object", async (_event, filePath) => {
+  const resolved = path.resolve(String(filePath || ""));
+  if (!supportedImageExtensions.has(path.extname(resolved).toLowerCase()) || !(await fs.stat(resolved)).isFile()) throw new Error("Выбранный объект не найден.");
+  return describePaths("frames", [resolved]);
 });
 
 ipcMain.handle("source:sheet", async () => {
@@ -324,6 +345,10 @@ ipcMain.handle("source:reslice-sheet", async (_event, request = {}) => {
   const sheetPath = path.resolve(String(request.sheetPath || ""));
   if (!fsSync.existsSync(sheetPath) || !supportedImageExtensions.has(path.extname(sheetPath).toLowerCase())) throw new Error("Исходный спрайт-лист не найден.");
   return describeSpriteSheet(sheetPath, request.options || {});
+});
+
+ipcMain.handle("source:analyze-frames", async (_event, request = {}) => {
+  return analyzeFrameConsistency(request.measurements, { transforms: request.transforms, referenceIndex: request.referenceIndex });
 });
 
 ipcMain.handle("source:folder", async () => {
@@ -354,6 +379,316 @@ ipcMain.handle("source:dropped", async (_event, payload) => {
   if (videoPaths.length && videoPaths.length !== paths.length) throw new Error("Видео и изображения нельзя смешивать в одной пачке.");
   if (videoPaths.length > 1) return describeVideoBatch(videoPaths);
   return describePaths(videoPaths.length ? "video" : "frames", paths);
+});
+
+ipcMain.handle("profile:save", async (_event, request = {}) => {
+  const profile = request?.profile;
+  if (!profile || profile.format !== "chuba-sprite-lab-profile") throw new Error("Рецепт сборки не сформирован.");
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: "Сохранить рецепт сборки",
+    defaultPath: `${safeOutputName(profile.name || "sprite-recipe")}.recipe.json`,
+    filters: [{ name: "Рецепт сборки Chuba Sprite Lab", extensions: ["json"] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+  const target = result.filePath.toLowerCase().endsWith(".json") ? result.filePath : `${result.filePath}.json`;
+  await fs.writeFile(target, `${JSON.stringify(profile, null, 2)}\n`, "utf8");
+  return { path: target };
+});
+
+// Edited frames are working copies, so they are kept in the application data folder rather than in
+// the temporary workspace: a frame override is referenced by the project and has to survive a restart.
+// The pixel editor draws in the window and hands the finished frame over as PNG bytes.
+// Edited frames are written next to each other in the user data folder: they are working copies, and
+// a project only needs to remember the path it finally picked.
+async function writeFramePng({ frameIndex = 0, name = "frame", png }) {
+  if (!png || typeof png.length !== "number" || !png.length) throw new Error("Пустое изображение кадра.");
+  const directory = path.join(app.getPath("userData"), "pixel-edits");
+  await fs.mkdir(directory, { recursive: true });
+  const safeIndex = Math.max(0, Math.round(Number(frameIndex) || 0));
+  const fileName = `${safeOutputName(String(name || "frame"))}-${String(safeIndex).padStart(4, "0")}-${Date.now()}.png`;
+  const target = path.join(directory, fileName);
+  await fs.writeFile(target, Buffer.from(png));
+  const stats = await fs.stat(target);
+  return { path: target, url: `${pathToFileURL(target).href}?v=${Math.round(stats.mtimeMs)}`, modifiedAt: stats.mtimeMs };
+}
+
+/* ------------------------------------------------------------- built-in pixel editor */
+
+// Opening reads the pixels here: a file:// image drawn into the window canvas cannot be read back,
+// so the raw buffer has to come from the main process.
+ipcMain.handle("editor:open", async (_event, request = {}) => {
+  const filePath = path.resolve(String(request.path || ""));
+  if (!filePath || !await pathExists(filePath)) throw new Error("Кадр для редактирования не найден.");
+  const { data, info } = await sharp(filePath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  return editorSession.openSession({
+    width: info.width,
+    height: info.height,
+    name: request.name || path.basename(filePath, path.extname(filePath)),
+    frameIndex: request.frameIndex,
+    pixels: data,
+  });
+});
+
+// One entry point for the editing commands: the interface sends the operation name, and every answer
+// has the same state shape so the window has a single redraw path.
+const editorOperations = {
+  paint: (request) => editorSession.paint(request.sessionId, request),
+  fill: (request) => editorSession.fill(request.sessionId, request),
+  eraseTransparent: (request) => editorSession.eraseTransparent(request.sessionId, request),
+  pick: (request) => editorSession.pick(request.sessionId, request),
+  layerPixel: (request) => editorSession.layerPixel(request.sessionId, request),
+  undo: (request) => editorSession.stepHistory(request.sessionId, "undo"),
+  redo: (request) => editorSession.stepHistory(request.sessionId, "redo"),
+  state: (request) => editorSession.readState(request.sessionId),
+  addLayer: (request) => editorSession.addEmptyLayer(request.sessionId, request),
+  removeLayer: (request) => editorSession.deleteLayer(request.sessionId, request),
+  updateLayer: (request) => editorSession.updateLayer(request.sessionId, request),
+  close: (request) => ({ closed: editorSession.closeSession(request.sessionId) }),
+};
+
+ipcMain.handle("editor:op", async (_event, request = {}) => {
+  const operation = editorOperations[String(request.op || "")];
+  if (!operation) throw new Error(`Неизвестная операция редактора: ${request.op || "—"}`);
+  return operation(request);
+});
+
+/* ------------------------------------------------------------------- models and auto mode */
+
+// Downloads land in the application data folder, not next to the program: a portable build may sit in
+// a read-only place, and a gigabyte of weights should not travel with the game.
+function modelsDirectory() {
+  return path.join(app.getPath("userData"), "models");
+}
+
+function modelsStatePath() {
+  return path.join(modelsDirectory(), "installed.json");
+}
+
+async function readModelsState() {
+  try {
+    const state = JSON.parse(await fs.readFile(modelsStatePath(), "utf8"));
+    return state && typeof state === "object" && state.models ? state : { models: {} };
+  } catch {
+    return { models: {} };
+  }
+}
+
+async function writeModelsState(state) {
+  await fs.mkdir(modelsDirectory(), { recursive: true });
+  await fs.writeFile(modelsStatePath(), `${JSON.stringify(state, null, 2)}\n`, "utf8");
+}
+
+// What is on disk, where it came from, what it was verified against, and whether it was ever run. All
+// of these are shown separately, because "downloaded" and "works" are different claims.
+async function modelsStatus() {
+  const state = await readModelsState();
+  const directory = modelsDirectory();
+  const bundledDirs = [
+    process.resourcesPath ? path.join(process.resourcesPath, "models") : null,
+    path.join(appRoot, "models"),
+  ].filter(Boolean);
+  const entries = [];
+  for (const summary of autoPilot.catalogSummary()) {
+    const record = state.models?.[summary.id] || {};
+    const files = [];
+    for (const file of modelFiles(summary)) {
+      let bytes = 0;
+      let origin = null;
+      try {
+        bytes = (await fs.stat(path.join(directory, file.file))).size;
+        origin = "downloaded";
+      } catch {
+        bytes = 0;
+      }
+      if (!bytes) {
+        for (const bundledDir of bundledDirs) {
+          try {
+            bytes = (await fs.stat(path.join(bundledDir, file.file))).size;
+            origin = "bundled";
+            break;
+          } catch { /* Not in this folder. */ }
+        }
+      }
+      const recorded = (record.files || []).find((entry) => entry.file === file.file)?.sha256 || null;
+      files.push({
+        file: file.file,
+        present: bytes > 0,
+        bytes,
+        origin,
+        expectedBytes: file.sizeBytes || 0,
+        url: file.url || null,
+        verification: verificationOf(file, { recorded }),
+      });
+    }
+    entries.push({
+      ...summary,
+      files,
+      installed: files.every((file) => file.present),
+      bundledOnDisk: files.every((file) => file.origin === "bundled"),
+      validation: record.validation || null,
+      validatedAt: record.validatedAt || null,
+      installedAt: record.installedAt || null,
+    });
+  }
+  return { directory, entries, rejected: rejectedModels };
+}
+
+function installedModelIds(status) {
+  return status.entries.filter((entry) => entry.installed).map((entry) => entry.id);
+}
+
+ipcMain.handle("models:status", () => modelsStatus());
+
+ipcMain.handle("models:download", async (_event, request = {}) => {
+  const entry = modelById(String(request.id || ""));
+  if (!entry) throw new Error("Неизвестная модель.");
+  if (entry.bundled) return { id: entry.id, skipped: "bundled" };
+  if (!canDownload(entry)) {
+    throw new Error(`У модели «${entry.name}» нет проверенной прямой ссылки. Откройте страницу проекта и положите файл .onnx в папку моделей.`);
+  }
+  const directory = modelsDirectory();
+  await fs.mkdir(directory, { recursive: true });
+  const state = await readModelsState();
+  const record = { ...(state.models?.[entry.id] || {}), files: [] };
+  const files = modelFiles(entry);
+  for (const [index, file] of files.entries()) {
+    const url = assertDownloadUrl(file.url);
+    const target = path.join(directory, file.file);
+    const temporary = `${target}.part`;
+    const response = await net.fetch(url, { headers: { "User-Agent": "Chuba-Sprite-Lab-Models" } });
+    if (!response.ok || !response.body) throw new Error(`Не удалось скачать ${file.file}: HTTP ${response.status}.`);
+    // A redirect could leave the trusted hosts, so the address the runtime reports is checked as well.
+    // It is only checked when it is reported at all: the request itself was already validated, and the
+    // content is checked afterwards by size and, where published, by the SHA-256 from the catalogue.
+    if (response.url) assertDownloadUrl(response.url, { redirect: true });
+    const total = Number(response.headers.get("content-length")) || file.sizeBytes || 0;
+    let received = 0;
+    const hash = crypto.createHash("sha256");
+    const meter = new Transform({
+      transform(chunk, _encoding, callback) {
+        received += chunk.length;
+        hash.update(chunk);
+        mainWindow?.webContents.send("models:progress", {
+          id: entry.id,
+          file: file.file,
+          fileIndex: index,
+          fileCount: files.length,
+          received,
+          total,
+          value: total ? received / total : 0,
+        });
+        callback(null, chunk);
+      },
+    });
+    try {
+      await pipeline(Readable.fromWeb(response.body), meter, fsSync.createWriteStream(temporary));
+    } catch (error) {
+      await fs.rm(temporary, { force: true });
+      throw new Error(`Не удалось скачать ${file.file}: ${error?.message || "соединение прервано"}`);
+    }
+    const digest = hash.digest("hex");
+    // Two checks, both honest about themselves: the size is published with the file, the hash only
+    // when the publisher offers one. Otherwise the hash is recorded here for later comparisons.
+    if (file.sizeBytes && received !== file.sizeBytes) {
+      await fs.rm(temporary, { force: true });
+      throw new Error(`Размер ${file.file} не совпал: получено ${received} байт вместо ${file.sizeBytes}. Файл не установлен.`);
+    }
+    if (file.sha256 && digest !== file.sha256) {
+      await fs.rm(temporary, { force: true });
+      throw new Error(`Контрольная сумма ${file.file} не совпала с опубликованной. Файл не установлен.`);
+    }
+    await fs.rm(target, { force: true });
+    await fs.rename(temporary, target);
+    record.files.push({ file: file.file, bytes: received, sha256: digest, verification: file.sha256 ? "published" : "recorded" });
+  }
+  record.installedAt = Date.now();
+  state.models[entry.id] = record;
+  await writeModelsState(state);
+  return { id: entry.id, files: record.files };
+});
+
+// Downloading proves the bytes arrived; only running the model proves it works. This is a separate,
+// explicit step because a heavy model takes seconds to load and gigabytes of memory.
+ipcMain.handle("models:validate", async (_event, request = {}) => {
+  const entry = modelById(String(request.id || ""));
+  if (!entry) throw new Error("Неизвестная модель.");
+  const filePath = entry.bundled
+    ? await resolveModelForValidation(entry)
+    : path.join(modelsDirectory(), entry.file);
+  if (!await pathExists(filePath)) throw new Error("Модель ещё не скачана. Сначала скачайте файл.");
+  const report = await validateModelFile(filePath, { family: entry.family, provider: "cpu" });
+  const state = await readModelsState();
+  state.models[entry.id] = { ...(state.models?.[entry.id] || {}), validatedAt: Date.now(), validation: report };
+  await writeModelsState(state);
+  return { id: entry.id, ...report };
+});
+
+// The bundled model lives next to the program; the validator needs the same path the pipeline uses.
+async function resolveModelForValidation(entry) {
+  const candidates = [
+    process.resourcesPath ? path.join(process.resourcesPath, "models", entry.file) : null,
+    path.join(appRoot, "models", entry.file),
+  ].filter(Boolean);
+  for (const candidate of candidates) if (await pathExists(candidate)) return candidate;
+  return path.join(modelsDirectory(), entry.file);
+}
+
+ipcMain.handle("models:remove", async (_event, request = {}) => {
+  const entry = modelById(String(request.id || ""));
+  if (!entry) throw new Error("Неизвестная модель.");
+  if (entry.bundled) throw new Error("Модель в комплекте удалять нельзя.");
+  const directory = modelsDirectory();
+  let removed = 0;
+  for (const file of modelFiles(entry)) {
+    for (const candidate of [path.join(directory, file.file), path.join(directory, `${file.file}.part`)]) {
+      try {
+        await fs.rm(candidate, { force: true });
+        removed += 1;
+      } catch { /* Nothing to remove. */ }
+    }
+  }
+  const state = await readModelsState();
+  delete state.models[entry.id];
+  await writeModelsState(state);
+  return { id: entry.id, removed };
+});
+
+ipcMain.handle("models:open-folder", async () => {
+  const directory = modelsDirectory();
+  await fs.mkdir(directory, { recursive: true });
+  await shell.openPath(directory);
+  return { directory };
+});
+
+// Only the pages written into the catalogue, and only over HTTPS.
+ipcMain.handle("models:open-page", async (_event, request = {}) => {
+  const entry = modelById(String(request.id || ""));
+  const url = String(request.url || entry?.page || "");
+  if (!/^https:\/\//.test(url)) throw new Error("Страница модели должна открываться по HTTPS.");
+  await shell.openExternal(url);
+  return { url };
+});
+
+// The auto mode needs two things: real measurements from the frames, and what is installed. Both are
+// gathered here so the window never has to guess at either.
+ipcMain.handle("autopilot:plan", async (_event, request = {}) => {
+  const paths = (Array.isArray(request.paths) ? request.paths : []).map((item) => path.resolve(String(item))).filter(Boolean);
+  const measurements = await autoPilot.measureSource(paths);
+  const status = await modelsStatus();
+  const plan = autoPilot.planAutoPilot({
+    measurements,
+    target: request.target || {},
+    source: request.source || {},
+    installed: installedModelIds(status),
+  });
+  return { ...plan, measuredFiles: paths.length, modelsDirectory: status.directory };
+});
+
+ipcMain.handle("editor:save", async (_event, request = {}) => {  const frame = editorSession.exportFrame(request.sessionId);
+  const png = await sharp(Buffer.from(frame.composite.buffer, frame.composite.byteOffset, frame.composite.byteLength), {
+    raw: { width: frame.width, height: frame.height, channels: 4 },
+  }).png({ compressionLevel: 9 }).toBuffer();
+  return { ...await writeFramePng({ frameIndex: frame.frameIndex, name: request.name || frame.name, png }), width: frame.width, height: frame.height };
 });
 
 ipcMain.handle("output:folder", async () => {
@@ -462,6 +797,19 @@ ipcMain.handle("overlay:choose", async () => {
     height: metadata.height,
     hasAlpha: Boolean(metadata.hasAlpha),
   };
+});
+
+ipcMain.handle("ai:choose-mask", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Белая область на PNG-маске будет дорисована LaMa",
+    properties: ["openFile"],
+    filters: [{ name: "PNG-маска", extensions: ["png"] }],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const filePath = result.filePaths[0];
+  const info = await sharp(filePath).metadata();
+  if (!info.width || !info.height) throw new Error("Не удалось прочитать PNG-маску.");
+  return { path: filePath, name: path.basename(filePath) };
 });
 
 function externalEditRoot() {
@@ -605,17 +953,19 @@ ipcMain.handle("sprites:build", async (_event, request) => {
       signal: activeJob.controller.signal,
       onProgress: (progress) => mainWindow?.webContents.send("sprites:progress", progress),
     };
+    // Every job can see the downloaded models without the window having to pass a path around.
+    const withModels = (payload) => ({ ...payload, options: { aiModelDirs: [modelsDirectory()], ...(payload.options || {}) } });
     let result;
     if (Array.isArray(request.animations) && request.animations.length > 1) {
       // Named animations (idle/run/jump) exported into one atlas with tags.
       const animations = [];
       for (const animation of request.animations) {
         const source = animation.active ? request.source : await restoreProjectSource(animation.source);
-        animations.push({ name: animation.name, source, options: animation.options || request.options });
+        animations.push({ name: animation.name, source, options: { ...(request.options || {}), ...(animation.options || {}), aiModelDirs: [modelsDirectory()] } });
       }
-      result = await processAnimationSet({ ...request, ...common, animations });
+      result = await processAnimationSet(withModels({ ...request, ...common, animations }));
     } else {
-      result = await processSprites({ ...request, ...common });
+      result = await processSprites(withModels({ ...request, ...common }));
     }
     const toUrl = (item) => pathToFileURL(item).href;
     return {
@@ -624,7 +974,8 @@ ipcMain.handle("sprites:build", async (_event, request) => {
       sheetUrls: (result.sheetPaths || [result.sheetPath]).map(toUrl),
       previewUrl: result.previewPath ? toUrl(result.previewPath) : null,
       frameUrls: (result.imagePaths || result.framePaths).slice(0, 256).map(toUrl),
-      sourceFrameUrls: result.sourceFramePaths.slice(0, 256).map((item) => pathToFileURL(item).href),
+      depthUrls: (result.depthPaths || []).slice(0, 256).map(toUrl),
+      sourceFrameUrls: result.sourceFramePaths.slice(0, 256).map((item) => item ? pathToFileURL(item).href : null),
       allSourceFrameUrls: result.allSourceFramePaths.slice(0, 256).map((item) => pathToFileURL(item).href),
     };
   } finally {
@@ -651,7 +1002,7 @@ ipcMain.handle("sprites:stop-after-current", () => {
 });
 
 ipcMain.handle("preview:frame", async (_event, request) => {
-  const result = await processFramePreview({ ...(request || {}), appRoot });
+  const result = await processFramePreview({ ...(request || {}), appRoot, options: { aiModelDirs: [modelsDirectory()], ...((request || {}).options || {}) } });
   return {
     ...result,
     beforeUrl: pathToFileURL(result.beforePath).href,
@@ -668,6 +1019,11 @@ ipcMain.handle("output:copy-path", (_event, outputPath) => {
   clipboard.writeText(outputPath);
   return true;
 });
+
+// The assistant's hints are computed in the main process so the rules stay a pure,
+// testable module instead of a second copy inside the classic renderer scripts.
+ipcMain.handle("copilot:suggest", (_event, snapshot = {}) => planSuggestions(snapshot));
+ipcMain.handle("copilot:scenarios", (_event, snapshot = {}) => planTaskScenarios(snapshot));
 
 ipcMain.handle("app:info", () => ({
   version: app.getVersion(),
@@ -739,24 +1095,67 @@ ipcMain.on("window:maximize", () => {
 });
 ipcMain.on("window:close", () => mainWindow?.close());
 
+// A portable Electron build runs in the GUI subsystem, so its console output is not visible from
+// a terminal. The self-test therefore also writes a machine-readable report that CI and a person
+// checking a clean machine can read.
+function selfTestReportPath() {
+  return path.resolve(argumentValue("--self-test-report") || path.join(process.cwd(), "chuba-self-test.json"));
+}
+
+function writeSelfTestReport(report) {
+  try {
+    fsSync.writeFileSync(selfTestReportPath(), `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  } catch {
+    // A diagnostic that cannot be written must not change the exit code.
+  }
+}
+
 async function runSelfTest() {
+  const report = { ok: false, startedAt: new Date().toISOString(), appRoot, checks: [] };
   try {
     const probe = await sharp({
       create: { width: 2, height: 2, channels: 4, background: { r: 255, g: 118, b: 23, alpha: 1 } },
     }).png().toBuffer();
     const metadata = await sharp(probe).metadata();
     if (metadata.width !== 2 || metadata.height !== 2) throw new Error("Sharp returned invalid test image metadata.");
-    const ffmpegPath = path.join(process.resourcesPath, "vendor", process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+    report.checks.push({ name: "sharp", ok: true });
+
+    const ffmpegPath = await resolveBinary("ffmpeg", appRoot);
     await fs.access(ffmpegPath);
-    await fs.access(path.join(process.resourcesPath, "models", "u2netp.onnx"));
+    report.checks.push({ name: "ffmpeg", ok: true, path: ffmpegPath });
+
+    const modelPath = await resolveAIModel(appRoot, { extraDirs: [modelsDirectory()] });
+    await fs.access(modelPath);
+    report.checks.push({ name: "model", ok: true, path: modelPath });
+
+    const probeDir = await fs.mkdtemp(path.join(app.getPath("temp"), "chuba-ai-check-"));
+    try {
+      const input = path.join(probeDir, "probe.png");
+      await fs.writeFile(input, probe);
+      const segmented = await segmentSubject(input, { appRoot, modelDirs: [modelsDirectory()] });
+      if (segmented.info.width !== 2 || segmented.data.length !== 16) throw new Error("ИИ-модель вернула неверный кадр.");
+      report.provider = segmented.provider || "cpu";
+      report.model = segmented.model;
+      report.modelInput = segmented.inputSize;
+      report.checks.push({ name: "inference", ok: true, provider: report.provider, model: report.model, inputSize: report.modelInput });
+      console.log(`ИИ-модель: ${report.model || "u2netp"}, вход ${report.modelInput || "—"}, ускоритель ${report.provider}`);
+    } finally {
+      await fs.rm(probeDir, { recursive: true, force: true });
+    }
+    report.ok = true;
+    report.finishedAt = new Date().toISOString();
+    writeSelfTestReport(report);
     app.exit(0);
   } catch (error) {
+    report.error = error?.message || String(error);
+    report.finishedAt = new Date().toISOString();
+    writeSelfTestReport(report);
     console.error(error);
     app.exit(1);
   }
 }
 
-const hasInstanceLock = selfTestMode || Boolean(startupProbePath) || app.requestSingleInstanceLock();
+const hasInstanceLock = selfTestMode || Boolean(startupProbePath) || Boolean(screenshotPath) || app.requestSingleInstanceLock();
 
 if (!hasInstanceLock) {
   app.quit();
@@ -767,7 +1166,10 @@ if (!hasInstanceLock) {
     mainWindow.show();
     mainWindow.focus();
   });
-  app.whenReady().then(selfTestMode ? runSelfTest : createWindow).catch((error) => {
+  app.whenReady().then(async () => {
+    await pruneStaleTempWorkspaces().catch(() => {});
+    return selfTestMode ? runSelfTest() : createWindow();
+  }).catch((error) => {
     reportStartupFailure("app-ready", error);
     app.exit(1);
   });

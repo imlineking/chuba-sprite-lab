@@ -2,13 +2,15 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("spriteLab", {
   chooseSource: () => ipcRenderer.invoke("source:any"),
-  chooseVideo: () => ipcRenderer.invoke("source:video"),
-  chooseFrames: () => ipcRenderer.invoke("source:frames"),
+  addImages: (paths) => ipcRenderer.invoke("source:add-images", paths),
+  useImageObject: (filePath) => ipcRenderer.invoke("source:use-image-object", filePath),
   chooseSheet: () => ipcRenderer.invoke("source:sheet"),
   resliceSheet: (request) => ipcRenderer.invoke("source:reslice-sheet", request),
+  analyzeFrames: (request) => ipcRenderer.invoke("source:analyze-frames", request),
   chooseFolder: () => ipcRenderer.invoke("source:folder"),
   chooseOutput: () => ipcRenderer.invoke("output:folder"),
   chooseOverlay: () => ipcRenderer.invoke("overlay:choose"),
+  chooseAIMask: () => ipcRenderer.invoke("ai:choose-mask"),
   prepareFrameEdit: (request) => ipcRenderer.invoke("frame-edit:prepare", request),
   openFrameEdit: (request) => ipcRenderer.invoke("frame-edit:open", request),
   openOnlineFrameEditor: (request) => ipcRenderer.invoke("frame-edit:online", request),
@@ -33,6 +35,27 @@ contextBridge.exposeInMainWorld("spriteLab", {
   previewPoster: (request) => ipcRenderer.invoke("source:poster", request),
   revealOutput: (outputPath) => ipcRenderer.invoke("output:reveal", outputPath),
   copyOutputPath: (outputPath) => ipcRenderer.invoke("output:copy-path", outputPath),
+  saveProfile: (request) => ipcRenderer.invoke("profile:save", request),
+  // The built-in pixel editor keeps the document in the main process; the window sends operations
+  // and receives one state object back.
+  openPixelEditor: (request) => ipcRenderer.invoke("editor:open", request),
+  pixelEditorOp: (request) => ipcRenderer.invoke("editor:op", request),
+  savePixelEditor: (request) => ipcRenderer.invoke("editor:save", request),
+  // Local AI models: what is installed, what can be downloaded, and the auto-mode plan.
+  modelsStatus: () => ipcRenderer.invoke("models:status"),
+  downloadModel: (request) => ipcRenderer.invoke("models:download", request),
+  validateModel: (request) => ipcRenderer.invoke("models:validate", request),
+  removeModel: (request) => ipcRenderer.invoke("models:remove", request),
+  openModelsFolder: () => ipcRenderer.invoke("models:open-folder"),
+  openModelPage: (request) => ipcRenderer.invoke("models:open-page", request),
+  onModelsProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress);
+    ipcRenderer.on("models:progress", listener);
+    return () => ipcRenderer.removeListener("models:progress", listener);
+  },
+  planAutoPilot: (request) => ipcRenderer.invoke("autopilot:plan", request),
+  suggest: (snapshot) => ipcRenderer.invoke("copilot:suggest", snapshot),
+  suggestScenarios: (snapshot) => ipcRenderer.invoke("copilot:scenarios", snapshot),
   getAppInfo: () => ipcRenderer.invoke("app:info"),
   checkForUpdates: () => ipcRenderer.invoke("app:check-updates"),
   installUpdate: () => ipcRenderer.invoke("app:install-update"),

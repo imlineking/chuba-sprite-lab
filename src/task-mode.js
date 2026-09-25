@@ -1,0 +1,461 @@
+// Task-first entrance. Advanced controls stay available, but the selected job owns
+// the first screen and one clear next action. No source files are modified here.
+(() => {
+  const taskNames = {
+    layout: "Разнести объекты по сетке",
+    remove: "Убрать объект из кадров",
+    background: "Удалить фон",
+    animation: "Собрать анимацию",
+    combine: "Собрать общий атлас объектов",
+    extract: "Вырезать один объект из листа",
+    objectEdit: "Изменить объект и вернуть в лист",
+    match: "Выровнять размеры персонажа",
+    edit: "Править кадры",
+    cutout: "Вырезать объект",
+    stylize: "Стилизовать в пиксель-арт",
+    depth: "Построить карту глубины",
+    upscale: "Увеличить небольшой спрайт",
+  };
+  let selected = localStorage.getItem("spriteLab.task") || "";
+  if (!taskNames[selected]) selected = "";
+  let approach = localStorage.getItem("spriteLab.taskApproach") === "manual" ? "manual" : "auto";
+  let primaryAction = null;
+  let secondaryAction = null;
+  let arranged = "";
+  let extractedPath = null;
+  let objectEditOpened = false;
+
+  async function taskAddImages() {
+    if (state.busy || (state.source && state.source.kind !== "frames")) return;
+    try {
+      const source = await window.spriteLab.addImages(state.source?.paths || []);
+      if (source) { setSource(source); setTab("source"); $("#taskGuide").scrollIntoView({ block: "start", behavior: "smooth" }); }
+    } catch (error) { setStatus(error?.message || "Не удалось добавить изображения", "error", 0); showError(error?.message); }
+  }
+
+  function taskSet(name, nextApproach = "auto") {
+    if (!taskNames[name]) return;
+    selected = name;
+    approach = nextApproach === "manual" ? "manual" : "auto";
+    localStorage.setItem("spriteLab.task", name);
+    localStorage.setItem("spriteLab.taskApproach", approach);
+    document.body.dataset.task = name;
+    setCopilotPanel(false);
+    setTab("source");
+    taskRender();
+  }
+
+  function taskExport() {
+    const singlePng = ["cutout", "stylize", "upscale", "extract"].includes(selected) && state.source?.kind === "frames" && state.source.paths.length === 1;
+    $("#exportSheet").checked = !singlePng;
+    $("#exportMetadata").checked = !singlePng;
+    $("#exportFrames").checked = singlePng;
+    $("#exportPreview").checked = false;
+    $("#atlasPacking").value = "grid";
+    syncExportDependencies("");
+    if (!state.outputFolder) {
+      setTab("export");
+      $("#chooseOutput").click();
+      return;
+    }
+    void runBuild(false);
+  }
+
+  async function taskLayoutPreview() {
+    if (!state.source?.sheetPath || state.busy) return;
+    const mode = $("#sheetSliceMode button.selected")?.dataset.sheetMode || "objects";
+    try {
+      setStatus("Уточняю рамки объектов…", "busy", 0.1);
+      const source = await window.spriteLab.resliceSheet({
+        sheetPath: state.source.sheetPath,
+        options: { mode, columns: Number($("#sheetColumns").value), rows: Number($("#sheetRows").value), cells: state.sheetDraftCells },
+      });
+      setSource(source);
+      $("#sheetFitEach").checked = false;
+      $("#autoSize").checked = true;
+      $("#autoColumns").checked = false;
+      $("#columns").value = String(Math.max(1, Math.ceil(Math.sqrt(source.paths.length))));
+      $("#padding").value = String(Math.max(24, Number($("#padding").value) || 0));
+      setAnchor("body");
+      savePreferences();
+      await runBuild(true);
+      setTab("source");
+    } catch (error) { setStatus(error?.message || "Не удалось разнести объекты", "error", 0); showError(error?.message); }
+  }
+
+  async function taskApplyAutoPlan() {
+    let plan = await autoPilotRun();
+    if (!plan) return false;
+    const required = (plan.needed || []).filter((item) => item.required && item.canDownload && item.readiness === "ready");
+    if (required.length) {
+      try {
+        for (const model of required) {
+          setStatus(`Загружаю модель ${model.name} для выбранной задачи…`, "busy", 0.1);
+          await window.spriteLab.downloadModel({ id: model.id });
+        }
+        await autoPilotRefreshModels();
+        plan = await autoPilotRun();
+      } catch (error) {
+        setStatus(error?.message || "Модель не загрузилась", "error", 0);
+        showError(error?.message || "Модель не загрузилась. Откройте каталог моделей.");
+        return false;
+      }
+    }
+    if (plan?.steps?.some((step) => step.status === "blocked")) {
+      setStatus("Для полного авто-решения нужна модель. Откройте каталог моделей.", "error", 0);
+      return false;
+    }
+    autoPilotApply();
+    return true;
+  }
+
+  async function taskEnsureModel(id) {
+    const status = await window.spriteLab.modelsStatus();
+    const model = status.entries.find((entry) => entry.id === id);
+    if (!model) throw new Error(`Модель ${id} отсутствует в каталоге.`);
+    if (model.installed) return;
+    setStatus(`Загружаю ${model.name}…`, "busy", 0.1);
+    await window.spriteLab.downloadModel({ id });
+    await autoPilotRefreshModels();
+  }
+
+  function taskRender() {
+    document.body.dataset.task = selected;
+    document.body.dataset.taskApproach = approach;
+    const layout = selected && state.source ? state.source.kind === "sheet" ? "guided-sheet" : "guided-source" : "default";
+    if (layout !== arranged) {
+      const sourcePanel = $("#sourcePanel");
+      // Keep every legacy control available, but put the relevant controls first.
+      if (layout !== "default") {
+        sourcePanel.insertBefore($("#sourceCard"), sourcePanel.querySelector(".panel-heading"));
+        if (layout === "guided-sheet") sourcePanel.insertBefore($("#sheetControls"), sourcePanel.querySelector(".panel-heading"));
+        else sourcePanel.insertBefore($("#sheetControls"), $("#imageSheetControls"));
+      } else {
+        sourcePanel.insertBefore($("#sourceCard"), $("#batchNote"));
+        sourcePanel.insertBefore($("#sheetControls"), $("#imageSheetControls"));
+      }
+      arranged = layout;
+    }
+    $("#taskWelcome").classList.toggle("hidden", Boolean(selected));
+    $("#taskGuide").classList.toggle("hidden", !selected);
+    if (!selected) return;
+    $("#taskGuideTitle").textContent = taskNames[selected];
+    $("#taskAdvanced").textContent = "Открыть настройки вручную";
+    $("#taskGuide .ai-chip").textContent = approach === "auto" ? "АВТО · ПОМОЩНИК" : "РУЧНОЙ РЕЖИМ";
+    const source = state.source;
+    const result = state.result;
+    const guide = $("#taskGuideText");
+    const primary = $("#taskPrimary");
+    const secondary = $("#taskSecondary");
+    primary.disabled = Boolean(state.busy);
+    secondary.classList.add("hidden");
+    primaryAction = null;
+    secondaryAction = null;
+    const objectField = $("#taskObjectField");
+    objectField.classList.add("hidden");
+
+    if (selected === "objectEdit") {
+      if (!source?.sheetPath) {
+        guide.textContent = "Откройте готовый лист с отдельными объектами. После выбора объекта доступны правка внутри программы, «Открыть с помощью…» и онлайн-редактор. Исправление попадёт в новый лист.";
+        primary.textContent = "1 · Открыть лист";
+        primaryAction = () => chooseSource("chooseSheet");
+      } else if (!result || state.resultDirty) {
+        guide.textContent = objectEditOpened ? "Правка подхвачена. Пересоберите атлас: изменённый объект займёт своё место, JSON координат обновится." : "Сначала соберите атлас для выбора и редактирования объекта.";
+        primary.textContent = objectEditOpened ? "3 · Пересобрать с правкой" : "1 · Собрать предпросмотр";
+        primaryAction = () => { void runBuild(true); };
+      } else if (objectEditOpened) {
+        guide.textContent = "Проверьте исправленный объект справа. Готовый лист и JSON можно сохранить, оригинал остаётся без изменений.";
+        primary.textContent = state.outputFolder ? "4 · Сохранить лист и JSON" : "4 · Выбрать папку";
+        primaryAction = taskExport;
+        secondary.textContent = "Исправить ещё объект";
+        secondary.classList.remove("hidden");
+        secondaryAction = () => { objectEditOpened = false; taskRender(); };
+      } else {
+        guide.textContent = `На листе ${source.paths.length} объектов. Выберите объект. Внутри программы доступны карандаш, ластик, заливка и слои; внешний редактор открывает «Открыть с помощью…» и онлайн-сервисы. Размер, перенос и наклон доступны через «Все настройки».`;
+        const select = $("#taskObjectSelect");
+        if (select.options.length !== source.paths.length || select.dataset.sheetPath !== source.sheetPath) {
+          select.replaceChildren(...source.paths.map((_, index) => new Option(`Объект ${index + 1}`, String(index))));
+          select.dataset.sheetPath = source.sheetPath;
+        }
+        objectField.classList.remove("hidden");
+        primary.textContent = "2 · Редактировать пиксели";
+        primaryAction = () => { selectFrame(Number(select.value)); objectEditOpened = true; $("#editFrame").click(); };
+        secondary.textContent = "Править внутри программы";
+        secondary.classList.remove("hidden");
+        secondaryAction = () => { selectFrame(Number(select.value)); objectEditOpened = true; $("#openPixelEditor").click(); };
+      }
+    } else if (selected === "match") {
+      if (!source) {
+        guide.textContent = "Откройте спрайт-лист или серию кадров персонажа. Выберите эталон и выровняйте похожие позы по габариту контура.";
+        primary.textContent = "1 · Открыть лист";
+        primaryAction = () => chooseSource("chooseSheet");
+        secondary.textContent = "Открыть кадры";
+        secondary.classList.remove("hidden");
+        secondaryAction = () => chooseSource("chooseSource");
+      } else if (!result || state.resultDirty) {
+        guide.textContent = "Соберите превью. Затем выберите опорный кадр и точку привязки: центр силуэта или низ. Масштаб не меняется до вашего подтверждения.";
+        primary.textContent = "2 · Собрать и проверить";
+        primaryAction = () => { void runBuild(true); };
+      } else {
+        guide.textContent = "Выберите опорный кадр ниже. Анализ предложит масштаб для похожих контуров и оставит другие позы для ручной проверки.";
+        primary.textContent = "3 · Сравнить с эталоном";
+        primaryAction = () => { setTab("process"); $("#consistencyPanel").open = true; $("#consistencyPanel").scrollIntoView({ block: "start", behavior: "smooth" }); $("#analyzeFrameSizes").click(); };
+        secondary.textContent = "Сохранить результат";
+        secondary.classList.remove("hidden");
+        secondaryAction = taskExport;
+      }
+    } else if (selected === "extract") {
+      if (source?.kind === "frames" && source.paths.length === 1 && source.paths[0] === extractedPath) {
+        if (!result || state.resultDirty) {
+          guide.textContent = "Выбранный объект отделён от листа. Соберите предпросмотр, проверьте контур и при необходимости настройте удаление фона.";
+          primary.textContent = "3 · Проверить объект";
+          primaryAction = () => { void runBuild(true); };
+        } else {
+          guide.textContent = "Готово: выбранный объект можно сохранить отдельным PNG. Исходный лист не изменён.";
+          primary.textContent = state.outputFolder ? "4 · Сохранить PNG" : "4 · Выбрать папку";
+          primaryAction = taskExport;
+        }
+      } else if (source?.sheetPath) {
+        guide.textContent = `Найдено ${source.paths.length} объектов. Выберите один по номеру, проверьте его справа и сохраните отдельно. Для точных границ доступны «Свои рамки» ниже.`;
+        const select = $("#taskObjectSelect");
+        if (select.options.length !== source.paths.length || select.dataset.sheetPath !== source.sheetPath) {
+          select.replaceChildren(...source.paths.map((_, index) => new Option(`Объект ${index + 1}`, String(index))));
+          select.dataset.sheetPath = source.sheetPath;
+        }
+        objectField.classList.remove("hidden");
+        primary.textContent = "2 · Отделить выбранный объект";
+        primaryAction = async () => {
+          try {
+            const filePath = source.paths[Number(select.value)];
+            const isolated = await window.spriteLab.useImageObject(filePath);
+            extractedPath = isolated.paths[0];
+            setSource(isolated);
+            await runBuild(true);
+          } catch (error) { showError(error?.message || "Не удалось отделить объект"); }
+        };
+      } else {
+        guide.textContent = source?.kind === "frames" && source.paths.length === 1
+          ? "Проверим PNG/JPG/WebP как лист: найдём отдельные объекты и покажем их рамки для выбора."
+          : "Откройте изображение с несколькими объектами. Помощник выделит их, затем вы выберете нужный.";
+        primary.textContent = source?.kind === "frames" && source.paths.length === 1 ? "1 · Найти объекты" : "1 · Открыть изображение";
+        primaryAction = source?.kind === "frames" && source.paths.length === 1
+          ? async () => { try { setSource(await window.spriteLab.resliceSheet({ sheetPath: source.paths[0], options: { mode: "objects" } })); } catch (error) { showError(error?.message); } }
+          : () => chooseSource("chooseSheet");
+      }
+    } else if (selected === "combine" || selected === "animation") {
+      const imageCount = source?.kind === "frames" ? source.paths.length : 0;
+      if (!source || imageCount === 1) {
+        guide.textContent = selected === "combine"
+          ? "Добавьте несколько PNG, JPG или WebP с отдельными объектами. Помощник соберёт их в один атлас и JSON с координатами, чтобы уменьшить число файлов в игре."
+          : "Для анимации добавьте несколько последовательных кадров PNG, JPG или WebP либо откройте видео/GIF. Порядок изображений определяется по именам с учётом чисел.";
+        primary.textContent = imageCount ? "1 · Добавить ещё изображения" : "1 · Выбрать изображения";
+        primaryAction = taskAddImages;
+        if (selected === "animation") {
+          secondary.textContent = "Открыть видео или GIF";
+          secondary.classList.remove("hidden");
+          secondaryAction = () => chooseSource("chooseSource");
+        }
+      } else if (!result || state.resultDirty) {
+        guide.textContent = selected === "combine"
+          ? `${imageCount} объектов. Каждый получит свою ячейку; размеры подберутся по самому большому. Проверьте выравнивание ниже, затем соберите общий атлас.`
+          : `Добавлено ${imageCount || "несколько"} кадров. Помощник подберёт обработку и покажет анимацию; исходники останутся на месте.`;
+        primary.textContent = approach === "auto" ? "2 · Собрать и проверить" : "2 · Настроить вручную";
+        primaryAction = approach === "auto"
+          ? async () => {
+              setTab("process");
+              if (selected === "combine") {
+                $("#autoSize").checked = true;
+                $("#autoColumns").checked = true;
+                $("#padding").value = String(Math.max(4, Number($("#padding").value) || 0));
+                setAnchor("center");
+                await runBuild(true);
+              } else if (await taskApplyAutoPlan()) await runBuild(true);
+            }
+          : () => { setTab("process"); $(selected === "combine" ? "#autoColumns" : "#fps").scrollIntoView({ block: "center", behavior: "smooth" }); };
+        if (source.kind === "frames") {
+          secondary.textContent = "Добавить ещё файлы";
+          secondary.classList.remove("hidden");
+          secondaryAction = taskAddImages;
+        }
+      } else {
+        guide.textContent = selected === "combine"
+          ? `Готово: ${result.frameCount} объектов в общем атласе. Проверьте поля и сохраните лист с JSON координатами.`
+          : `Готово: ${result.frameCount} кадров. Проверьте движение и сохраните лист с JSON анимации.`;
+        primary.textContent = state.outputFolder ? "3 · Сохранить лист и JSON" : "3 · Выбрать папку для результата";
+        primaryAction = taskExport;
+        if (source.kind === "frames") {
+          secondary.textContent = "Добавить ещё файлы";
+          secondary.classList.remove("hidden");
+          secondaryAction = taskAddImages;
+        }
+      }
+    } else if (selected === "layout") {
+      if (!source?.sheetPath) {
+        const oneImage = source?.kind === "frames" && source.paths.length === 1;
+        guide.textContent = oneImage
+          ? "Этот файл можно проверить как готовый лист: программа найдёт отдельные объекты и покажет их рамки. Оригинал останется без изменений."
+          : "Откройте готовый спрайт-лист (PNG, JPG или WebP). Помощник найдёт отдельные объекты и покажет их рамки.";
+        primary.textContent = oneImage ? "1 · Проверить этот файл как лист" : "1 · Открыть спрайт-лист";
+        primaryAction = oneImage
+          ? async () => { try { const found = await window.spriteLab.resliceSheet({ sheetPath: source.paths[0], options: { mode: "objects" } }); setSource(found); } catch (error) { showError(error?.message); } }
+          : () => chooseSource("chooseSheet");
+      } else if (!result || state.resultDirty) {
+        guide.textContent = approach === "auto"
+          ? `Найдено ${source.paths.length} объектов. Оркестратор уточнит их рамки, добавит безопасные поля, выровняет по центру и соберёт новый лист без изменения оригинала.`
+          : `Найдено ${source.paths.length} объектов. Выберите «Свои рамки» ниже: рамки можно рисовать мышью или вводить координаты. Затем соберите новый лист.`;
+        if (approach === "manual" && $("#sheetSliceMode button.selected")?.dataset.sheetMode !== "manual") {
+          primary.textContent = "2 · Открыть ручные рамки";
+          primaryAction = () => { $("#sheetSliceMode button[data-sheet-mode=manual]").click(); $("#sheetControls").scrollIntoView({ block: "start", behavior: "smooth" }); taskRender(); };
+        } else {
+          primary.textContent = approach === "auto" ? "2 · Разнести автоматически" : "3 · Собрать по моим рамкам";
+          primaryAction = taskLayoutPreview;
+        }
+      } else {
+        guide.textContent = `Готово: ${result.frameCount} кадров на новой сетке. Проверьте предпросмотр справа и сохраните лист вместе с JSON координатами.`;
+        primary.textContent = state.outputFolder ? "3 · Сохранить лист и JSON" : "3 · Выбрать папку для результата";
+        primaryAction = taskExport;
+      }
+    } else if (selected === "remove") {
+      if (!source) {
+        guide.textContent = "Откройте видео или готовый лист. Затем щёлкните по лишнему объекту один раз: он будет найден в остальных кадрах.";
+        primary.textContent = "1 · Открыть видео или кадры";
+        primaryAction = () => chooseSource("chooseSource");
+        secondary.textContent = "Открыть спрайт-лист";
+        secondary.classList.remove("hidden");
+        secondaryAction = () => chooseSource("chooseSheet");
+      } else if (!state.maskEdits.length) {
+        guide.textContent = approach === "auto"
+          ? "Выберите кадр справа и щёлкните по лишнему объекту. Умная область найдёт его в серии; проверьте результат перед сохранением."
+          : "Откройте кадр и закрасьте лишний объект кистью. По умолчанию ручная правка относится к выбранному кадру.";
+        primary.textContent = approach === "auto" ? "2 · Указать объект для слежения" : "2 · Открыть кисть удаления";
+        primaryAction = () => { setTab("process"); if (approach === "manual") { $("#maskApplyAll").checked = false; setMaskTool("erase"); } else { $("#maskApplyAll").checked = true; setMaskTool("smart"); } $("#openMaskEditor").click(); };
+      } else if (!result || state.resultDirty) {
+        guide.textContent = `Правок: ${state.maskEdits.length}. Соберите превью и пролистайте кадры, чтобы проверить, что объект удалён в каждом из них.`;
+        primary.textContent = "3 · Проверить все кадры";
+        primaryAction = () => { void runBuild(true).then(() => setTab("source")); };
+        secondary.textContent = "Исправить выделение";
+        secondary.classList.remove("hidden");
+        secondaryAction = () => { setTab("process"); $("#openMaskEditor").click(); };
+      } else {
+        guide.textContent = "Объект удалён из собранных кадров. Проверьте анимацию справа и сохраните новый лист с JSON.";
+        primary.textContent = state.outputFolder ? "4 · Сохранить лист и JSON" : "4 · Выбрать папку для результата";
+        primaryAction = taskExport;
+        secondary.textContent = "Исправить выделение";
+        secondary.classList.remove("hidden");
+        secondaryAction = () => { setTab("process"); $("#openMaskEditor").click(); };
+      }
+    } else if (!source) {
+      guide.textContent = "Добавьте видео, спрайт-лист или отдельные кадры. Помощник покажет следующий шаг после загрузки.";
+      primary.textContent = "1 · Открыть файл";
+      primaryAction = () => chooseSource("chooseSource");
+      secondary.textContent = "Открыть спрайт-лист";
+      secondary.classList.remove("hidden");
+      secondaryAction = () => chooseSource("chooseSheet");
+    } else if (selected === "background") {
+      guide.textContent = approach === "auto"
+        ? "Оркестратор измерит фон и край, подберёт точный контур либо установленную модель и покажет результат для проверки."
+        : "Выберите тип фона и настройте силу удаления во вкладке обработки. Предпросмотр покажет результат без изменения исходника.";
+      primary.textContent = approach === "auto" ? "2 · Подобрать ИИ и показать результат" : "2 · Открыть настройки фона";
+      primaryAction = approach === "auto"
+        ? async () => { setTab("process"); if (await taskApplyAutoPlan()) await runBuild(true); }
+        : () => { setTab("process"); $("#keyMode").scrollIntoView({ block: "center", behavior: "smooth" }); };
+    } else if (selected === "edit") {
+      guide.textContent = result ? "Откройте анализ размеров или выберите кадр для ручной правки контура." : "Сначала соберите превью кадров, затем помощник укажет расхождения размеров и контура.";
+      primary.textContent = result ? "3 · Сравнить размеры кадров" : "2 · Собрать превью";
+      primaryAction = result ? () => { setTab("process"); $("#consistencyPanel").open = true; $("#analyzeFrameSizes").click(); } : () => { void runBuild(true); };
+    } else if (["cutout", "stylize", "depth", "upscale"].includes(selected)) {
+      if (result && !state.resultDirty) {
+        guide.textContent = selected === "depth"
+          ? "Карта глубины готова. Откройте вкладку «Глубина» над предпросмотром и сохраните результат."
+          : "Проверьте изображение справа: переключатели «До», «После» и «Сравнить» показывают эффект. Затем сохраните результат.";
+        primary.textContent = state.outputFolder ? "3 · Сохранить результат" : "3 · Выбрать папку для результата";
+        primaryAction = taskExport;
+      } else if (selected === "cutout") {
+        guide.textContent = approach === "auto"
+          ? "Для JPG, PNG или WebP: оркестратор определит фон, выберет контур или модель выделения и покажет прозрачный результат."
+          : "Для JPG, PNG или WebP: во вкладке обработки вручную выберите цвет фона или ИИ-выделение.";
+        primary.textContent = approach === "auto" ? "2 · Вырезать и проверить" : "2 · Настроить вырезку";
+        primaryAction = approach === "auto"
+          ? async () => { setTab("process"); if (await taskApplyAutoPlan()) await runBuild(true); }
+          : () => { setTab("process"); $("#keyMode").scrollIntoView({ block: "center", behavior: "smooth" }); };
+      } else if (selected === "stylize") {
+        guide.textContent = approach === "auto" ? "Оркестратор измерит рисунок, подберёт размер пикселя, палитру и стиль, затем покажет PNG-превью." : "Откройте настройки пиксель-арта: размер блока, палитра и дизеринг доступны вручную.";
+        primary.textContent = approach === "auto" ? "2 · Подобрать стиль и показать" : "2 · Настроить стиль";
+        primaryAction = approach === "auto"
+          ? async () => { $("#pixelateEnabled").checked = true; setTab("process"); if (await taskApplyAutoPlan()) await runBuild(true); }
+          : () => { setTab("process"); $("#pixelatePanel").open = true; $("#pixelatePanel").scrollIntoView({ block: "start", behavior: "smooth" }); };
+      } else if (selected === "depth") {
+        guide.textContent = approach === "auto" ? "Depth Anything V2 построит отдельную серую карту относительной глубины; её можно проверить в предпросмотре и сохранить как PNG." : "Включите карту глубины в ИИ-этапах и соберите превью вручную.";
+        primary.textContent = approach === "auto" ? "2 · Построить глубину" : "2 · Открыть ИИ-этапы";
+        primaryAction = approach === "auto"
+          ? async () => { $("#auxDepth").checked = true; setTab("process"); if (await taskApplyAutoPlan()) { await runBuild(true); setPreviewMode("depth"); } }
+          : () => { setTab("process"); $("#auxAITools").open = true; $("#auxAITools").scrollIntoView({ block: "start", behavior: "smooth" }); };
+      } else {
+        guide.textContent = approach === "auto" ? "Real-ESRGAN увеличит небольшой рисунок в 4 раза с сохранением прозрачности. Крупные кадры программа обрабатывает частями." : "Включите Real-ESRGAN в ИИ-этапах и соберите превью вручную.";
+        primary.textContent = approach === "auto" ? "2 · Увеличить ×4" : "2 · Открыть ИИ-этапы";
+        primaryAction = approach === "auto"
+          ? async () => { try { await taskEnsureModel("real-esrgan"); $("#auxEsrgan").checked = true; setTab("process"); await runBuild(true); } catch (error) { showError(error?.message); } }
+          : () => { setTab("process"); $("#auxAITools").open = true; $("#auxAITools").scrollIntoView({ block: "start", behavior: "smooth" }); };
+      }
+    } else {
+      guide.textContent = result ? "Проверьте анимацию справа и сохраните атлас." : approach === "auto" ? "Оркестратор измерит кадры, выберет установленные модели и соберёт превью." : "Настройте частоту, ячейку и порядок кадров вручную.";
+      primary.textContent = result ? "3 · Перейти к экспорту" : approach === "auto" ? "2 · Подобрать и собрать" : "2 · Открыть настройки анимации";
+      primaryAction = result ? () => setTab("export") : approach === "auto"
+        ? async () => { setTab("process"); if (await taskApplyAutoPlan()) await runBuild(true); }
+        : () => { setTab("process"); $("#fps").scrollIntoView({ block: "center", behavior: "smooth" }); };
+    }
+  }
+
+  $("#openTaskPicker").addEventListener("click", () => setCopilotPanel(true));
+  $("#changeTask").addEventListener("click", () => setCopilotPanel(true));
+  $("#taskPrimary").addEventListener("click", () => primaryAction?.());
+  $("#taskSecondary").addEventListener("click", () => secondaryAction?.());
+  $("#taskAdvanced").addEventListener("click", () => {
+    if (selected === "layout") { setTab("source"); $("#sheetControls").scrollIntoView({ block: "start", behavior: "smooth" }); }
+    else if (selected === "objectEdit") { selectFrame(Number($("#taskObjectSelect").value) || 0); setTab("process"); setTransformPanel(true); }
+    else { setTab("process"); $(selected === "remove" ? "#openMaskEditor" : selected === "background" ? "#keyMode" : selected === "edit" ? "#consistencyPanel" : "#fps").scrollIntoView({ block: "center", behavior: "smooth" }); }
+  });
+  $("#taskObjectSelect").addEventListener("change", () => {
+    const index = Number($("#taskObjectSelect").value);
+    if (state.source?.kind === "sheet") {
+      state.selectedFrameIndex = index;
+      requestFramePreview(state.source.paths[index]);
+    }
+  });
+  $(".copilot-tasks").addEventListener("click", (event) => {
+    const action = event.target.closest("button[data-approach]");
+    const choice = action?.closest("article[data-task]");
+    if (choice) taskSet(choice.dataset.task, action.dataset.approach);
+  });
+  window.taskChoose = taskSet;
+  window.taskRenderSuggestions = (scenarios = []) => {
+    const container = $(".copilot-tasks");
+    const cards = [...container.querySelectorAll("article[data-task]")];
+    const rank = new Map(scenarios.map((item, index) => [item.task, index]));
+    cards.sort((a, b) => (rank.get(a.dataset.task) ?? 99) - (rank.get(b.dataset.task) ?? 99));
+    for (const card of cards) {
+      const suggestion = scenarios.find((item) => item.task === card.dataset.task);
+      card.classList.toggle("recommended", Boolean(suggestion?.recommended));
+      const description = card.querySelector("small");
+      card.dataset.defaultDescription ||= description.textContent;
+      description.textContent = suggestion?.why || card.dataset.defaultDescription;
+      container.append(card);
+    }
+  };
+  $("#applyMaskEditor").addEventListener("click", () => {
+    if (selected === "remove") setTimeout(() => { taskRender(); setTab("source"); }, 0);
+  });
+  window.taskOnSource = (source) => {
+    if (!source?.sheetPath) objectEditOpened = false;
+    if (source?.kind === "sheet" && (!selected || selected === "animation")) taskSet("layout");
+    taskRender();
+  };
+  const earlierSetStatus = setStatus;
+  setStatus = function taskObservedSetStatus(...args) {
+    const value = earlierSetStatus(...args);
+    queueMicrotask(taskRender);
+    return value;
+  };
+  taskRender();
+  if (!selected && !state.source) setTimeout(() => setCopilotPanel(true), 350);
+})();

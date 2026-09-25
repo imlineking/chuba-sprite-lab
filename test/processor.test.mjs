@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import test from "node:test";
 import sharp from "sharp";
-import { inspectSource, keyFrame, processFramePreview, processSprites, processVideoBatch } from "../src/processor.mjs";
+import { analyzeFrameConsistency, clearRenderCache, inspectSource, keyFrame, processFramePreview, processSprites, processVideoBatch } from "../src/processor.mjs";
 import { compositeAttachments, trackAttachmentPlacements } from "../src/attachment-tracker.mjs";
 import { sliceSpriteSheet } from "../src/sheet-slicer.mjs";
 
@@ -24,6 +24,55 @@ async function makeFrame(filePath, left, top) {
     create: { width: 64, height: 64, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
   }).composite([{ input: orange, left, top }]).png().toFile(filePath);
 }
+
+test("background scope preserves an enclosed white detail unless all-colour removal is chosen", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-key-scope-"));
+  const input = path.join(temp, "flower.png");
+  const pixels = Buffer.alloc(16 * 16 * 4, 255);
+  for (let y = 3; y <= 12; y += 1) for (let x = 3; x <= 12; x += 1) {
+    pixels.set([20, 130, 50, 255], (y * 16 + x) * 4);
+  }
+  pixels.set([255, 255, 255, 255], (8 * 16 + 8) * 4);
+  await sharp(pixels, { raw: { width: 16, height: 16, channels: 4 } }).png().toFile(input);
+  const exterior = await keyFrame(input, "white", 20, 0, 0, { keyScope: "exterior" });
+  const all = await keyFrame(input, "white", 20, 0, 0, { keyScope: "all" });
+  const alphaAt = async (result, x, y) => (await sharp(result.buffer).ensureAlpha().raw().toBuffer())[(y * 16 + x) * 4 + 3];
+  assert.equal(await alphaAt(exterior, 0, 0), 0);
+  assert.equal(await alphaAt(exterior, 8, 8), 255);
+  assert.equal(await alphaAt(all, 8, 8), 0);
+});
+
+test("frame preview applies inward colour repair without altering a white detail", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-edge-preview-"));
+  const inputPath = path.join(temp, "edge.png");
+  const pixels = Buffer.alloc(17 * 17 * 4);
+  for (let y = 2; y <= 14; y += 1) for (let x = 2; x <= 14; x += 1) {
+    pixels.set([20, 130, 30, 255], (y * 17 + x) * 4);
+  }
+  for (let y = 2; y <= 14; y += 1) pixels.set([255, 255, 255, 255], (y * 17 + 2) * 4);
+  pixels.set([255, 255, 255, 255], (8 * 17 + 8) * 4);
+  await sharp(pixels, { raw: { width: 17, height: 17, channels: 4 } }).png().toFile(inputPath);
+  const preview = await processFramePreview({ inputPath, appRoot: path.resolve("."), options: { keyMode: "alpha", edgeRefine: { mode: "recolor", width: 1, depth: 5, whiteOnly: true } } });
+  const result = await sharp(preview.afterPath).ensureAlpha().raw().toBuffer();
+  assert.deepEqual([...result.subarray((8 * 17 + 2) * 4, (8 * 17 + 2) * 4 + 4)], [20, 130, 30, 255]);
+  assert.deepEqual([...result.subarray((8 * 17 + 8) * 4, (8 * 17 + 8) * 4 + 4)], [255, 255, 255, 255]);
+});
+
+test("recommends local AI for a varied scene border, not a uniform custom color", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-ai-recommend-"));
+  const varied = path.join(temp, "varied.png");
+  const uniform = path.join(temp, "uniform.png");
+  const rightHalf = await sharp({ create: { width: 40, height: 80, channels: 3, background: { r: 34, g: 77, b: 124 } } }).png().toBuffer();
+  await sharp({ create: { width: 80, height: 80, channels: 3, background: { r: 230, g: 195, b: 117 } } })
+    .composite([{ input: rightHalf, left: 40, top: 0 }]).png().toFile(varied);
+  await sharp({ create: { width: 80, height: 80, channels: 3, background: { r: 112, g: 122, b: 138 } } })
+    .png().toFile(uniform);
+  const variedSource = await inspectSource({ kind: "frames", paths: [varied], appRoot: path.resolve(".") });
+  const uniformSource = await inspectSource({ kind: "frames", paths: [uniform], appRoot: path.resolve(".") });
+  assert.equal(variedSource.recommendations.keyMode, "ai");
+  assert.equal(uniformSource.recommendations.keyMode, "auto");
+  assert.equal(variedSource.recommendations.cellWidth, 0, "inspection should defer silhouette sizing until the model runs");
+});
 
 test("builds aligned frames, sheet, manifest and report from separate images", async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-lab-test-"));
@@ -77,8 +126,55 @@ test("builds aligned frames, sheet, manifest and report from separate images", a
   const manifest = JSON.parse(await fs.readFile(result.manifestPath, "utf8"));
   assert.equal(manifest.frameCount, 3);
   assert.deepEqual(manifest.pivot, { x: 0.5, y: 1 - 8 / 96 });
+  assert.ok(manifest.frames.every((frame) => frame.hitbox && frame.hitbox.width > 0 && frame.hitbox.height > 0));
+  assert.ok(manifest.frames.every((frame) => frame.hitbox.x >= 0 && frame.hitbox.x + frame.hitbox.width <= frame.sourceSize.w));
+  assert.ok(manifest.frames.every((frame) => frame.hitboxSpace === "cell"), "the hitbox space must be declared explicitly");
+  assert.equal(result.frameBounds.length, 3);
+  assert.ok(result.frameBounds.every((frame) => frame.width > 0 && frame.height > 0), "the build must expose the bounds it measured");
   const report = JSON.parse(await fs.readFile(result.reportPath, "utf8"));
   assert.equal(report.outputFrames, 3);
+  assert.ok(report.timingsMs && Number.isFinite(report.timingsMs.key));
+  assert.equal(report.atlasIssues, undefined, "a healthy grid build must not report atlas issues");
+});
+
+test("a failed rebuild keeps the previous export, including with cleanOutput", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-atomic-export-"));
+  const input = path.join(temp, "input");
+  const output = path.join(temp, "output");
+  await fs.mkdir(input, { recursive: true });
+  await fs.mkdir(output, { recursive: true });
+  const paths = [0, 1].map((index) => path.join(input, `frame-${index}.png`));
+  await makeFrame(paths[0], 8, 25);
+  await makeFrame(paths[1], 20, 21);
+
+  const source = await inspectSource({ kind: "frames", paths, appRoot: path.resolve(".") });
+  const options = {
+    fps: 8, columns: 2, cellWidth: 128, cellHeight: 96, padding: 8, maxFrames: 10,
+    tolerance: 18, keyMode: "white", anchor: "ground", pixelPerfect: true,
+    removeDuplicates: false, outputBackground: "transparent",
+  };
+  const request = { source, outputDir: output, name: "atomic-export", appRoot: path.resolve(".") };
+
+  const first = await processSprites({ ...request, options });
+  const listing = async () => (await fs.readdir(first.outputDir, { recursive: true })).map(String).sort();
+  const before = await listing();
+  const manifestBefore = await fs.readFile(first.manifestPath, "utf8");
+  assert.ok(before.some((file) => file.endsWith(".json")), "the first export must contain a manifest");
+  assert.ok(before.some((file) => file.startsWith("frames")), "the first export must contain frames");
+
+  // Fail at the latest possible point: every artifact is already written, but only
+  // into the staging folder. cleanOutput must not delete the previous set first.
+  await assert.rejects(
+    () => processSprites({
+      ...request,
+      options: { ...options, cleanOutput: true },
+      onProgress: (progress) => { if (progress.stage === "preview") throw new Error("injected late failure"); },
+    }),
+    /injected late failure/,
+  );
+
+  assert.deepEqual(await listing(), before, "a failed rebuild must not change the previous export");
+  assert.equal(await fs.readFile(first.manifestPath, "utf8"), manifestBefore, "the previous manifest must stay intact");
 });
 
 test("extracts and processes frames from a video", async () => {
@@ -241,6 +337,11 @@ test("local AI segmentation produces an editable transparent mask", async (conte
     assert.ok(hard.data[offset + 3] === 0 || hard.data[offset + 3] === 255, "zero softness must produce a hard alpha mask");
     assert.deepEqual([...hard.data.subarray(offset, offset + 3)], [...original.data.subarray(offset, offset + 3)], "AI cleanup must not alter source RGB pixels");
   }
+  const softened = await keyFrame(inputPath, "ai", 28, 3, 0, {
+    appRoot, frameIndex: 0, aiCutoff: 42, aiSoftness: 2, aiForceModel: true, aiEdits: [],
+  });
+  const softPixels = await sharp(softened.buffer).ensureAlpha().raw().toBuffer();
+  assert.ok(softPixels.some((_value, index) => index % 4 === 3 && softPixels[index] > 0 && softPixels[index] < 255), "soft AI matte should retain intermediate alpha");
   const fast = await keyFrame(inputPath, "ai", 28, 3, 0, {
     appRoot,
     frameIndex: 0,
@@ -496,6 +597,276 @@ test("smart sheet slicing groups disconnected parts and keeps irregular rows", a
   assert.equal(smart.framePaths.length, 3, "two nearby disconnected pieces must become one object");
   const grid = await sliceSpriteSheet(sheetPath, path.join(temp, "grid"), { mode: "grid", columns: 2, rows: 2 });
   assert.equal(grid.framePaths.length, 4, "manual grid mode must remain available for regular sheets");
+});
+
+test("sheet repair isolates neighboring objects and accepts exact manual coordinates", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sheet-repair-test-"));
+  const sheetPath = path.join(temp, "nearby.png");
+  const first = await sharp({ create: { width: 72, height: 70, channels: 4, background: { r: 238, g: 92, b: 21, alpha: 1 } } }).png().toBuffer();
+  const second = await sharp({ create: { width: 72, height: 70, channels: 4, background: { r: 25, g: 90, b: 210, alpha: 1 } } }).png().toBuffer();
+  await sharp({ create: { width: 200, height: 100, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } } })
+    .composite([{ input: first, left: 12, top: 15 }, { input: second, left: 100, top: 15 }]).png().toFile(sheetPath);
+  const smart = await sliceSpriteSheet(sheetPath, path.join(temp, "auto"), { mode: "objects" });
+  assert.equal(smart.cells.length, 2);
+  assert.ok(smart.cells[0].left + smart.cells[0].width <= smart.cells[1].left, "automatic crops must not include the next object");
+  const manual = await sliceSpriteSheet(sheetPath, path.join(temp, "manual"), { mode: "manual", cells: [{ left: 12, top: 15, width: 72, height: 70 }, { left: 100, top: 15, width: 72, height: 70 }] });
+  assert.deepEqual(manual.cells, [{ left: 12, top: 15, width: 72, height: 70 }, { left: 100, top: 15, width: 72, height: 70 }]);
+  const repaired = await processSprites({
+    source: { kind: "sheet", paths: manual.framePaths, title: "nearby", sheetCells: manual.cells, sheetFrameNames: ["left", "right"] },
+    outputDir: path.join(temp, "output"), name: "repaired", appRoot: path.resolve("."),
+    options: { keyMode: "white", autoSize: true, autoColumns: true, padding: 8, maxFrames: 2, anchor: "center", pixelPerfect: true, removeDuplicates: false, outputBackground: "transparent", exports: { sheet: true, frames: true, metadata: true, preview: false } },
+  });
+  const manifest = JSON.parse(await fs.readFile(repaired.manifestPath, "utf8"));
+  assert.deepEqual(manifest.frames.map((frame) => frame.sourceName), ["left", "right"]);
+  assert.deepEqual(manifest.frames.map((frame) => frame.sourceRect), manual.cells);
+  await assert.rejects(() => sliceSpriteSheet(sheetPath, path.join(temp, "invalid"), { mode: "manual", cells: [{ left: 190, top: 0, width: 20, height: 20 }] }), /выходит за границы/);
+});
+
+test("transparent sheet detector keeps white opaque sprites", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-transparent-sheet-test-"));
+  const sheetPath = path.join(temp, "white-sprites.png");
+  const white = await sharp({ create: { width: 40, height: 35, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } } }).png().toBuffer();
+  await sharp({ create: { width: 230, height: 90, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: white, left: 20, top: 24 }, { input: white, left: 160, top: 24 }]).png().toFile(sheetPath);
+  const sliced = await sliceSpriteSheet(sheetPath, path.join(temp, "frames"), { mode: "objects" });
+  assert.deepEqual(sliced.cells, [{ left: 20, top: 24, width: 40, height: 35 }, { left: 160, top: 24, width: 40, height: 35 }]);
+});
+
+test("edge decontamination unmixes a soft edge against the key colour", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-decontaminate-test-"));
+  const inputPath = path.join(temp, "soft-edge.png");
+  // A sprite flattened onto white: its boundary band is a real blend of subject and
+  // background, which is exactly the halo that shows up around fur and thin edges.
+  const size = 64;
+  const data = Buffer.alloc(size * size * 4);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const offset = (y * size + x) * 4;
+      const inside = x >= 20 && x < 42 && y >= 18 && y < 44;
+      const distanceToEdge = Math.min(x - 20, 41 - x, y - 18, 43 - y);
+      const coverage = inside ? Math.max(0, Math.min(1, (distanceToEdge + 1) / 3)) : 0;
+      data[offset] = Math.round(225 * coverage + 255 * (1 - coverage));
+      data[offset + 1] = Math.round(86 * coverage + 255 * (1 - coverage));
+      data[offset + 2] = Math.round(18 * coverage + 255 * (1 - coverage));
+      data[offset + 3] = 255;
+    }
+  }
+  await sharp(data, { raw: { width: size, height: size, channels: 4 } }).png().toFile(inputPath);
+
+  const appRoot = path.resolve(".");
+  const plain = await keyFrame(inputPath, "white", 28, 3, 0, { appRoot, frameIndex: 0 });
+  const cleaned = await keyFrame(inputPath, "white", 28, 3, 0, { appRoot, frameIndex: 0, edgeDecontaminate: true });
+  const [before, after] = await Promise.all([
+    sharp(plain.buffer).ensureAlpha().raw().toBuffer(),
+    sharp(cleaned.buffer).ensureAlpha().raw().toBuffer(),
+  ]);
+  assert.equal(before.length, after.length);
+
+  let edges = 0;
+  let moved = 0;
+  let beforeSum = 0;
+  let afterSum = 0;
+  for (let index = 0; index < before.length; index += 4) {
+    assert.equal(before[index + 3], after[index + 3], "decontamination must not change opacity");
+    const alpha = before[index + 3];
+    if (alpha === 0 || alpha === 255) continue;
+    edges += 1;
+    beforeSum += before[index] + before[index + 1] + before[index + 2];
+    afterSum += after[index] + after[index + 1] + after[index + 2];
+    if (before[index] !== after[index] || before[index + 1] !== after[index + 1] || before[index + 2] !== after[index + 2]) moved += 1;
+  }
+  assert.ok(edges > 0, "the fixture must produce semi-transparent edge pixels");
+  assert.ok(moved > 0, "decontamination must change edge colours");
+  // White is the brightest possible background, so unmixing can only make the edge darker.
+  assert.ok(afterSum < beforeSum, `edge pixels must move away from white: ${beforeSum} -> ${afterSum}`);
+});
+
+test("the processing width changes nothing about the result", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-parallel-test-"));
+  const input = path.join(temp, "input");
+  await fs.mkdir(input, { recursive: true });
+  const positions = [[8, 25], [20, 21], [31, 18], [14, 24]];
+  const paths = positions.map((_position, index) => path.join(input, `frame-${index}.png`));
+  for (const [index, [left, top]] of positions.entries()) await makeFrame(paths[index], left, top);
+
+  const source = await inspectSource({ kind: "frames", paths, appRoot: path.resolve(".") });
+  const base = {
+    keyMode: "white", anchor: "ground", autoSize: true, autoColumns: true, padding: 8,
+    removeDuplicates: false, outputBackground: "transparent", maxFrames: 10,
+    exports: { sheet: true, frames: true, metadata: true, preview: false },
+  };
+  const build = async (frameParallelism) => {
+    // Each width must do its own work: the shared caches would otherwise answer the second run.
+    clearRenderCache();
+    const result = await processSprites({
+      source, outputDir: path.join(temp, `out-${frameParallelism}`), name: "parallel",
+      appRoot: path.resolve("."), options: { ...base, frameParallelism },
+    });
+    return {
+      manifest: JSON.parse(await fs.readFile(result.manifestPath, "utf8")),
+      sheet: await fs.readFile(result.sheetPath),
+      frames: await Promise.all(result.framePaths.map((file) => fs.readFile(file))),
+      report: JSON.parse(await fs.readFile(result.reportPath, "utf8")),
+    };
+  };
+
+  const serial = await build(1);
+  const parallel = await build(3);
+  assert.deepEqual(parallel.manifest, serial.manifest, "the manifest must not depend on scheduling");
+  assert.equal(parallel.frames.length, serial.frames.length);
+  for (const [index, buffer] of parallel.frames.entries()) {
+    assert.ok(buffer.equals(serial.frames[index]), `frame ${index} differs between widths`);
+  }
+  assert.ok(parallel.sheet.equals(serial.sheet), "the atlas must be byte-identical");
+  assert.ok(serial.report.buildMs && Number.isFinite(serial.report.buildMs.sheet), "the atlas stage must be timed");
+});
+
+test("pixel art reaches the exported frame and snaps the cell to its grid", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-pixelate-test-"));
+  const input = path.join(temp, "input");
+  await fs.mkdir(input, { recursive: true });
+  const paths = [0, 1].map((index) => path.join(input, `frame-${index}.png`));
+  await makeFrame(paths[0], 8, 25);
+  await makeFrame(paths[1], 20, 21);
+  const source = await inspectSource({ kind: "frames", paths, appRoot: path.resolve(".") });
+  const base = {
+    keyMode: "white", anchor: "ground", autoSize: true, autoColumns: true, padding: 20,
+    removeDuplicates: false, outputBackground: "transparent", maxFrames: 10,
+    exports: { sheet: true, frames: true, metadata: true, preview: false },
+  };
+  const build = async (pixelateOptions) => {
+    clearRenderCache();
+    const result = await processSprites({
+      source, outputDir: path.join(temp, pixelateOptions ? "art" : "plain"), name: "pixel",
+      appRoot: path.resolve("."), options: { ...base, ...(pixelateOptions ? { pixelate: pixelateOptions } : {}) },
+    });
+    return { result, frame: await fs.readFile(result.framePaths[0]) };
+  };
+
+  const plain = await build(null);
+  const art = await build({ size: 6, colors: 8, mode: "outline", palette: "auto" });
+
+  // The cell has to divide by the pixel size, otherwise the blocks on the far edge come out wider.
+  assert.equal(art.result.cellWidth % 6, 0, `cell width ${art.result.cellWidth} must divide by 6`);
+  assert.equal(art.result.cellHeight % 6, 0, `cell height ${art.result.cellHeight} must divide by 6`);
+  assert.ok(art.result.cellWidth >= plain.result.cellWidth, "snapping only ever grows the cell");
+  assert.ok(!art.frame.equals(plain.frame), "the redraw must reach the exported frame");
+
+  // Every block of the grid must be one flat colour.
+  const { data, info } = await sharp(art.frame).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const block = art.result.cellWidth / 6;
+  assert.ok(Number.isInteger(block), "the grid must be a whole number of blocks");
+  const at = (x, y) => {
+    const offset = (y * info.width + x) * 4;
+    return [data[offset], data[offset + 1], data[offset + 2], data[offset + 3]];
+  };
+  assert.deepEqual(at(block, block), at(block + block - 1, block + block - 1), "a block must be flat");
+});
+
+test("size assistant suggests proportional scale only for comparable poses", () => {
+  // Bounds come straight from a finished build, so this is a pure calculation.
+  const analysis = analyzeFrameConsistency([
+    { index: 0, width: 20, height: 20 },
+    { index: 1, width: 30, height: 30 },
+    { index: 2, width: 20, height: 40 },
+  ]);
+  assert.equal(analysis.targetHeight, 30);
+  assert.equal(analysis.frames[0].proposedScale, 1.5);
+  assert.equal(analysis.frames[2].confidence, "different-pose");
+  assert.equal(analysis.frames[2].proposedScale, 1);
+  assert.deepEqual(analysis.frames.map((frame) => frame.index), [0, 1, 2]);
+});
+
+test("body anchor keeps the solid object steady while preserving a growing thin tail", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-body-anchor-"));
+  const paths = [];
+  for (const [index, tail] of [8, 50].entries()) {
+    const body = await sharp({ create: { width: 24, height: 24, channels: 4, background: { r: 220, g: 35, b: 20, alpha: 1 } } }).png().toBuffer();
+    const thread = await sharp({ create: { width: tail, height: 2, channels: 4, background: { r: 220, g: 35, b: 20, alpha: 1 } } }).png().toBuffer();
+    const file = path.join(temp, `${index}.png`);
+    await sharp({ create: { width: 100, height: 56, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite([{ input: body, left: 10, top: 12 }, { input: thread, left: 34, top: 23 }]).png().toFile(file);
+    paths.push(file);
+  }
+  const result = await processSprites({
+    source: { kind: "frames", paths, title: "tail" }, outputDir: path.join(temp, "out"), name: "tail", appRoot: path.resolve("."),
+    options: { keyMode: "alpha", anchor: "body", autoSize: true, autoColumns: true, padding: 12, maxFrames: 2, removeDuplicates: false, pixelPerfect: true, outputBackground: "transparent", exports: { sheet: true, frames: true, metadata: true, preview: false } },
+  });
+  const bodyCenters = [];
+  for (const file of result.framePaths) {
+    const { data, info } = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    let total = 0; let sum = 0; let edge = 0;
+    for (let y = 0; y < info.height; y += 1) for (let x = 0; x < info.width; x += 1) {
+      const alpha = data[(y * info.width + x) * 4 + 3];
+      if (alpha > 12 && (x < 2 || x >= info.width - 2 || y < 2 || y >= info.height - 2)) edge += 1;
+      if (alpha > 12 && y >= info.height / 2 - 12 && y < info.height / 2 + 12 && x < info.width / 2 + 12) { total += alpha; sum += x * alpha; }
+    }
+    assert.equal(edge, 0, "the full tail must fit inside the exported cell");
+    bodyCenters.push(Math.round(sum / total));
+  }
+  assert.ok(Math.abs(bodyCenters[0] - bodyCenters[1]) <= 2, `body jumped: ${bodyCenters}`);
+});
+
+test("size assistant measures frames as the transform will place them", () => {
+  const analysis = analyzeFrameConsistency(
+    [{ index: 0, width: 20, height: 20 }, { index: 7, width: 20, height: 10 }],
+    { transforms: { "*": { scaleX: 2, scaleY: 2 }, 7: { scaleX: 1, scaleY: 1 } } },
+  );
+  assert.deepEqual(analysis.frames.map((frame) => [frame.index, frame.width, frame.height]), [[0, 40, 40], [7, 20, 10]]);
+});
+
+test("size assistant can use an explicit reference silhouette", () => {
+  const analysis = analyzeFrameConsistency([
+    { index: 0, width: 40, height: 40 },
+    { index: 1, width: 20, height: 20 },
+  ], { referenceIndex: 0 });
+  assert.equal(analysis.referenceIndex, 0);
+  assert.equal(analysis.frames[1].proposedScale, 1.5);
+  assert.throws(() => analyzeFrameConsistency([{ index: 0, width: 20, height: 20 }], { referenceIndex: 8 }), /Опорный кадр/);
+});
+
+test("size assistant refuses an empty or oversized measurement set", () => {
+  assert.throws(() => analyzeFrameConsistency([]), /до 256 кадров/);
+  assert.throws(() => analyzeFrameConsistency(new Array(257).fill({ index: 0, width: 1, height: 1 })), /до 256 кадров/);
+});
+
+test("warning frame numbers follow the source frames, not the filtered list", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-frame-issues-"));
+  const input = path.join(temp, "input");
+  await fs.mkdir(input, { recursive: true });
+  const sizes = [[22, 26], [22, 26], [22, 26], [60, 26]];
+  const paths = [];
+  for (const [index, [width, height]] of sizes.entries()) {
+    const block = await sharp({ create: { width, height, channels: 4, background: { r: 225, g: 86, b: 18, alpha: 1 } } }).png().toBuffer();
+    const file = path.join(input, `frame-${index}.png`);
+    await sharp({ create: { width: 96, height: 96, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } } })
+      .composite([{ input: block, left: 16, top: 20 }]).png().toFile(file);
+    paths.push(file);
+  }
+  const source = await inspectSource({ kind: "frames", paths, appRoot: path.resolve(".") });
+  const options = {
+    keyMode: "white", anchor: "ground", autoSize: true, autoColumns: true, padding: 8,
+    removeDuplicates: false, outputBackground: "transparent", maxFrames: 10, excludedFrames: [0],
+  };
+  const result = await processSprites({ source, appRoot: path.resolve("."), previewOnly: true, options });
+
+  const widthIssue = result.frameIssues.find((issue) => issue.message.includes("ширина силуэта"));
+  assert.ok(widthIssue, `expected a width warning, warnings were ${JSON.stringify(result.warnings)}`);
+  // Source frame 0 is excluded, so the first reported frame is source frame 1.
+  assert.equal(widthIssue.frameIndex, 1, "an excluded frame must not shift the reported number");
+  assert.ok(widthIssue.message.startsWith("Кадр 2:"), widthIssue.message);
+  assert.ok(result.frameIssues.some((issue) => issue.frameIndex === 3), "the wide source frame must be reported");
+  assert.ok(!result.frameIssues.some((issue) => issue.frameIndex === 0), "an excluded frame must not be reported");
+  for (const issue of result.frameIssues) {
+    assert.ok(result.warnings.includes(issue.message), "every structured issue must also appear in the plain list");
+  }
+
+  const report = JSON.parse(await fs.readFile(result.reportPath, "utf8"));
+  assert.match(report.recipe.hash, /^[a-f\d]{16}$/, "the report must identify its recipe");
+  assert.equal(typeof report.recipe.appVersion, "string");
+  const again = await processSprites({ source, appRoot: path.resolve("."), previewOnly: true, options });
+  const repeated = JSON.parse(await fs.readFile(again.reportPath, "utf8"));
+  assert.equal(repeated.recipe.hash, report.recipe.hash, "the same recipe must hash the same");
 });
 
 test("an externally edited frame replaces the extracted source on rebuild", async () => {
