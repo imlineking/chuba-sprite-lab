@@ -55,7 +55,7 @@
   "scripts": {
     "start": "electron .",
     "prepare:vendor": "node scripts/prepare-vendor.mjs",
-    "test": "node --test --test-isolation=none test/*.test.mjs",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
     "verify": "node --check src/renderer.js && node --check src/main.mjs && node --check src/processor.mjs && node --check src/update-utils.mjs && node --check src/preload.cjs && npm test",
     "pack": "node scripts/package.mjs",
     "release:build": "node scripts/package.mjs && node scripts/create-release.mjs"
