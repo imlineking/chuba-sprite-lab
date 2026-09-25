@@ -305,7 +305,9 @@ function showPlayer(mode) {
 }
 
 function syncPlayerControls() {
-  $("#playerPlay").textContent = studio.playing ? "❚❚" : "▶";
+  $("#playerPlay").innerHTML = studio.playing
+    ? '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg>'
+    : '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>';
   $("#playerPlay").setAttribute("aria-label", studio.playing ? "Пауза" : "Воспроизвести");
   $("#onionToggle").classList.toggle("active", studio.onion);
   $("#onionToggle").setAttribute("aria-pressed", String(studio.onion));
@@ -449,12 +451,13 @@ function drawPlayer() {
   const cellWidth = studio.cellWidth || studio.images[current.image]?.naturalWidth || 1;
   const cellHeight = studio.cellHeight || studio.images[current.image]?.naturalHeight || 1;
   const game = state.previewMode === "game";
+  const darkInk = !["black", "scene"].includes(state.backdrop);
   let scale; let left; let top;
   const reserve = state.transformPanelOpen ? 316 : 0;
   if (game) {
     scale = studio.gameScale;
     const groundY = Math.round(height * 0.8);
-    drawGameBackdrop(context, width, height, groundY, scale);
+    if (state.backdrop === "scene") drawGameBackdrop(context, width, height, groundY, scale);
     const pivotX = studio.pivot.x * cellWidth; const pivotY = studio.pivot.y * cellHeight;
     left = Math.round(width / 2 - pivotX * scale + state.viewportPanX);
     top = Math.round(groundY - pivotY * scale + state.viewportPanY);
@@ -474,18 +477,18 @@ function drawPlayer() {
     const bounds = frameBounds(current.image);
     context.lineWidth = 1;
     if (bounds) {
-      context.strokeStyle = "rgba(200,223,111,.95)"; context.setLineDash([5, 4]);
+      context.strokeStyle = darkInk ? "#16242a" : "#c8df6f"; context.setLineDash([5, 4]);
       context.strokeRect(Math.round(left + bounds.x * scale) + 0.5, Math.round(top + bounds.y * scale) + 0.5, Math.round(bounds.width * scale), Math.round(bounds.height * scale));
       context.setLineDash([]);
-      context.fillStyle = "rgba(200,223,111,.95)"; context.font = '600 12px "Bahnschrift", sans-serif';
+      context.fillStyle = darkInk ? "#16242a" : "#c8df6f"; context.font = '600 12px "Bahnschrift", sans-serif';
       context.fillText(`хитбокс ${bounds.width}×${bounds.height}`, Math.round(left + bounds.x * scale), Math.max(14, Math.round(top + bounds.y * scale) - 6));
     }
     const pivotX = left + studio.pivot.x * cellWidth * scale; const pivotY = top + studio.pivot.y * cellHeight * scale;
-    context.strokeStyle = "#ff7617"; context.lineWidth = 2;
+    context.strokeStyle = darkInk ? "#16242a" : "#ff7617"; context.lineWidth = 2;
     context.beginPath(); context.moveTo(pivotX - 7, pivotY); context.lineTo(pivotX + 7, pivotY); context.moveTo(pivotX, pivotY - 7); context.lineTo(pivotX, pivotY + 7); context.stroke();
   }
   if (game) {
-    context.fillStyle = "rgba(242,240,233,.82)"; context.font = '600 12px "Bahnschrift", sans-serif';
+    context.fillStyle = darkInk ? "#16242a" : "rgba(242,240,233,.9)"; context.font = '600 12px "Bahnschrift", sans-serif';
     context.fillText(`${String(studio.gameScale).replace(".", ",")}× · ${Math.round(cellWidth * studio.gameScale)}×${Math.round(cellHeight * studio.gameScale)} px на экране`, 14, height - 16);
   }
   const loopLabel = ({ loop: "повтор", pingpong: "туда-обратно", range: "диапазон" })[loopOptions().loopMode];

@@ -5,7 +5,7 @@ const state = {
   source: null, outputFolder: null, result: null, previewMode: "after", keyMode: "auto", anchor: "ground",
   busy: false, lastExportDir: null, lastRevealPath: null, framePreview: null, selectedFrameIndex: 0,
   excludedFrames: new Set(), quickTimer: null, quickToken: 0,
-  zoom: 1, guides: false, backdrop: 0, timelineValid: true, sourceRevision: 0, resultDirty: false,
+  zoom: 1, guides: false, backdrop: "checker", backdropBeforeGame: "checker", timelineValid: true, sourceRevision: 0, resultDirty: false,
   maskEdits: [], maskBrushMode: "smart", maskDrawing: false, maskStrokeId: 0,
   maskEditorSnapshot: [], maskEditorImage: null, maskEditorPixels: null,
   attachments: [], attachmentAsset: null, attachmentSourceImage: null, attachmentAssetImage: null,
@@ -1782,16 +1782,41 @@ function changeZoom(delta) {
   applyZoom();
 }
 
-function cycleBackdrop() {
+const previewBackdrops = ["checker", "white", "black", "green", "magenta", "scene"];
+
+function closeBackdropMenu() {
+  $("#backdropMenu").classList.add("hidden");
+  $("#backdropToggle").setAttribute("aria-expanded", "false");
+}
+
+function setBackdrop(backdrop, persist = true) {
+  if (!previewBackdrops.includes(backdrop)) return;
   const stage = $("#previewStage");
-  stage.classList.remove("backdrop-light", "backdrop-dark");
-  state.backdrop = (state.backdrop + 1) % 3;
-  if (state.backdrop === 1) stage.classList.add("backdrop-light");
-  if (state.backdrop === 2) stage.classList.add("backdrop-dark");
+  previewBackdrops.forEach((name) => stage.classList.remove(`backdrop-${name}`));
+  stage.classList.add(`backdrop-${backdrop}`);
+  state.backdrop = backdrop;
+  $("#backdropCurrentSwatch").className = `backdrop-swatch ${backdrop}`;
+  $("#backdropToggle").title = `Подложка: ${$("#backdropMenu button[data-backdrop='" + backdrop + "']")?.textContent.trim() || backdrop} · только для просмотра`;
+  $$("#backdropMenu button[data-backdrop]").forEach((button) => {
+    const selected = button.dataset.backdrop === backdrop;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+  if (typeof drawPlayer === "function") drawPlayer();
+  if (persist && backdrop !== "scene") savePreferences();
 }
 
 function setPreviewMode(mode) {
+  const wasGame = state.previewMode === "game";
   state.previewMode = mode;
+  if (mode === "game" && !wasGame) {
+    state.backdropBeforeGame = state.backdrop;
+    setBackdrop("scene", false);
+  } else if (mode !== "game" && wasGame && state.backdrop === "scene") {
+    setBackdrop(state.backdropBeforeGame === "scene" ? "checker" : state.backdropBeforeGame, false);
+  }
+  $("#backdropMenu .scene-backdrop").classList.toggle("hidden", mode !== "game");
+  closeBackdropMenu();
   $$(".preview-tabs button").forEach((button) => {
     const selected = button.dataset.preview === mode;
     button.classList.toggle("selected", selected);
@@ -1945,6 +1970,7 @@ function savePreferences() {
       schema: 4,
       keyMode: state.keyMode, solidKeyMode: state.solidKeyMode, anchor: state.anchor, outputFolder: state.outputFolder,
       preferredEditor: state.preferredEditor,
+      backdrop: state.backdrop === "scene" ? state.backdropBeforeGame : state.backdrop,
       values: Object.fromEntries(preferenceValueIds.map((id) => [id, $(`#${id}`).value])),
       checks: Object.fromEntries(preferenceCheckIds.map((id) => [id, $(`#${id}`).checked])),
     }));
@@ -1955,6 +1981,7 @@ function loadPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem("spriteLab.preferences") || "null");
     if (!saved) return;
+    setBackdrop(previewBackdrops.includes(saved.backdrop) && saved.backdrop !== "scene" ? saved.backdrop : "checker", false);
     Object.entries(saved.values || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).value = value; });
     if (Number(saved.schema || 0) < 2) $("#aiSoftness").value = "0";
     $("#toleranceValue").textContent = $("#tolerance").value;
@@ -2282,8 +2309,28 @@ $("#toggleGuides").addEventListener("click", () => {
   state.guides = !state.guides;
   $("#guideLayer").classList.toggle("hidden", !state.guides);
   $("#toggleGuides").classList.toggle("active", state.guides);
+  $("#toggleGuides").setAttribute("aria-pressed", String(state.guides));
 });
-$("#cycleBackdrop").addEventListener("click", cycleBackdrop);
+$("#backdropToggle").addEventListener("click", () => {
+  const open = $("#backdropMenu").classList.toggle("hidden") === false;
+  $("#backdropToggle").setAttribute("aria-expanded", String(open));
+});
+$("#backdropMenu").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-backdrop]");
+  if (!button) return;
+  setBackdrop(button.dataset.backdrop);
+  closeBackdropMenu();
+  $("#backdropToggle").focus();
+});
+document.addEventListener("pointerdown", (event) => {
+  if (!event.target.closest(".backdrop-control")) closeBackdropMenu();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !$("#backdropMenu").classList.contains("hidden")) {
+    closeBackdropMenu();
+    $("#backdropToggle").focus();
+  }
+});
 $("#closeError").addEventListener("click", hideError);
 $("#safeSettings").addEventListener("click", () => { resetRecommended(); hideError(); });
 $("#showErrorFrame").addEventListener("click", () => { hideError(); if (state.result) selectFrame(state.selectedFrameIndex); });
@@ -2361,7 +2408,7 @@ window.spriteLab.onUpdateProgress((progress) => {
 });
 
 $$("button.selected").forEach((button) => button.setAttribute("aria-pressed", "true"));
-loadCustomExportProfiles(); loadPreferences(); syncAutoSize(); updateMaskEditSummary(); renderAttachmentList(); updateActionState(); syncExportDependencies(""); setPreviewMode("after"); setStatus("Готов к работе"); loadSessionOffer();
+loadCustomExportProfiles(); setBackdrop("checker", false); loadPreferences(); syncAutoSize(); updateMaskEditSummary(); renderAttachmentList(); updateActionState(); syncExportDependencies(""); setPreviewMode("after"); setStatus("Готов к работе"); loadSessionOffer();
 window.spriteLab.getAppInfo().then((info) => {
   $("#versionBadge").textContent = info.version;
   $("#aboutVersion").textContent = info.version;

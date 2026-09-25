@@ -51,10 +51,10 @@ body {
 .brand-name { font-family: "Bahnschrift", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .17em; }
 .version { color: var(--muted-2); font: 700 11px "Bahnschrift", sans-serif; border: 1px solid var(--line); border-radius: 999px; padding: 2px 6px; }
 .window-actions { -webkit-app-region: no-drag; display: flex; height: 100%; }
-.window-button { width: 48px; border: 0; background: transparent; color: #9aa1aa; font-size: 16px; cursor: pointer; transition: background .15s, color .15s; }
+.window-button { width: 48px; display: grid; place-items: center; border: 0; background: transparent; color: #aab3bc; cursor: pointer; transition: background .15s, color .15s; }
 .window-button:hover { background: #20242b; color: white; }
 .window-button.close:hover { background: #c42b3a; }
-.window-button.help { width: 32px; height: 32px; align-self: center; margin: 0 8px; border: 1px solid rgba(255,255,255,.55); border-radius: 50%; color: #fff; font: 700 14px "Bahnschrift", sans-serif; }
+.window-button.help { width: 32px; height: 32px; align-self: center; margin: 0 8px; border: 1px solid #56616b; border-radius: 50%; color: #d4dbe1; }
 .window-button.help:hover { border-color: var(--orange); background: rgba(255,118,23,.12); color: #fff; }
 
 .tabs {
@@ -329,15 +329,21 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; width: 15px; heigh
 .preview-group { display: flex; align-items: center; gap: 5px; }
 .preview-group > span { color: #555d67; font: 700 11px "Bahnschrift", sans-serif; letter-spacing: .09em; }
 .preview-tabs { display: flex; padding: 3px; border: 1px solid #2c323a; border-radius: 8px; background: #0d1014; }
-.preview-tabs button { min-width: 58px; min-height: 31px; padding: 0 10px; border: 0; border-radius: 5px; background: transparent; color: #747d88; font-size: 11px; cursor: pointer; }
-.preview-tabs button.selected { background: #252b32; color: white; }
-.preview-stage { position: relative; min-width: 0; min-height: 0; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; overflow: hidden; border: 1px solid #303741; border-radius: 15px; background-color: #13171c; background-image: linear-gradient(45deg, #191e24 25%, transparent 25%), linear-gradient(-45deg, #191e24 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #191e24 75%), linear-gradient(-45deg, transparent 75%, #191e24 75%); background-size: 24px 24px; background-position: 0 0, 0 12px, 12px -12px, -12px 0; box-shadow: 0 24px 70px rgba(0,0,0,.24); }
-.preview-stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 90px rgba(0,0,0,.3); }
+.preview-tabs button { min-width: 58px; min-height: 31px; padding: 0 10px; border: 0; border-radius: 5px; background: transparent; color: #a2abb4; font: 600 11px "Bahnschrift", sans-serif; cursor: pointer; }
+.preview-tabs button:hover { background: #1e242b; color: #fff; }
+.preview-tabs button.selected { background: #313941; color: #fff; box-shadow: inset 0 0 0 1px #48515b; }
+.preview-stage { position: relative; min-width: 0; min-height: 0; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; overflow: hidden; border: 1px solid #444b52; border-radius: 15px; background: #f3f3f3; box-shadow: 0 24px 70px rgba(0,0,0,.24); }
+.preview-stage.backdrop-checker, .backdrop-swatch.checker { background-color: #f0f0f0; background-image: conic-gradient(#d3d7d9 25%, #f0f0f0 0 50%, #d3d7d9 0 75%, #f0f0f0 0); background-size: 24px 24px; }
+.preview-stage.backdrop-white, .backdrop-swatch.white { background: #fff; }
+.preview-stage.backdrop-black, .backdrop-swatch.black { background: #000; }
+.preview-stage.backdrop-green, .backdrop-swatch.green { background: #00ff00; }
+.preview-stage.backdrop-magenta, .backdrop-swatch.magenta { background: #ff00ff; }
+.preview-stage.backdrop-scene, .backdrop-swatch.scene { background: #10141a; }
 .preview-stage.hand-tool { cursor: grab; }
 .preview-stage.hand-tool.panning { cursor: grabbing; }
 .preview-stage.hand-tool .preview-image, .preview-stage.hand-tool .compare-view img { pointer-events: none; }
-.preview-stage.backdrop-light { background: #e8e8e5; }
-.preview-stage.backdrop-dark { background: #07090c; }
+.preview-stage:is(.backdrop-white, .backdrop-checker, .backdrop-green, .backdrop-magenta) .preview-empty { color: #242a30; }
+.preview-stage:is(.backdrop-white, .backdrop-checker, .backdrop-green, .backdrop-magenta) .preview-empty span { color: #39434b; }
 .preview-empty { grid-area: 1 / 1; z-index: 1; display: flex; flex-direction: column; align-items: center; text-align: center; }
 .preview-empty strong { margin-top: 20px; font: 600 14px "Bahnschrift", sans-serif; }
 .preview-empty span { margin-top: 8px; color: #636b75; font-size: 11px; line-height: 1.5; }
@@ -347,7 +353,7 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; width: 15px; heigh
 .frame-stack i:nth-child(2) { right: 0; top: 12px; transform: rotate(8deg); }
 .frame-stack i:nth-child(3) { left: 16px; top: 2px; border-color: var(--orange); background: #201812; }
 .frame-stack i:nth-child(3)::after { content: "▶"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--orange); font-size: 16px; }
-.preview-image { grid-area: 1 / 1; position: relative; z-index: 1; display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; padding: 24px; box-sizing: border-box; object-fit: contain; transform-origin: center; image-rendering: auto; filter: drop-shadow(0 16px 26px rgba(0,0,0,.28)); }
+.preview-image { grid-area: 1 / 1; position: relative; z-index: 1; display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; padding: 24px; box-sizing: border-box; object-fit: contain; transform-origin: center; image-rendering: auto; }
 .preview-image.pixel { image-rendering: pixelated; }
 .preview-image.transform-selected {
   outline: 0;
@@ -364,9 +370,23 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; width: 15px; heigh
 #compareAfterWrap { overflow: hidden; clip-path: inset(0 50% 0 0); }
 #compareDivider { position: absolute; z-index: 3; top: 0; bottom: 0; left: 50%; width: 2px; background: var(--orange); box-shadow: 0 0 10px rgba(255,118,23,.6); pointer-events: none; }
 #compareSlider { position: absolute; z-index: 4; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }
-.stage-tools { position: absolute; z-index: 8; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 3px; padding: 4px; border: 1px solid rgba(255,255,255,.09); border-radius: 8px; background: rgba(8,10,13,.82); backdrop-filter: blur(8px); }
-.stage-tools button { min-width: 31px; height: 31px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: #9aa2ac; font-size: 11px; cursor: pointer; }
+.stage-tools { position: absolute; z-index: 8; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 3px; max-width: calc(100% - 20px); padding: 4px; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; background: rgba(8,10,13,.91); box-shadow: 0 12px 32px rgba(0,0,0,.25); backdrop-filter: blur(12px); }
+.stage-tools button { min-width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #bbc3cb; font: 600 11px "Bahnschrift", sans-serif; white-space: nowrap; cursor: pointer; }
 .stage-tools button:hover, .stage-tools button.active { background: #272d35; color: white; }
+.stage-tools button:focus-visible, .backdrop-menu button:focus-visible, .preview-tabs button:focus-visible, .player-bar button:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.ui-icon { width: 17px; height: 17px; flex: 0 0 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.stage-tool-divider { width: 1px; height: 19px; margin: 0 3px; background: #39414a; }
+.backdrop-control { position: relative; }
+.backdrop-swatch { width: 17px; height: 17px; flex: 0 0 17px; display: block; border: 1px solid rgba(255,255,255,.52); border-radius: 4px; background-size: 8px 8px !important; }
+.backdrop-menu { position: absolute; right: 0; bottom: calc(100% + 11px); width: 230px; padding: 8px; border: 1px solid #4a545f; border-radius: 12px; background: #141a20; color: #e4e8eb; box-shadow: 0 22px 50px rgba(0,0,0,.48); }
+.backdrop-menu > strong, .backdrop-menu > small { display: block; padding: 2px 8px; }
+.backdrop-menu > strong { color: #f1f3f4; font: 700 11px "Bahnschrift", sans-serif; letter-spacing: .09em; }
+.backdrop-menu > small { margin-bottom: 7px; color: #9aa5ae; font-size: 11px; line-height: 1.35; }
+.backdrop-menu button { width: 100%; min-height: 34px; justify-content: flex-start; padding: 0 8px; color: #c8d0d6; text-align: left; }
+.backdrop-menu button.selected { background: rgba(255,118,23,.12); color: #fff; }
+.backdrop-menu button .check { width: 14px; height: 14px; margin-left: auto; color: var(--orange); opacity: 0; }
+.backdrop-menu button.selected .check { opacity: 1; }
+#backdropToggle .chevron { width: 13px; height: 13px; flex-basis: 13px; color: #81909d; }
 #handTool.active { background: rgba(255,118,23,.18); color: var(--orange-soft); box-shadow: inset 0 0 0 1px rgba(255,118,23,.38); }
 #transformTool.active { background: rgba(200,223,111,.14); color: var(--acid); box-shadow: inset 0 0 0 1px rgba(200,223,111,.34); }
 .transform-panel { position: absolute; z-index: 12; top: 10px; right: 10px; bottom: 58px; width: 292px; max-height: calc(100% - 68px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3c444f transparent; padding: 12px; border: 1px solid #46505b; border-radius: 12px; background: rgba(14,18,23,.97); box-shadow: 0 22px 58px rgba(0,0,0,.58); backdrop-filter: blur(14px); }
@@ -393,7 +413,7 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; width: 15px; heigh
 .transform-actions button:hover { border-color: var(--orange); color: white; }
 .transform-actions button.active { border-color: var(--acid); background: rgba(200,223,111,.1); color: var(--acid); }
 .transform-panel > p { margin: 9px 0 0; color: #727d88; font-size: 11px; line-height: 1.45; }
-.stage-tools span { min-width: 37px; color: #6e7680; text-align: center; font: 700 11px "Bahnschrift", sans-serif; }
+.stage-tools #zoomValue { min-width: 40px; color: #a7b0b9; text-align: center; font: 700 11px "Bahnschrift", sans-serif; }
 .guide-layer { position: absolute; z-index: 6; inset: 24px; pointer-events: none; background-image: linear-gradient(rgba(200,223,111,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(200,223,111,.07) 1px, transparent 1px); background-size: 32px 32px; }
 .guide-layer i { position: absolute; left: 0; right: 0; bottom: 10%; height: 1px; background: rgba(255,118,23,.78); }
 .guide-layer b { position: absolute; left: 50%; bottom: calc(10% - 4px); width: 9px; height: 9px; margin-left: -4px; border: 1px solid var(--acid); border-radius: 50%; }
@@ -578,6 +598,7 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; width: 15px; heigh
 .workspace-actions button { min-height: 30px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #929ba6; font: 600 11px "Bahnschrift", sans-serif; cursor: pointer; }
 .workspace-actions button:hover:not(:disabled) { background: #20252c; color: white; }
 .workspace-actions button:disabled { opacity: .34; cursor: default; }
+.workspace-actions button .ui-icon { vertical-align: middle; }
 .workspace-actions kbd { margin-left: 7px; color: #626d79; font: 700 11px "Bahnschrift", sans-serif; }
 .tab.complete:not(.active) { color: #a8b987; }
 .tab.complete:not(.active) span { color: var(--acid); }
@@ -699,8 +720,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .preview-stage.transform-open .preview-image { padding-right: 326px; }
 .preview-stage.transform-open .compare-view { right: 326px; }
 .player-canvas { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; }
-.preview-stage.game-mode { background: #10141a; }
-.preview-stage.game-mode::after { box-shadow: none; }
+.preview-stage.game-mode { border-color: #53606b; }
 .player-bar { position: absolute; z-index: 9; left: 10px; top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 3px; max-width: calc(100% - 20px); padding: 4px; border: 1px solid rgba(255,255,255,.09); border-radius: 8px; background: rgba(8,10,13,.84); backdrop-filter: blur(8px); }
 .player-bar button { min-width: 34px; height: 32px; padding: 0 9px; border: 0; border-radius: 5px; background: transparent; color: #aab2bb; font: 600 12px "Bahnschrift", sans-serif; cursor: pointer; }
 .player-bar button:hover { background: #272d35; color: white; }

@@ -18,15 +18,15 @@
         <button id="newProject" type="button">Новый</button>
         <button id="openProject" type="button">Открыть проект</button>
         <button id="saveProject" type="button" disabled>Сохранить</button>
-        <button id="undoAction" type="button" disabled aria-label="Отменить действие">↶</button>
-        <button id="redoAction" type="button" disabled aria-label="Повторить действие">↷</button>
+        <button id="undoAction" type="button" disabled aria-label="Отменить действие"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 5 11l4 4M5 11h10a5 5 0 0 1 0 10"/></svg></button>
+        <button id="redoAction" type="button" disabled aria-label="Повторить действие"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 7 4 4-4 4m4-4H9a5 5 0 0 0 0 10"/></svg></button>
         <button id="openCommands" type="button" aria-label="Открыть список команд">Команды <kbd>Ctrl K</kbd></button>
       </div>
       <div class="window-actions" aria-label="Управление окном">
-        <button id="aboutApp" class="window-button help" type="button" aria-label="О программе">?</button>
-        <button id="minimizeWindow" class="window-button" type="button" aria-label="Свернуть">—</button>
-        <button id="maximizeWindow" class="window-button" type="button" aria-label="Развернуть">□</button>
-        <button id="closeWindow" class="window-button close" type="button" aria-label="Закрыть">×</button>
+        <button id="aboutApp" class="window-button help" type="button" aria-label="О программе"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2.5-2.5 4.5M12 17.5h.01"/></svg></button>
+        <button id="minimizeWindow" class="window-button" type="button" aria-label="Свернуть"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14"/></svg></button>
+        <button id="maximizeWindow" class="window-button" type="button" aria-label="Развернуть"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></button>
+        <button id="closeWindow" class="window-button close" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6 18 18M18 6 6 18"/></svg></button>
       </div>
     </header>
 
@@ -432,7 +432,7 @@
             <div id="resultPreviewTabs" class="preview-group hidden"><span>РЕЗУЛЬТАТ</span><div class="preview-tabs">
               <button type="button" data-preview="animation">Движение</button>
               <button type="button" data-preview="sheet">Лист</button>
-              <button type="button" data-preview="game" title="Масштаб 1×/2×/0,5× на фоне уровня">В игре</button>
+              <button type="button" data-preview="game" title="Игровой масштаб и проверка на фоне уровня">В игре</button>
             </div></div>
           </div>
         </header>
@@ -446,9 +446,9 @@
           <img id="previewImage" class="preview-image hidden" alt="Предпросмотр анимации" />
           <canvas id="playerCanvas" class="player-canvas hidden" aria-label="Проигрыватель анимации"></canvas>
           <div id="playerBar" class="player-bar hidden" role="toolbar" aria-label="Управление проигрыванием">
-            <button id="playerPrev" type="button" title="Предыдущий кадр ( , )" aria-label="Предыдущий кадр">‹</button>
-            <button id="playerPlay" type="button" title="Пауза / воспроизведение (P)" aria-label="Пауза">❚❚</button>
-            <button id="playerNext" type="button" title="Следующий кадр ( . )" aria-label="Следующий кадр">›</button>
+            <button id="playerPrev" type="button" title="Предыдущий кадр ( , )" aria-label="Предыдущий кадр"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6"/></svg></button>
+            <button id="playerPlay" type="button" title="Пауза / воспроизведение (P)" aria-label="Пауза"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg></button>
+            <button id="playerNext" type="button" title="Следующий кадр ( . )" aria-label="Следующий кадр"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></button>
             <span id="playerCounter">1 / 1</span>
             <button id="onionToggle" type="button" title="Калька: соседние кадры полупрозрачно (O)" aria-pressed="false">Калька</button>
             <input id="onionOpacity" type="range" min="10" max="80" value="35" aria-label="Прозрачность кальки" title="Прозрачность кальки" />
@@ -482,14 +482,28 @@
             <p>Значения X/Y — проценты от размера ячейки. Инструмент меняет итоговый спрайт, а «Рука» двигает только обзор.</p>
           </section>
           <div class="stage-tools">
-            <button id="handTool" type="button" title="Рука: удерживайте Пробел и перетаскивайте" aria-label="Инструмент Рука" aria-pressed="false">✋</button>
-            <button id="transformTool" type="button" title="Выделить и изменить объект" aria-label="Трансформация объекта" aria-pressed="false">⌗</button>
-            <button id="zoomOut" type="button" title="Уменьшить">−</button>
+            <button id="handTool" type="button" title="Рука: удерживайте Пробел и перетаскивайте" aria-label="Инструмент Рука" aria-pressed="false"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 13V6a1.5 1.5 0 0 1 3 0v5-7a1.5 1.5 0 0 1 3 0v7-5a1.5 1.5 0 0 1 3 0v5-2a1.5 1.5 0 0 1 3 0v5c0 4-2.5 6-6.5 6H11c-2 0-3.1-.7-4.2-2.1L4 14.4a1.6 1.6 0 0 1 2.3-2.2L8 14"/></svg></button>
+            <button id="transformTool" type="button" title="Выделить и изменить объект" aria-label="Трансформация объекта" aria-pressed="false"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1" stroke-dasharray="3 2"/><path d="M9 2v6M6 5h6M15 22v-6m3 3h-6"/></svg></button>
+            <span class="stage-tool-divider" aria-hidden="true"></span>
+            <button id="zoomOut" type="button" title="Уменьшить" aria-label="Уменьшить"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
             <span id="zoomValue">100%</span>
-            <button id="zoomIn" type="button" title="Увеличить">+</button>
+            <button id="zoomIn" type="button" title="Увеличить" aria-label="Увеличить"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
             <button id="zoomFit" type="button">Вписать</button>
-            <button id="toggleGuides" type="button">Направляющие</button>
-            <button id="cycleBackdrop" type="button">Фон</button>
+            <span class="stage-tool-divider" aria-hidden="true"></span>
+            <button id="toggleGuides" type="button" aria-pressed="false"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 4v16M4 12h16"/></svg><span>Сетка</span></button>
+            <div class="backdrop-control">
+              <button id="backdropToggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="backdropMenu" title="Подложка только для просмотра"><span id="backdropCurrentSwatch" class="backdrop-swatch checker" aria-hidden="true"></span><span>Подложка</span><svg class="ui-icon chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+              <div id="backdropMenu" class="backdrop-menu hidden" role="group" aria-label="Подложка предпросмотра">
+                <strong>ПОДЛОЖКА ПРЕВЬЮ</strong>
+                <small>Только для просмотра · экспорт без изменений</small>
+                <button type="button" data-backdrop="checker"><span class="backdrop-swatch checker" aria-hidden="true"></span>Светлая клетка<svg class="ui-icon check" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>
+                <button type="button" data-backdrop="white"><span class="backdrop-swatch white" aria-hidden="true"></span>Белый<svg class="ui-icon check" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>
+                <button type="button" data-backdrop="black"><span class="backdrop-swatch black" aria-hidden="true"></span>Чёрный<svg class="ui-icon check" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>
+                <button type="button" data-backdrop="green"><span class="backdrop-swatch green" aria-hidden="true"></span>Зелёный<svg class="ui-icon check" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>
+                <button type="button" data-backdrop="magenta"><span class="backdrop-swatch magenta" aria-hidden="true"></span>Маджента<svg class="ui-icon check" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>
+                <button type="button" data-backdrop="scene" class="scene-backdrop hidden"><span class="backdrop-swatch scene" aria-hidden="true"></span>Сцена игры<svg class="ui-icon check" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button>
+              </div>
+            </div>
           </div>
         </div>
 
