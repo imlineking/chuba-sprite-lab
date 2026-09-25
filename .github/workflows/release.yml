@@ -25,4 +25,9 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME release/* --verify-tag --generate-notes --title "Chuba Sprite Lab $env:GITHUB_REF_NAME"
+        run: |
+          if (gh release view $env:GITHUB_REF_NAME 2>$null) {
+            gh release upload $env:GITHUB_REF_NAME release/* --clobber
+          } else {
+            gh release create $env:GITHUB_REF_NAME release/* --verify-tag --generate-notes --title "Chuba Sprite Lab $env:GITHUB_REF_NAME"
+          }
