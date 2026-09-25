@@ -497,7 +497,7 @@ function resetRecommended() {
   setAnchor(recommendation?.anchor || "ground");
   $("#fps").value = String(recommendation?.fps || suggestedFps(state.source));
   $("#tolerance").value = "28"; $("#toleranceValue").textContent = "28";
-  $("#blackOutline").value = "3"; $("#blackOutlineValue").textContent = "3 px";
+  $("#blackOutline").value = "3"; $("#blackOutlineValue").textContent = "3";
   $("#blackFeather").value = "0"; $("#blackFeatherValue").textContent = "0 px";
   $("#aiCutoff").value = "50"; $("#aiCutoffValue").textContent = "50";
   $("#aiSoftness").value = "0"; $("#aiSoftnessValue").textContent = "0 px";
@@ -1293,7 +1293,7 @@ $("#anchorMode").addEventListener("click", (event) => { const button = event.tar
 $("#processPresets").addEventListener("click", (event) => { const button = event.target.closest("button[data-preset]"); if (button) applyProcessPreset(button.dataset.preset); });
 $("#resetSettings").addEventListener("click", resetRecommended);
 $("#tolerance").addEventListener("input", (event) => { $("#toleranceValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(); });
-$("#blackOutline").addEventListener("input", (event) => { $("#blackOutlineValue").textContent = `${event.target.value} px`; markPreviewDirty(); scheduleFramePreview(); });
+$("#blackOutline").addEventListener("input", (event) => { $("#blackOutlineValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(); });
 $("#blackFeather").addEventListener("input", (event) => { $("#blackFeatherValue").textContent = `${event.target.value} px`; markPreviewDirty(); scheduleFramePreview(); });
 $("#aiCutoff").addEventListener("input", (event) => { $("#aiCutoffValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(380); });
 $("#aiSoftness").addEventListener("input", (event) => { $("#aiSoftnessValue").textContent = `${event.target.value} px`; markPreviewDirty(); scheduleFramePreview(380); });

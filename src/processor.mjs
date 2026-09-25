@@ -337,29 +337,54 @@ function alphaBounds(data, info, threshold = 12) {
   return { left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
 }
 
-function erodeConnectedMask(mask, width, height, radius) {
-  const eroded = new Uint8Array(mask.length);
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const index = y * width + x;
-      if (!mask[index]) continue;
-      let keep = true;
-      for (let dy = -radius; dy <= radius && keep; dy += 1) {
-        const ny = y + dy;
-        if (ny < 0 || ny >= height) continue;
-        for (let dx = -radius; dx <= radius; dx += 1) {
-          const nx = x + dx;
-          if (nx < 0 || nx >= width) continue;
-          if (!mask[ny * width + nx]) {
-            keep = false;
-            break;
-          }
-        }
-      }
-      if (keep) eroded[index] = 1;
-    }
+function scaledBlackOutlineRadius(level, width, height) {
+  const resolutionScale = clamp(Math.sqrt(width * height) / 512, 1, 3);
+  return clamp(Math.round(level * resolutionScale), 0, 24);
+}
+
+function clearMaskOutsideProtectedContour(mask, width, height, radius) {
+  if (radius <= 0) return mask;
+
+  const clearMask = Uint8Array.from(mask);
+  const distance = new Int16Array(mask.length);
+  distance.fill(-1);
+  const queue = new Int32Array(mask.length);
+  let head = 0;
+  let tail = 0;
+
+  // Every non-background pixel is a subject seed. Expanding from those seeds
+  // protects the original dark pixels nearest the coloured silhouette, even
+  // when the black outline itself is connected to a black background.
+  for (let index = 0; index < mask.length; index += 1) {
+    if (mask[index]) continue;
+    distance[index] = 0;
+    queue[tail++] = index;
   }
-  return eroded;
+
+  const visit = (index, nextDistance) => {
+    if (index < 0 || index >= mask.length || distance[index] !== -1 || !mask[index]) return;
+    distance[index] = nextDistance;
+    clearMask[index] = 0;
+    if (nextDistance < radius) queue[tail++] = index;
+  };
+
+  while (head < tail) {
+    const index = queue[head++];
+    const nextDistance = distance[index] + 1;
+    if (nextDistance > radius) continue;
+    const x = index % width;
+    const y = Math.floor(index / width);
+    if (x > 0) visit(index - 1, nextDistance);
+    if (x + 1 < width) visit(index + 1, nextDistance);
+    if (y > 0) visit(index - width, nextDistance);
+    if (y + 1 < height) visit(index + width, nextDistance);
+    if (x > 0 && y > 0) visit(index - width - 1, nextDistance);
+    if (x + 1 < width && y > 0) visit(index - width + 1, nextDistance);
+    if (x > 0 && y + 1 < height) visit(index + width - 1, nextDistance);
+    if (x + 1 < width && y + 1 < height) visit(index + width + 1, nextDistance);
+  }
+
+  return clearMask;
 }
 
 async function applyCorrectionsToResult(result, inputPath, context = {}) {
@@ -477,8 +502,11 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
       enqueue(x, y + 1);
     }
 
-    const outlineRadius = clamp(Math.round(Number(blackOutline) || 0), 0, 12);
-    const clearMask = mode === "black" && outlineRadius > 0 ? erodeConnectedMask(visited, width, height, outlineRadius) : visited;
+    const outlineLevel = clamp(Math.round(Number(blackOutline) || 0), 0, 12);
+    const outlineRadius = mode === "black" ? scaledBlackOutlineRadius(outlineLevel, width, height) : 0;
+    const clearMask = mode === "black" && outlineRadius > 0
+      ? clearMaskOutsideProtectedContour(visited, width, height, outlineRadius)
+      : visited;
     for (let index = 0; index < clearMask.length; index += 1) {
       if (clearMask[index]) data[index * channels + 3] = 0;
     }

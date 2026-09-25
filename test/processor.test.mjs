@@ -341,6 +341,23 @@ test("black key removes only edge-connected background and keeps a three-pixel c
   assert.equal(alphaAt(30, 30), 255, "enclosed black details inside the figure must remain");
 });
 
+test("black contour protection scales with high-resolution source frames", async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-lab-scaled-black-key-test-"));
+  const inputPath = path.join(temp, "large-black-background.png");
+  const subject = await sharp({
+    create: { width: 220, height: 220, channels: 4, background: { r: 224, g: 122, b: 58, alpha: 1 } },
+  }).png().toBuffer();
+  await sharp({
+    create: { width: 1024, height: 1024, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } },
+  }).composite([{ input: subject, left: 402, top: 402 }]).png().toFile(inputPath);
+
+  const keyed = await keyFrame(inputPath, "black", 20, 5);
+  const { data, info } = await sharp(keyed.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const alphaAt = (x, y) => data[(y * info.width + x) * info.channels + 3];
+  assert.equal(alphaAt(393, 512), 255, "a high-resolution dark outline should receive scaled protection");
+  assert.equal(alphaAt(388, 512), 0, "distant black background must still be transparent");
+});
+
 test("auto layout, exclusions and live frame preview work together", async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-lab-ux-test-"));
   const input = path.join(temp, "input");
