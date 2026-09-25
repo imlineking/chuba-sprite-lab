@@ -65,6 +65,10 @@
             <button id="restoreSession" class="button primary" type="button">Продолжить</button>
             <button id="discardSession" class="button ghost" type="button">Не сейчас</button>
           </article>
+          <section id="recentProjects" class="recent-projects hidden" aria-label="Недавние проекты">
+            <strong>Недавние проекты</strong>
+            <div id="recentProjectList"></div>
+          </section>
 
           <div id="dropZone" class="drop-zone" role="button" aria-label="Выбрать видео, изображения или папку с кадрами" tabindex="0">
             <div class="drop-icon" aria-hidden="true">
@@ -626,7 +630,7 @@
           <div id="guideLayer" class="guide-layer hidden"><i></i><b></b></div>
           <aside id="errorCard" class="error-card hidden" role="alert" aria-live="assertive">
             <strong>Не удалось выполнить операцию</strong><span id="errorText"></span>
-            <div><button id="showErrorFrame" type="button">Показать кадр</button><button id="safeSettings" type="button">Безопасные настройки</button><button id="reportError" type="button">Сообщить об ошибке</button><button id="closeError" type="button">×</button></div>
+            <div><button id="showErrorFrame" type="button">Показать кадр</button><button id="safeSettings" type="button">Безопасные настройки</button><button id="openErrorLog" type="button">Открыть журнал</button><button id="reportError" type="button">Сообщить об ошибке</button><button id="closeError" type="button">×</button></div>
           </aside>
           <section id="transformPanel" class="transform-panel hidden" aria-label="Трансформация объекта">
             <header><div><strong>ОБЪЕКТ В КАДРЕ</strong><small id="transformFrameLabel">кадр 1 · выделен по прозрачности</small></div><button id="closeTransform" type="button" aria-label="Закрыть">×</button></header>
@@ -675,6 +679,7 @@
             <button id="duplicateFrame" class="filmstrip-action" type="button" title="Повторить кадр в таймлайне (Ctrl+D)">Дублировать</button>
             <button id="excludeFrame" class="filmstrip-action" type="button">Исключить кадр</button>
             <button id="editFrame" class="filmstrip-action edit" type="button">Редактировать кадр</button>
+            <button id="copyFrame" class="filmstrip-action" type="button" title="Скопировать готовый кадр в буфер обмена (Ctrl+C)">Копировать</button>
             <button id="openPixelEditor" class="filmstrip-action edit" type="button" title="Встроенный пиксельный редактор">Пиксельный редактор</button>
           </div>
         </div>
@@ -1046,8 +1051,15 @@
         <button id="copilotHide" type="button" title="Скрыть помощника до следующего запуска">Скрыть</button>
         <button id="copilotClose" type="button" aria-label="Закрыть панель">×</button>
       </header>
+      <nav class="copilot-quick" aria-label="Быстрые задачи помощника">
+        <strong>Начать с задачи</strong>
+        <button type="button" data-quick-task="clipping">Исправить обрезание</button>
+        <button type="button" data-quick-task="cutout">Вырезать объект</button>
+        <button type="button" data-quick-task="atlas">Собрать атлас</button>
+      </nav>
       <section class="copilot-tasks" aria-label="Выбор задачи">
         <strong>Что поручить помощнику</strong>
+        <article data-task="clipping"><strong>Исправить обрезание</strong><small>Проверить край кадра → уточнить рамки или открыть редактор</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="layout"><strong>Разнести объекты по сетке</strong><small>Готовый лист → отдельные кадры → новый лист и JSON</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="remove"><strong>Убрать объект из кадров</strong><small>Лист или видео → выделить лишнее → новый лист</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="background"><strong>Удалить фон</strong><small>Прозрачность и чистый край</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>

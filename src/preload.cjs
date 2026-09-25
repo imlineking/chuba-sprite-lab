@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("spriteLab", {
   statFrameEdit: (filePath) => ipcRenderer.invoke("frame-edit:stat", filePath),
   saveProject: (request) => ipcRenderer.invoke("project:save", request),
   loadProject: () => ipcRenderer.invoke("project:load"),
+  loadProjectPath: (projectPath) => ipcRenderer.invoke("project:load-path", projectPath),
   restoreProject: (request) => ipcRenderer.invoke("project:restore", request),
   inspectDropped: (files) => {
     const paths = Array.from(files || [], (file) => webUtils.getPathForFile(file)).filter(Boolean);
@@ -32,10 +33,13 @@ contextBridge.exposeInMainWorld("spriteLab", {
   cancelBuild: () => ipcRenderer.invoke("sprites:cancel"),
   stopBatchAfterCurrent: () => ipcRenderer.invoke("sprites:stop-after-current"),
   previewFrame: (request) => ipcRenderer.invoke("preview:frame", request),
+  copyFrame: (sourceIndex) => ipcRenderer.invoke("frame:copy", sourceIndex),
   previewPoster: (request) => ipcRenderer.invoke("source:poster", request),
   revealOutput: (outputPath) => ipcRenderer.invoke("output:reveal", outputPath),
   copyOutputPath: (outputPath) => ipcRenderer.invoke("output:copy-path", outputPath),
   copyFeedback: (request) => ipcRenderer.invoke("feedback:copy", request),
+  logError: (message) => ipcRenderer.invoke("app:log-error", message),
+  openErrorLog: () => ipcRenderer.invoke("app:open-error-log"),
   saveProfile: (request) => ipcRenderer.invoke("profile:save", request),
   // The built-in pixel editor keeps the document in the main process; the window sends operations
   // and receives one state object back.
@@ -71,6 +75,7 @@ contextBridge.exposeInMainWorld("spriteLab", {
     ipcRenderer.on("sprites:progress", listener);
     return () => ipcRenderer.removeListener("sprites:progress", listener);
   },
+  setTaskbarProgress: (value) => ipcRenderer.send("window:progress", value),
   minimize: () => ipcRenderer.send("window:minimize"),
   maximize: () => ipcRenderer.send("window:maximize"),
   close: () => ipcRenderer.send("window:close"),

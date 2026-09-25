@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, net, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, net, Notification, shell } from "electron";
 import crypto from "node:crypto";
 import fsSync from "node:fs";
 import path from "node:path";
@@ -25,6 +25,7 @@ import { assertDownloadUrl, canDownload, modelById, modelFiles, rejectedModels, 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, "..");
 let mainWindow = null;
+let copyableFrames = new Map();
 let activeJob = null;
 const selfTestMode = process.argv.includes("--self-test") || process.env.CHUBA_SPRITE_SELF_TEST === "1";
 const startupProbePath = process.env.CHUBA_SPRITE_STARTUP_PROBE || "";
@@ -43,6 +44,16 @@ const videoExtensions = new Set([".mp4", ".webm", ".mov", ".mkv", ".avi", ".gif"
 const repositoryUrl = "https://github.com/imlineking/chuba-sprite-lab";
 const latestReleaseApi = "https://api.github.com/repos/imlineking/chuba-sprite-lab/releases/latest";
 const updateAssetName = "Chuba-Sprite-Lab-portable.exe";
+
+function notifyFinished(result) {
+  if (screenshotPath || !mainWindow || mainWindow.isFocused() || !Notification.isSupported()) return;
+  try {
+    const body = result.batch
+      ? `Обработано видео: ${result.completed}/${result.total}.`
+      : `Готово кадров: ${result.frameCount}. Проверьте результат в программе.`;
+    new Notification({ title: "Chuba Sprite Lab · обработка завершена", body }).show();
+  } catch { /* Системные уведомления могут быть отключены. */ }
+}
 
 function writeStartupFailure(stage, error) {
   const message = error instanceof Error ? `${error.message}\n${error.stack || ""}` : String(error);
@@ -190,6 +201,32 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
     },
+  });
+  let allowClose = false;
+  let closeDecisionPending = false;
+  mainWindow.on("close", (event) => {
+    if (allowClose || mainWindow.webContents.isDestroyed()) return;
+    event.preventDefault();
+    if (closeDecisionPending) return;
+    closeDecisionPending = true;
+    void (async () => {
+      const dirty = await mainWindow.webContents.executeJavaScript("Boolean(window.spriteLabHasUnsavedChanges?.())");
+      if (!dirty) { allowClose = true; mainWindow.close(); return; }
+      const { response } = await dialog.showMessageBox(mainWindow, {
+        type: "question",
+        title: "Несохранённый проект",
+        message: "Сохранить изменения проекта перед выходом?",
+        detail: "Исходные файлы останутся на месте. Можно сохранить работу в .cslab или выйти без сохранения.",
+        buttons: ["Сохранить и выйти", "Выйти без сохранения", "Остаться"],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+      });
+      if (response === 2) return;
+      if (response === 0 && !await mainWindow.webContents.executeJavaScript("window.spriteLabSaveBeforeClose?.()")) return;
+      allowClose = true;
+      mainWindow.close();
+    })().catch((error) => reportStartupFailure("close-confirmation", error)).finally(() => { closeDecisionPending = false; });
   });
 
   // Show the dark application shell immediately. Waiting exclusively for
@@ -704,6 +741,17 @@ ipcMain.handle("output:folder", async () => {
 
 ipcMain.handle("project:restore", async (_event, request = {}) => restoreProjectSource(request.source));
 
+async function loadProjectPath(filePath) {
+  const projectPath = path.resolve(String(filePath || ""));
+  if (path.extname(projectPath).toLowerCase() !== ".cslab") throw new Error("Выберите файл проекта .cslab.");
+  const project = JSON.parse(await fs.readFile(projectPath, "utf8"));
+  if (!project || project.format !== "chuba-sprite-lab-project" || !project.source) throw new Error("Файл не является проектом Chuba Sprite Lab.");
+  const source = await restoreProjectSource(project.source);
+  return { projectPath, project, source };
+}
+
+ipcMain.handle("project:load-path", async (_event, filePath) => loadProjectPath(filePath));
+
 ipcMain.handle("project:load", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "Открыть проект Chuba Sprite Lab",
@@ -711,11 +759,7 @@ ipcMain.handle("project:load", async () => {
     filters: [{ name: "Проект Chuba Sprite Lab", extensions: ["cslab"] }],
   });
   if (result.canceled || !result.filePaths[0]) return null;
-  const projectPath = result.filePaths[0];
-  const project = JSON.parse(await fs.readFile(projectPath, "utf8"));
-  if (!project || project.format !== "chuba-sprite-lab-project" || !project.source) throw new Error("Файл не является проектом Chuba Sprite Lab.");
-  const source = await restoreProjectSource(project.source);
-  return { projectPath, project, source };
+  return loadProjectPath(result.filePaths[0]);
 });
 
 ipcMain.handle("project:save", async (_event, request = {}) => {
@@ -935,7 +979,7 @@ ipcMain.handle("sprites:build", async (_event, request) => {
   if (isBatch && !request.previewOnly) {
     activeJob = { controller: new AbortController(), stopAfterCurrent: false };
     try {
-      return await processVideoBatch({
+      const result = await processVideoBatch({
         paths: request.source.paths,
         outputDir: request.outputDir,
         options: request.options,
@@ -944,6 +988,8 @@ ipcMain.handle("sprites:build", async (_event, request) => {
         shouldStop: () => Boolean(activeJob?.stopAfterCurrent),
         onProgress: (progress) => mainWindow?.webContents.send("sprites:progress", progress),
       });
+      notifyFinished(result);
+      return result;
     } finally {
       activeJob = null;
     }
@@ -970,13 +1016,18 @@ ipcMain.handle("sprites:build", async (_event, request) => {
     } else {
       result = await processSprites(withModels({ ...request, ...common }));
     }
+    copyableFrames = request.previewOnly
+      ? new Map((result.sourceFrameIndexes || []).map((sourceIndex, index) => [sourceIndex, result.imagePaths?.[index]]).filter(([, filePath]) => Boolean(filePath)))
+      : new Map((result.sequence || []).map((entry, index) => [entry.sourceIndex, result.framePaths?.[index]]).filter(([, filePath]) => Boolean(filePath)));
+    notifyFinished(result);
     const toUrl = (item) => pathToFileURL(item).href;
     return {
       ...result,
+      copyableFrameIndexes: [...copyableFrames.keys()],
       sheetUrl: toUrl(result.sheetPath),
       sheetUrls: (result.sheetPaths || [result.sheetPath]).map(toUrl),
       previewUrl: result.previewPath ? toUrl(result.previewPath) : null,
-      frameUrls: (result.imagePaths || result.framePaths).slice(0, 256).map(toUrl),
+      frameUrls: (request.previewOnly ? result.imagePaths : result.framePaths || []).slice(0, 256).map(toUrl),
       depthUrls: (result.depthPaths || []).slice(0, 256).map(toUrl),
       sourceFrameUrls: result.sourceFramePaths.slice(0, 256).map((item) => item ? pathToFileURL(item).href : null),
       allSourceFrameUrls: result.allSourceFramePaths.slice(0, 256).map((item) => pathToFileURL(item).href),
@@ -984,6 +1035,15 @@ ipcMain.handle("sprites:build", async (_event, request) => {
   } finally {
     activeJob = null;
   }
+});
+
+ipcMain.handle("frame:copy", async (_event, sourceIndex) => {
+  const filePath = copyableFrames.get(Number(sourceIndex));
+  if (!filePath) throw new Error("Сначала соберите предпросмотр выбранного кадра.");
+  const image = nativeImage.createFromPath(filePath);
+  if (image.isEmpty()) throw new Error("Не удалось прочитать готовый кадр.");
+  clipboard.writeImage(image);
+  return true;
 });
 
 ipcMain.handle("source:poster", async (_event, request) => {
@@ -1044,6 +1104,20 @@ ipcMain.handle("app:info", () => ({
   portable: Boolean(process.env.PORTABLE_EXECUTABLE_FILE),
 }));
 
+function errorLogPath() { return path.join(app.getPath("userData"), "errors.log"); }
+ipcMain.handle("app:log-error", async (_event, message) => {
+  await fs.mkdir(app.getPath("userData"), { recursive: true });
+  await fs.appendFile(errorLogPath(), `${new Date().toISOString()} ${String(message || "Неизвестная ошибка").slice(0, 4000)}\n`, "utf8");
+  return true;
+});
+ipcMain.handle("app:open-error-log", async () => {
+  await fs.mkdir(app.getPath("userData"), { recursive: true });
+  if (!await pathExists(errorLogPath())) await fs.writeFile(errorLogPath(), "Журнал ошибок Chuba Sprite Lab\n", "utf8");
+  const error = await shell.openPath(errorLogPath());
+  if (error) throw new Error(error);
+  return true;
+});
+
 ipcMain.handle("app:open-repository", async () => {
   await shell.openExternal(repositoryUrl);
   return true;
@@ -1101,6 +1175,11 @@ ipcMain.handle("app:install-update", async () => {
 });
 
 ipcMain.on("window:minimize", () => mainWindow?.minimize());
+ipcMain.on("window:progress", (_event, value) => {
+  if (!mainWindow) return;
+  const progress = Number(value);
+  mainWindow.setProgressBar(Number.isFinite(progress) && progress >= 0 ? Math.min(progress, 1) : -1);
+});
 ipcMain.on("window:maximize", () => {
   if (!mainWindow) return;
   mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();

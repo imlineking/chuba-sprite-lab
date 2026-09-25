@@ -16,6 +16,15 @@ test("a video with a selected removal leads with that job and keeps animation av
   assert.ok(scenarios.some((item) => item.task === "animation"));
 });
 
+test("a frame touching the source edge offers the clipping repair route first", () => {
+  const scenarios = planTaskScenarios({
+    source: { kind: "sheet", frameCount: 6 },
+    built: { frameIssues: [{ frameIndex: 2, message: "Кадр 3: персонаж касается края исходного изображения." }] },
+  });
+  assert.equal(scenarios[0].task, "clipping");
+  assert.ok(scenarios.some((item) => item.task === "layout"));
+});
+
 test("mixed frame sizes surface alignment as a task", () => {
   const scenarios = planTaskScenarios({ source: { kind: "frames", frameCount: 8, mixedSizes: true } });
   assert.equal(scenarios[0].task, "match");

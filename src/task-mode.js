@@ -3,6 +3,7 @@
 (() => {
   const taskNames = {
     layout: "Разнести объекты по сетке",
+    clipping: "Исправить обрезание",
     remove: "Убрать объект из кадров",
     background: "Удалить фон",
     animation: "Собрать анимацию",
@@ -46,6 +47,12 @@
     setCopilotPanel(false);
     setTab("source");
     taskRender();
+  }
+
+  function taskQuick(name) {
+    if (name === "atlas") taskSet(state.source?.kind === "sheet" ? "layout" : state.source?.kind?.startsWith("video") ? "animation" : "combine");
+    else if (name === "cutout") taskSet(state.source?.kind === "sheet" ? "extract" : "cutout");
+    else if (name === "clipping") taskSet("clipping");
   }
 
   function taskExport() {
@@ -163,7 +170,36 @@
     const objectField = $("#taskObjectField");
     objectField.classList.add("hidden");
 
-    if (selected === "objectEdit") {
+    if (selected === "clipping") {
+      const edgeIssue = result?.frameIssues?.find((issue) => /касается края исходного изображения|обрезан|выходит за пределы/i.test(issue.message || ""));
+      if (!source) {
+        guide.textContent = "Откройте лист или серию кадров. Помощник проверит край и проведёт к исправлению. Пиксели, которых нет в исходнике, восстановить простой сменой рамки нельзя.";
+        primary.textContent = "1 · Открыть спрайт-лист";
+        primaryAction = () => chooseSource("chooseSheet");
+        secondary.textContent = "Открыть кадры или видео";
+        secondary.classList.remove("hidden");
+        secondaryAction = () => chooseSource("chooseSource");
+      } else if (source.sheetPath && (!result || state.resultDirty)) {
+        guide.textContent = "Помощник найдёт полный контур объектов, разнесёт их с запасом и соберёт новый лист. Сначала проверьте найденные рамки; исходный лист останется на месте.";
+        primary.textContent = approach === "auto" ? "2 · Разнести с запасом" : "2 · Уточнить рамки вручную";
+        primaryAction = approach === "auto" ? taskLayoutPreview : () => { $("#sheetSliceMode button[data-sheet-mode=manual]").click(); $("#sheetControls").scrollIntoView({ block: "start", behavior: "smooth" }); };
+      } else if (!result || state.resultDirty) {
+        guide.textContent = "Соберите предпросмотр: программа отметит кадры, где рисунок касается края исходника. Для восстановления уже отсутствующих пикселей потребуется исходник с запасом или ручная правка.";
+        primary.textContent = "2 · Проверить края кадров";
+        primaryAction = () => { void runBuild(true); };
+      } else {
+        guide.textContent = edgeIssue
+          ? `Проверьте кадр ${Number(edgeIssue.frameIndex) + 1}: рисунок касается края. Для готового листа можно уточнить рамки; если край уже отсутствует в исходнике, откройте кадр в редакторе.`
+          : "Проверьте края в предпросмотре. Если объект целиком помещается, сохраните новый лист и JSON; если часть уже отсутствовала в исходнике, исправьте кадр вручную.";
+        primary.textContent = edgeIssue ? "3 · Показать проблемный кадр" : "3 · Сохранить лист и JSON";
+        primaryAction = edgeIssue ? () => { setTab("process"); selectFrame(Number(edgeIssue.frameIndex)); } : taskExport;
+        secondary.textContent = source.sheetPath ? "Уточнить рамки листа" : "Править кадр вручную";
+        secondary.classList.remove("hidden");
+        secondaryAction = source.sheetPath
+          ? () => { setTab("source"); $("#sheetSliceMode button[data-sheet-mode=manual]").click(); $("#sheetControls").scrollIntoView({ block: "start", behavior: "smooth" }); }
+          : () => { setTab("process"); if (edgeIssue) selectFrame(Number(edgeIssue.frameIndex)); $("#editFrame").click(); };
+      }
+    } else if (selected === "objectEdit") {
       if (!source?.sheetPath) {
         guide.textContent = "Откройте готовый лист с отдельными объектами. После выбора объекта доступны правка внутри программы, «Открыть с помощью…» и онлайн-редактор. Исправление попадёт в новый лист.";
         primary.textContent = "1 · Открыть лист";
@@ -436,6 +472,10 @@
     const action = event.target.closest("button[data-approach]");
     const choice = action?.closest("article[data-task]");
     if (choice) taskSet(choice.dataset.task, action.dataset.approach);
+  });
+  $(".copilot-quick").addEventListener("click", (event) => {
+    const action = event.target.closest("button[data-quick-task]");
+    if (action) taskQuick(action.dataset.quickTask);
   });
   window.taskChoose = taskSet;
   window.taskRenderSuggestions = (scenarios = []) => {

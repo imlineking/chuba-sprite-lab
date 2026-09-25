@@ -123,6 +123,9 @@ function buildProjectDocument() {
   return project;
 }
 
+let savedProjectSnapshot = null;
+window.spriteLabHasUnsavedChanges = () => Boolean(state.source && (!savedProjectSnapshot || JSON.stringify(buildProjectDocument()) !== savedProjectSnapshot));
+
 function saveSessionSoon() {
   clearTimeout(state.sessionTimer);
   state.sessionTimer = setTimeout(() => {
@@ -186,6 +189,7 @@ async function applyProjectDocument(project, source, projectPath = null, { keepA
   updateMaskEditSummary(); renderAttachmentList(); updateActionState();
   if (typeof renderImageSheetControls === "function") renderImageSheetControls();
   initializeHistory("Проект открыт");
+  savedProjectSnapshot = JSON.stringify(buildProjectDocument());
   setTab("process"); scheduleFramePreview(0); saveSessionSoon();
 }
 
@@ -262,7 +266,7 @@ function redoWorkspace() {
 }
 
 async function saveProjectFile(saveAs = false) {
-  if (!state.source || state.busy) return;
+  if (!state.source || state.busy) return false;
   try {
     setStatus("Сохраняю проект…", "busy", 0.15);
     const result = await window.spriteLab.saveProject({
@@ -272,30 +276,77 @@ async function saveProjectFile(saveAs = false) {
     });
     if (!result) {
       setStatus("Сохранение отменено", "idle", 0);
-      return;
+      return false;
     }
     state.projectPath = result.projectPath;
+    rememberRecentProject(result.projectPath);
     state.frameOverrides = { ...(result.project.frameOverrides || {}) };
     state.attachments = structuredClone(result.project.attachments || state.attachments);
     renderAttachmentList();
+    savedProjectSnapshot = JSON.stringify(buildProjectDocument());
     saveSessionSoon();
     setStatus(`Проект сохранён · ${baseName(result.projectPath)}`, "done", 0);
+    return true;
   } catch (error) {
     setStatus(error.message || "Не удалось сохранить проект", "error", 0);
     showError(error.message || "Не удалось сохранить проект.");
+    return false;
+  }
+}
+window.spriteLabSaveBeforeClose = () => saveProjectFile(false);
+
+function recentProjectPaths() {
+  try {
+    const paths = JSON.parse(localStorage.getItem("spriteLab.recentProjects") || "[]");
+    return Array.isArray(paths) ? paths.filter((item) => typeof item === "string" && item.toLowerCase().endsWith(".cslab")).slice(0, 6) : [];
+  } catch { return []; }
+}
+
+function renderRecentProjects() {
+  const paths = recentProjectPaths();
+  $("#recentProjects").classList.toggle("hidden", paths.length === 0);
+  const list = $("#recentProjectList");
+  list.replaceChildren();
+  for (const projectPath of paths) {
+    const row = document.createElement("div");
+    const open = document.createElement("button");
+    open.type = "button";
+    open.textContent = baseName(projectPath);
+    open.title = projectPath;
+    open.addEventListener("click", () => { void openProjectFile(projectPath); });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "recent-project-remove";
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", `Убрать ${baseName(projectPath)} из недавних`);
+    remove.addEventListener("click", () => {
+      try { localStorage.setItem("spriteLab.recentProjects", JSON.stringify(recentProjectPaths().filter((item) => item !== projectPath))); }
+      catch { return; }
+      renderRecentProjects();
+    });
+    row.append(open, remove);
+    list.append(row);
   }
 }
 
-async function openProjectFile() {
+function rememberRecentProject(projectPath) {
+  if (!projectPath) return;
+  try { localStorage.setItem("spriteLab.recentProjects", JSON.stringify([projectPath, ...recentProjectPaths().filter((item) => item !== projectPath)].slice(0, 6))); }
+  catch { return; }
+  renderRecentProjects();
+}
+
+async function openProjectFile(projectPath = null) {
   if (state.busy) return;
   try {
     setStatus("Открываю проект…", "busy", 0.08);
-    const loaded = await window.spriteLab.loadProject();
+    const loaded = projectPath ? await window.spriteLab.loadProjectPath(projectPath) : await window.spriteLab.loadProject();
     if (!loaded) {
       setStatus(state.source ? "Проект не изменён" : "Готов к работе", state.source ? "done" : "idle", 0);
       return;
     }
     await applyProjectDocument(loaded.project, loaded.source, loaded.projectPath);
+    rememberRecentProject(loaded.projectPath);
     setStatus(`Проект открыт · ${baseName(loaded.projectPath)}`, "done", 0);
   } catch (error) {
     setStatus(error.message || "Не удалось открыть проект", "error", 0);
@@ -417,6 +468,11 @@ function setStatus(message, kind = "idle", value = 0) {
   $("#progressTrack").classList.toggle("hidden", !showProgress);
   $("#statusPercent").classList.toggle("hidden", !showProgress);
   $("#cancelJob").classList.toggle("hidden", !state.busy);
+  const taskbarProgress = kind === "busy" && state.busy ? Math.max(0.01, Math.min(1, Number(value) || 0)) : -1;
+  if (setStatus.taskbarProgress !== taskbarProgress) {
+    setStatus.taskbarProgress = taskbarProgress;
+    window.spriteLab.setTaskbarProgress(taskbarProgress);
+  }
 }
 
 function updateStepStates() {
@@ -453,6 +509,7 @@ function setModalOpen(modal, open, focusTarget, returnTarget) {
 function showError(message) {
   $("#errorText").textContent = message || "Неизвестная ошибка.";
   $("#errorCard").classList.remove("hidden");
+  void window.spriteLab.logError(message || "Неизвестная ошибка.").catch(() => {});
 }
 
 function hideError() {
@@ -595,6 +652,7 @@ function updateActionState() {
   $("#openMaskEditor").disabled = !hasSource || state.busy;
   $("#addAttachment").disabled = !hasSource || state.busy || state.source?.kind === "video-batch";
   $("#editFrame").disabled = !state.result?.allSourceFramePaths?.length || state.busy || state.source?.kind === "video-batch";
+  $("#copyFrame").disabled = !state.result?.copyableFrameIndexes?.includes(state.selectedFrameIndex) || state.resultDirty || state.busy || state.source?.kind === "video-batch";
   $("#transformTool").disabled = (!state.framePreview && !state.result) || state.busy || state.source?.kind === "video-batch";
   $("#processActionHint").textContent = !hasSource ? "Сначала добавьте источник"
     : state.busy ? "Обработка выполняется…"
@@ -1231,6 +1289,7 @@ function markSelectedEntry(entryId) {
 function selectFrame(sourceIndex, activateFrameView = true, entryId = null) {
   if (!state.result?.allSourceFramePaths?.length) return;
   state.selectedFrameIndex = Math.max(0, Math.min(sourceIndex, state.result.allSourceFramePaths.length - 1));
+  $("#copyFrame").disabled = !state.result.copyableFrameIndexes?.includes(state.selectedFrameIndex) || state.resultDirty || state.busy;
   const entries = timelineEntries();
   const entry = entries.find((item) => item.id === entryId)
     || (entries.find((item) => item.id === state.selectedEntryId && item.src === state.selectedFrameIndex))
@@ -2166,8 +2225,17 @@ $$(".tab").forEach((button, index, tabs) => button.addEventListener("keydown", (
 $("#newProject").addEventListener("click", () => {
   localStorage.removeItem("spriteLab.session"); state.pendingSession = null; $("#sessionRestore").classList.add("hidden"); setSource(null); setTab("source");
 });
-$("#openProject").addEventListener("click", openProjectFile);
-$("#openProjectImport").addEventListener("click", openProjectFile);
+$("#openProject").addEventListener("click", () => openProjectFile());
+$("#openProjectImport").addEventListener("click", () => openProjectFile());
+renderRecentProjects();
+async function copySelectedFrame() {
+  if (!state.result?.copyableFrameIndexes?.includes(state.selectedFrameIndex) || state.resultDirty || state.busy) return;
+  try {
+    await window.spriteLab.copyFrame(state.selectedFrameIndex);
+    setStatus(`Кадр ${state.selectedFrameIndex + 1} скопирован`, "done", 0);
+  } catch (error) { showError(error?.message || "Не удалось скопировать кадр."); }
+}
+$("#copyFrame").addEventListener("click", () => { void copySelectedFrame(); });
 $("#saveProject").addEventListener("click", () => saveProjectFile(false));
 $("#undoAction").addEventListener("click", undoWorkspace);
 $("#redoAction").addEventListener("click", redoWorkspace);
@@ -2559,6 +2627,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 $("#closeError").addEventListener("click", hideError);
+$("#openErrorLog").addEventListener("click", () => { void window.spriteLab.openErrorLog().catch((error) => setStatus(error.message || "Не удалось открыть журнал", "error", 0)); });
 $("#safeSettings").addEventListener("click", () => { resetRecommended(); hideError(); });
 $("#showErrorFrame").addEventListener("click", () => { hideError(); if (state.result) selectFrame(state.selectedFrameIndex); });
 $("#minimizeWindow").addEventListener("click", () => window.spriteLab.minimize());
@@ -2619,7 +2688,8 @@ document.addEventListener("keydown", (event) => {
   if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "o") { event.preventDefault(); openProjectFile(); return; }
   if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "o") { event.preventDefault(); chooseSource("chooseSource"); return; }
   if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "s") { event.preventDefault(); saveProjectFile(false); return; }
-  const editingText = ["INPUT", "TEXTAREA"].includes(event.target.tagName) || event.target.isContentEditable;
+  const editingText = ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName) || event.target.isContentEditable;
+  if (!openModal && !editingText && event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "c" && state.result?.copyableFrameIndexes?.includes(state.selectedFrameIndex) && !state.resultDirty && !state.busy) { event.preventDefault(); void copySelectedFrame(); return; }
   if (!editingText && event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "z") { event.preventDefault(); undoWorkspace(); return; }
   if (!editingText && event.ctrlKey && (event.key.toLowerCase() === "y" || (event.shiftKey && event.key.toLowerCase() === "z"))) { event.preventDefault(); redoWorkspace(); return; }
   if (event.ctrlKey && ["1", "2", "3"].includes(event.key)) { event.preventDefault(); setTab(({ 1: "source", 2: "process", 3: "export" })[event.key]); }

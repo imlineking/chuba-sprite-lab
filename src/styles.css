@@ -884,7 +884,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   #playerCounter { min-width: 0; }
 }
 .filmstrip-actions { align-items: center; flex-wrap: nowrap; }
-.frame-duration { margin-right: 0; flex: 0 0 auto; }
+.frame-duration { margin-right: 0; margin-left: 8px; flex: 0 0 auto; }
 .filmstrip-actions .filmstrip-note { flex: 1 1 auto; min-width: 0; margin: 0 4px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
 .filmstrip-action { flex: 0 0 auto; }
 .warning-box { max-height: 104px; }
@@ -940,6 +940,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 #auxAITools .key-note, #auxAITools .aux-mask-row { margin-left: 13px; margin-right: 13px; }
 
 .task-welcome, .task-guide { border: 1px solid var(--line-bright); border-radius: 13px; background: var(--panel-2); padding: 14px; margin-bottom: 18px; }
+.recent-projects { margin-bottom: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2); }
+.recent-projects > strong { display: block; margin-bottom: 7px; color: var(--text); font-size: 12px; }
+#recentProjectList { display: grid; gap: 4px; }
+#recentProjectList > div { display: flex; align-items: center; gap: 5px; min-width: 0; }
+#recentProjectList button { min-height: 30px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text); cursor: pointer; }
+#recentProjectList button:first-child { flex: 1; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+#recentProjectList button:hover, #recentProjectList button:focus-visible { border-color: var(--line-bright); background: var(--panel); }
+#recentProjectList .recent-project-remove { flex: none; width: 30px; color: var(--muted); font-size: 17px; }
 .white-remainder-hint { margin: 9px 0 0; padding: 9px 11px; border: 1px solid var(--line-bright); border-radius: 8px; color: var(--text); background: var(--panel-2); font-size: 11px; line-height: 1.45; }
 .task-welcome { display: grid; gap: 12px; }
 .task-welcome > div:first-child { display: grid; gap: 4px; flex: 1; }

@@ -33,6 +33,8 @@ export function planTaskScenarios(snapshot = {}) {
   const count = Number(source.frameCount || built.frameCount || source.estimatedFrames || 0);
   const opaque = Number(source.opaqueImages || 0) > 0 || measured.borderOpaqueRatio > 0.72;
   const inconsistent = Boolean(source.mixedSizes) || hasFrameIssue(built, /ширина силуэта|высота силуэта/);
+  const clipped = hasFrameIssue(built, /касается края исходного изображения|обрезан|выходит за пределы/i)
+    || (built.atlasIssues || []).some((issue) => /frame-outside|frame-trim-box|hitbox-outside/.test(issue?.code || ""));
   const oneImage = source.kind === "frames" && count === 1;
   const photoLike = measured.gradientShare > 0.16 && measured.flatShare < 0.35;
   const smallDrawing = measured.flatShare > 0.4 && Math.max(Number(measured.width) || 0, Number(measured.height) || 0) < 512;
@@ -69,6 +71,9 @@ export function planTaskScenarios(snapshot = {}) {
   }
   if (inconsistent) offer("edit", 96, "Размеры или силуэты кадров расходятся; их можно сравнить и выровнять перед экспортом.");
   if (inconsistent || (source.kind === "sheet" && count > 1)) offer("match", inconsistent ? 97 : 66, "Выберите опорный кадр и точку привязки; помощник предложит масштаб для похожих контуров.");
+  if (clipped) offer("clipping", 115, source.kind === "sheet"
+    ? "На листе найден кадр у края: проверьте полный контур и пересоберите ячейки с запасом."
+    : "Кадр касается края исходника: проверьте его и при необходимости исправьте вручную.");
   return candidates.sort((a, b) => b.score - a.score).slice(0, 8).map(({ task, why }, index) => ({ task, why, recommended: index === 0 }));
 }
 
