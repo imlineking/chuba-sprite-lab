@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("spriteLab", {
   copyOutputPath: (outputPath) => ipcRenderer.invoke("output:copy-path", outputPath),
   getAppInfo: () => ipcRenderer.invoke("app:info"),
   checkForUpdates: () => ipcRenderer.invoke("app:check-updates"),
+  installUpdate: () => ipcRenderer.invoke("app:install-update"),
   openRepository: () => ipcRenderer.invoke("app:open-repository"),
   onUpdateProgress: (callback) => {
     const listener = (_event, payload) => callback(payload);

@@ -11,6 +11,7 @@ const state = {
 };
 let posterTimer = null;
 let aboutReturnFocus = null;
+let pendingUpdate = null;
 
 const exportControls = { sheet: "#exportSheet", frames: "#exportFrames", metadata: "#exportMetadata", preview: "#exportPreview" };
 const exportNames = { sheet: "спрайт-лист", frames: "кадры", metadata: "JSON", preview: "WebP" };
@@ -58,6 +59,8 @@ async function openAbout() {
   aboutReturnFocus = document.activeElement;
   $("#aboutModal").classList.remove("hidden");
   $("#checkUpdates").disabled = state.busy;
+  $("#checkUpdates").textContent = "Проверить обновления";
+  pendingUpdate = null;
   $("#updateStatus").className = "update-status";
   $("#updateStatus").textContent = state.busy
     ? "Дождитесь завершения текущей обработки перед проверкой обновлений."
@@ -79,6 +82,38 @@ async function checkForUpdates() {
   if (state.busy) return;
   const button = $("#checkUpdates");
   const status = $("#updateStatus");
+  if (pendingUpdate) {
+    button.disabled = true;
+    button.textContent = pendingUpdate.portable ? "УСТАНАВЛИВАЮ…" : "ОТКРЫВАЮ…";
+    status.className = "update-status busy";
+    status.textContent = pendingUpdate.portable ? "Скачиваю и проверяю новую версию…" : "Открываю страницу официального релиза…";
+    try {
+      const result = await window.spriteLab.installUpdate();
+      if (result.status === "installing") {
+        status.className = "update-status success";
+        status.textContent = `Версия ${result.latestVersion} проверена. Перезапускаю программу…`;
+        return;
+      }
+      if (result.status === "manual") {
+        status.className = "update-status success";
+        status.textContent = `Страница версии ${result.latestVersion} открыта в браузере.`;
+      } else if (result.status === "current") {
+        status.className = "update-status success";
+        status.textContent = `Версия ${result.currentVersion} уже актуальна.`;
+      } else {
+        status.className = "update-status error";
+        status.textContent = result.message || "Не удалось установить обновление.";
+      }
+    } catch (error) {
+      status.className = "update-status error";
+      status.textContent = error.message || "Не удалось установить обновление.";
+    } finally {
+      pendingUpdate = null;
+      button.disabled = false;
+      button.textContent = "Проверить обновления";
+    }
+    return;
+  }
   button.disabled = true;
   button.textContent = "ПРОВЕРЯЮ…";
   status.className = "update-status busy";
@@ -88,13 +123,13 @@ async function checkForUpdates() {
     if (result.status === "current") {
       status.className = "update-status success";
       status.textContent = `Версия ${result.currentVersion} актуальна.`;
-    } else if (result.status === "installing") {
+    } else if (result.status === "available") {
+      pendingUpdate = result;
       status.className = "update-status success";
-      status.textContent = `Версия ${result.latestVersion} проверена. Перезапускаю программу…`;
-      return;
-    } else if (result.status === "manual") {
-      status.className = "update-status";
-      status.textContent = `Версия ${result.latestVersion} открыта в браузере для ручной загрузки.`;
+      status.textContent = result.portable
+        ? `Доступна версия ${result.latestVersion}. Нажмите ещё раз, чтобы скачать и установить её.`
+        : `Доступна версия ${result.latestVersion}. Нажмите ещё раз, чтобы открыть официальный релиз.`;
+      button.textContent = result.portable ? `Установить ${result.latestVersion}` : "Открыть релиз";
     } else if (result.status === "error") {
       status.className = "update-status error";
       status.textContent = result.message;
@@ -107,7 +142,7 @@ async function checkForUpdates() {
     status.textContent = error.message || "Не удалось проверить обновления.";
   } finally {
     button.disabled = false;
-    button.textContent = "Проверить обновления";
+    if (!pendingUpdate) button.textContent = "Проверить обновления";
   }
 }
 

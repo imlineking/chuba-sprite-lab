@@ -15,11 +15,35 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, "..");
 let mainWindow = null;
 let activeJob = null;
-const selfTestMode = process.argv.includes("--self-test");
+const selfTestMode = process.argv.includes("--self-test") || process.env.CHUBA_SPRITE_SELF_TEST === "1";
+const startupProbePath = process.env.CHUBA_SPRITE_STARTUP_PROBE || "";
 const videoExtensions = new Set([".mp4", ".webm", ".mov", ".mkv", ".avi", ".gif"]);
 const repositoryUrl = "https://github.com/imlineking/chuba-sprite-lab";
 const latestReleaseApi = "https://api.github.com/repos/imlineking/chuba-sprite-lab/releases/latest";
 const updateAssetName = "Chuba-Sprite-Lab-portable.exe";
+
+function writeStartupFailure(stage, error) {
+  const message = error instanceof Error ? `${error.message}\n${error.stack || ""}` : String(error);
+  try {
+    fsSync.mkdirSync(app.getPath("userData"), { recursive: true });
+    fsSync.appendFileSync(
+      path.join(app.getPath("userData"), "startup-errors.log"),
+      `${new Date().toISOString()} [${stage}] ${message}\n`,
+      "utf8",
+    );
+  } catch {
+    // A startup diagnostic must never become another startup failure.
+  }
+}
+
+function reportStartupFailure(stage, error) {
+  writeStartupFailure(stage, error);
+  const message = error instanceof Error ? error.message : String(error);
+  dialog.showErrorBox(
+    "Chuba Sprite Lab не смог загрузить интерфейс",
+    `${message}\n\nДиагностика сохранена в startup-errors.log в папке данных программы.`,
+  );
+}
 
 const updaterScript = [
   "param(",
@@ -119,7 +143,8 @@ function createWindow() {
     minWidth: 1040,
     minHeight: 700,
     frame: false,
-    show: false,
+    show: true,
+    center: true,
     backgroundColor: "#0b0d10",
     icon: path.join(appRoot, "assets", "app.ico"),
     webPreferences: {
@@ -130,8 +155,29 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadFile(path.join(here, "index.html"));
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  // Show the dark application shell immediately. Waiting exclusively for
+  // ready-to-show can leave a healthy renderer hidden forever on some Windows
+  // systems and GPU configurations.
+  void mainWindow.loadFile(path.join(here, "index.html")).catch((error) => reportStartupFailure("load-file", error));
+  if (startupProbePath) {
+    const probeTimeout = setTimeout(() => {
+      fsSync.writeFileSync(startupProbePath, JSON.stringify({ loaded: false, visible: mainWindow?.isVisible() || false }), "utf8");
+      app.exit(1);
+    }, 15_000);
+    mainWindow.webContents.once("did-finish-load", () => {
+      clearTimeout(probeTimeout);
+      const result = {
+        loaded: true,
+        visible: mainWindow?.isVisible() || false,
+        title: mainWindow?.getTitle() || "",
+      };
+      fsSync.writeFileSync(startupProbePath, JSON.stringify(result), "utf8");
+      setTimeout(() => app.exit(result.visible ? 0 : 1), 250);
+    });
+  }
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    reportStartupFailure("renderer-gone", new Error(`Процесс интерфейса завершился: ${details.reason}.`));
+  });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
 }
@@ -363,45 +409,32 @@ ipcMain.handle("app:check-updates", async () => {
     const currentVersion = app.getVersion();
     if (!latestVersion) throw new Error("В последнем релизе GitHub не указана версия.");
     if (compareVersions(latestVersion, currentVersion) <= 0) {
-      await dialog.showMessageBox(mainWindow, {
-        type: "info",
-        title: "Обновления не требуются",
-        message: `Установлена актуальная версия ${currentVersion}.`,
-        detail: "Новых стабильных релизов на GitHub пока нет.",
-        buttons: ["Хорошо"],
-      });
       return { status: "current", currentVersion, latestVersion };
     }
 
     const executableAsset = release.assets?.find((asset) => asset.name === updateAssetName);
     const checksumAsset = release.assets?.find((asset) => asset.name === `${updateAssetName}.sha256`);
     if (!executableAsset || !checksumAsset) throw new Error("В релизе отсутствует portable EXE или его SHA-256.");
+    return { status: "available", currentVersion, latestVersion, portable: Boolean(process.env.PORTABLE_EXECUTABLE_FILE) };
+  } catch (error) {
+    return { status: "error", message: error.message || "Не удалось проверить обновления." };
+  }
+});
+
+ipcMain.handle("app:install-update", async () => {
+  try {
+    const release = await fetchLatestRelease();
+    const latestVersion = String(release.tag_name || "").replace(/^v/i, "");
+    const currentVersion = app.getVersion();
+    if (!latestVersion) throw new Error("В последнем релизе GitHub не указана версия.");
+    if (compareVersions(latestVersion, currentVersion) <= 0) return { status: "current", currentVersion, latestVersion };
+    const executableAsset = release.assets?.find((asset) => asset.name === updateAssetName);
+    const checksumAsset = release.assets?.find((asset) => asset.name === `${updateAssetName}.sha256`);
+    if (!executableAsset || !checksumAsset) throw new Error("В релизе отсутствует portable EXE или его SHA-256.");
     if (!process.env.PORTABLE_EXECUTABLE_FILE) {
-      const choice = await dialog.showMessageBox(mainWindow, {
-        type: "info",
-        title: `Доступна версия ${latestVersion}`,
-        message: "Эта техническая сборка не может заменить себя автоматически.",
-        detail: "Откройте официальный релиз и скачайте однофайловую portable-версию.",
-        buttons: ["Открыть релиз", "Отмена"],
-        defaultId: 0,
-        cancelId: 1,
-      });
-      if (choice.response === 0) await shell.openExternal(release.html_url || repositoryUrl);
+      await shell.openExternal(release.html_url || repositoryUrl);
       return { status: "manual", latestVersion };
     }
-
-    const choice = await dialog.showMessageBox(mainWindow, {
-      type: "question",
-      title: `Доступна версия ${latestVersion}`,
-      message: `Обновить Chuba Sprite Lab ${currentVersion} до ${latestVersion}?`,
-      detail: "Программа скачает официальный portable EXE, проверит SHA-256, закроется, заменит старый файл и запустится снова.",
-      buttons: ["Скачать и установить", "Позже"],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true,
-    });
-    if (choice.response !== 0) return { status: "cancelled", latestVersion };
-
     const updateRoot = await fs.mkdtemp(path.join(app.getPath("temp"), "chuba-sprite-download-"));
     const downloadedFile = path.join(updateRoot, updateAssetName);
     const checksumText = await fetchText(checksumAsset.browser_download_url);
@@ -415,15 +448,7 @@ ipcMain.handle("app:check-updates", async () => {
     await installPortableUpdate(downloadedFile);
     return { status: "installing", latestVersion };
   } catch (error) {
-    const message = error.message || "Не удалось проверить обновления.";
-    await dialog.showMessageBox(mainWindow, {
-      type: "error",
-      title: "Ошибка обновления",
-      message,
-      detail: "Текущая версия не изменена. Попробуйте позже или откройте официальный репозиторий.",
-      buttons: ["Закрыть"],
-    });
-    return { status: "error", message };
+    return { status: "error", message: error.message || "Не удалось установить обновление." };
   }
 });
 
@@ -451,5 +476,20 @@ async function runSelfTest() {
   }
 }
 
-app.whenReady().then(selfTestMode ? runSelfTest : createWindow);
-app.on("window-all-closed", () => app.quit());
+const hasInstanceLock = selfTestMode || app.requestSingleInstanceLock();
+
+if (!hasInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+  app.whenReady().then(selfTestMode ? runSelfTest : createWindow).catch((error) => {
+    reportStartupFailure("app-ready", error);
+    app.exit(1);
+  });
+  app.on("window-all-closed", () => app.quit());
+}

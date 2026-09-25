@@ -45,11 +45,8 @@ body {
 }
 
 .brand { display: flex; align-items: center; gap: 10px; }
-.brand-mark { position: relative; width: 25px; height: 20px; display: inline-flex; align-items: flex-end; gap: 3px; transform: skewX(-9deg); }
-.brand-mark i { display: block; width: 5px; background: var(--orange); border-radius: 1px; }
-.brand-mark i:nth-child(1) { height: 8px; }
-.brand-mark i:nth-child(2) { height: 14px; }
-.brand-mark i:nth-child(3) { height: 20px; background: var(--acid); }
+.brand-logo { display: block; width: 38px; height: 38px; object-fit: contain; filter: drop-shadow(0 0 10px rgba(255,118,23,.14)); }
+.brand-logo-compact { width: 24px; height: 24px; }
 .brand-name { font-family: "Bahnschrift", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .17em; }
 .version { color: var(--muted-2); font: 700 10px "Bahnschrift", sans-serif; border: 1px solid var(--line); border-radius: 999px; padding: 2px 6px; }
 .window-actions { -webkit-app-region: no-drag; display: flex; height: 100%; }
@@ -345,7 +342,7 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; width: 15px; heigh
 .about-card::after { content: ""; position: absolute; right: -54px; bottom: -74px; width: 190px; height: 190px; border: 1px solid rgba(200,223,111,.08); border-radius: 50%; box-shadow: 0 0 0 28px rgba(200,223,111,.025), 0 0 0 58px rgba(200,223,111,.018); pointer-events: none; }
 .about-close { position: absolute; z-index: 2; right: 14px; top: 14px; width: 32px; height: 32px; border: 0; border-radius: 7px; background: transparent; color: #747d87; font-size: 20px; cursor: pointer; }
 .about-close:hover { background: #252b32; color: white; }
-.about-brand { display: flex; align-items: center; gap: 11px; margin-bottom: 28px; color: #b8bec5; font: 700 9px/1.2 "Bahnschrift", sans-serif; letter-spacing: .17em; }
+.about-brand { display: flex; align-items: center; gap: 13px; margin-bottom: 24px; color: #c8cdd2; font: 700 9px/1.25 "Bahnschrift", sans-serif; letter-spacing: .17em; }
 .about-card h2 { margin: 0; font: 600 31px/1 "Bahnschrift", sans-serif; letter-spacing: -.03em; }
 .about-version { margin: 8px 0 0; color: #77808a; font-size: 11px; }
 .about-version strong { color: var(--acid); }
