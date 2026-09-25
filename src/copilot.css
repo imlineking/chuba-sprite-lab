@@ -7,9 +7,7 @@
 
 .copilot-pet,
 .copilot-restore {
-  position: relative;
-  right: auto;
-  bottom: auto;
+  position: fixed;
   z-index: 40;
   padding: 0;
   border: 0;
@@ -18,15 +16,18 @@
 }
 
 .copilot-pet {
-  width: 38px;
-  height: 38px;
-  align-self: center;
+  right: 18px;
+  bottom: 54px;
+  width: 76px;
+  height: 76px;
+  touch-action: none;
   transition: transform .18s ease, filter .18s ease;
 }
 
-.copilot-pet:hover { transform: translateY(-3px); }
+.copilot-pet:hover { filter: drop-shadow(0 0 10px rgba(255, 118, 23, .3)); }
+.copilot-pet.dragging { cursor: grabbing; }
 .copilot-pet:focus-visible { outline: 2px solid var(--orange); outline-offset: 4px; border-radius: 50%; }
-.copilot-pet[data-mood="idle"] { filter: saturate(.75) opacity(.85); }
+.copilot-pet[data-mood="idle"] { filter: none; }
 .copilot-pet[data-mood="hint"] .copilot-pet-art { animation: copilot-bob 1.7s ease-in-out infinite; }
 .copilot-pet[data-mood="busy"] .copilot-pet-art { animation: copilot-pulse 1.1s ease-in-out infinite; filter: saturate(.6); }
 
@@ -39,6 +40,9 @@
 }
 
 .copilot-restore {
+  position: relative;
+  right: auto;
+  bottom: auto;
   width: 38px;
   height: 38px;
   align-self: center;
@@ -93,15 +97,28 @@
   overflow: hidden;
 }
 
+.copilot-panel > header { cursor: grab; touch-action: none; }
+.copilot-panel.dragging > header { cursor: grabbing; }
+.copilot-panel > header button { cursor: pointer; }
+
+.copilot-bubble { position: fixed; z-index: 42; width: min(255px, calc(100vw - 110px)); display: flex; gap: 4px; padding: 8px; border: 1px solid var(--line-bright); border-radius: 13px; background: var(--panel); box-shadow: 0 12px 30px rgba(0,0,0,.28); }
+.copilot-bubble::after { content: ""; position: absolute; right: -7px; top: 17px; width: 12px; height: 12px; transform: rotate(45deg); background: var(--panel); border-top: 1px solid var(--line-bright); border-right: 1px solid var(--line-bright); }
+.copilot-bubble[data-side="right"]::after { left: -7px; right: auto; border: 0; border-left: 1px solid var(--line-bright); border-bottom: 1px solid var(--line-bright); }
+.copilot-bubble > div { display: grid; gap: 3px; flex: 1; }
+.copilot-bubble button { border: 0; background: none; color: var(--text); text-align: left; font-size: 11px; line-height: 1.35; cursor: pointer; }
+.copilot-bubble > div button { padding: 5px 7px; border-radius: 6px; }
+.copilot-bubble > div button:hover { background: var(--panel-2); color: var(--orange-soft); }
+.copilot-bubble > button { align-self: start; color: var(--muted); font-size: 16px; }
+
 .copilot-panel > header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 5px;
+  padding: 9px 8px;
   border-bottom: 1px solid var(--line);
 }
 
-.copilot-panel > header img { width: 34px; height: 34px; object-fit: contain; }
+.copilot-panel > header img { width: 28px; height: 28px; object-fit: contain; flex: none; }
 .copilot-panel > header div { flex: 1; min-width: 0; }
 .copilot-panel > header strong { display: block; color: var(--text); font-size: 13px; }
 .copilot-panel > header small { display: block; color: var(--muted); font-size: 11px; }
@@ -110,10 +127,11 @@
   background: none;
   color: var(--muted);
   border-radius: 8px;
-  padding: 4px 8px;
+  padding: 4px 6px;
   font-size: 12px;
   cursor: pointer;
 }
+#copilotRefresh { min-width: 27px; font-size: 17px; line-height: 16px; }
 
 .copilot-panel > header button:hover { color: var(--orange); border-color: var(--orange); }
 
@@ -157,4 +175,5 @@
 .copilot-panel.hidden,
 .copilot-pet.hidden,
 .copilot-restore.hidden,
-.copilot-badge.hidden { display: none !important; }
+.copilot-badge.hidden,
+.copilot-bubble.hidden { display: none !important; }

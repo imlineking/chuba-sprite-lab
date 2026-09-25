@@ -18,6 +18,8 @@
   };
   let selected = localStorage.getItem("spriteLab.task") || "";
   if (!taskNames[selected]) selected = "";
+  // A remembered task is an invitation, not a full workflow card over an empty project.
+  let resumeCollapsed = Boolean(selected);
   let approach = localStorage.getItem("spriteLab.taskApproach") === "manual" ? "manual" : "auto";
   let primaryAction = null;
   let secondaryAction = null;
@@ -36,6 +38,7 @@
   function taskSet(name, nextApproach = "auto") {
     if (!taskNames[name]) return;
     selected = name;
+    resumeCollapsed = false;
     approach = nextApproach === "manual" ? "manual" : "auto";
     localStorage.setItem("spriteLab.task", name);
     localStorage.setItem("spriteLab.taskApproach", approach);
@@ -120,6 +123,7 @@
   }
 
   function taskRender() {
+    if (state.source) resumeCollapsed = false;
     document.body.dataset.task = selected;
     document.body.dataset.taskApproach = approach;
     const layout = selected && state.source ? state.source.kind === "sheet" ? "guided-sheet" : "guided-source" : "default";
@@ -136,9 +140,14 @@
       }
       arranged = layout;
     }
-    $("#taskWelcome").classList.toggle("hidden", Boolean(selected));
-    $("#taskGuide").classList.toggle("hidden", !selected);
-    if (!selected) return;
+    const showWelcome = !selected || resumeCollapsed;
+    $("#taskWelcome").classList.toggle("hidden", !showWelcome);
+    $("#taskGuide").classList.toggle("hidden", showWelcome);
+    $("#resumeTask").classList.toggle("hidden", !resumeCollapsed);
+    $("#taskWelcomeTitle").textContent = resumeCollapsed ? taskNames[selected] : "Что хотите сделать?";
+    $("#taskWelcomeHint").textContent = resumeCollapsed ? "Вы выбрали эту задачу раньше. Продолжите её или выберите другую." : "Выберите задачу — покажем только нужные шаги.";
+    $("#openTaskPicker").textContent = resumeCollapsed ? "Другая задача" : "Выбрать задачу";
+    if (!selected || resumeCollapsed) return;
     $("#taskGuideTitle").textContent = taskNames[selected];
     $("#taskAdvanced").textContent = "Открыть настройки вручную";
     $("#taskGuide .ai-chip").textContent = approach === "auto" ? "АВТО · ПОМОЩНИК" : "РУЧНОЙ РЕЖИМ";
@@ -407,6 +416,7 @@
   }
 
   $("#openTaskPicker").addEventListener("click", () => setCopilotPanel(true));
+  $("#resumeTask").addEventListener("click", () => { resumeCollapsed = false; taskRender(); $("#taskGuide").scrollIntoView({ block: "start", behavior: "smooth" }); });
   $("#changeTask").addEventListener("click", () => setCopilotPanel(true));
   $("#taskPrimary").addEventListener("click", () => primaryAction?.());
   $("#taskSecondary").addEventListener("click", () => secondaryAction?.());

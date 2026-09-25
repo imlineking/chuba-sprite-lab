@@ -78,7 +78,7 @@ body {
 .tab::after { content: ""; position: absolute; left: 20px; right: 20px; bottom: 0; height: 2px; background: var(--orange); transform: scaleX(0); transition: transform .22s ease; }
 .tab.active::after { transform: scaleX(1); }
 
-.app-shell { min-height: 0; display: grid; grid-template-columns: minmax(370px, 440px) 1fr; }
+.app-shell { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(370px, 440px) minmax(0, 1fr); }
 .control-deck { min-height: 0; position: relative; overflow: hidden; background: rgba(16, 19, 24, .96); border-right: 1px solid var(--line); }
 .panel { position: absolute; inset: 52px 0 0; padding: 24px 32px 32px; overflow-y: auto; opacity: 0; transform: translateX(18px); pointer-events: none; transition: opacity .2s, transform .24s; scrollbar-width: thin; scrollbar-color: #303640 transparent; }
 .panel.active { opacity: 1; transform: translateX(0); pointer-events: auto; }
@@ -629,7 +629,7 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; width: 15px; heigh
 }
 
 @media (max-width: 1120px) {
-  .app-shell { grid-template-columns: 390px 1fr; }
+  .app-shell { grid-template-columns: 390px minmax(0, 1fr); }
   .panel { padding-left: 24px; padding-right: 24px; }
   .preview-deck { padding-left: 20px; padding-right: 20px; }
 }
@@ -924,11 +924,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 #auxAITools .key-note, #auxAITools .aux-mask-row { margin-left: 13px; margin-right: 13px; }
 
 .task-welcome, .task-guide { border: 1px solid var(--line-bright); border-radius: 13px; background: var(--panel-2); padding: 14px; margin-bottom: 18px; }
-.task-welcome { display: flex; align-items: center; gap: 12px; }
-.task-welcome > div { display: grid; gap: 4px; flex: 1; }
+.white-remainder-hint { margin: 9px 0 0; padding: 9px 11px; border: 1px solid var(--line-bright); border-radius: 8px; color: var(--text); background: var(--panel-2); font-size: 11px; line-height: 1.45; }
+.task-welcome { display: grid; gap: 12px; }
+.task-welcome > div:first-child { display: grid; gap: 4px; flex: 1; }
 .task-welcome strong { font-size: 16px; color: var(--text); }
 .task-welcome small, .task-guide p { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .task-welcome .button { flex: none; }
+.task-welcome-actions { display: flex; gap: 7px; }
+.task-welcome-actions .button { flex: 1; min-height: 36px; padding: 0 10px; }
 .task-guide { border-color: var(--orange); background: linear-gradient(145deg, color-mix(in srgb, var(--orange) 8%, var(--panel)), var(--panel)); }
 .task-guide-top { display: flex; align-items: center; justify-content: space-between; }
 .task-guide-top button { border: 0; background: none; color: var(--orange-soft); font-size: 11px; cursor: pointer; }
@@ -936,4 +939,4 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .task-guide p { margin: 0 0 13px; }
 .task-guide-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .task-guide-actions .button { min-height: 36px; padding: 0 10px; }
-@media (max-width: 1100px) { .task-welcome { flex-wrap: wrap; } .task-welcome .button { width: 100%; } }
+@media (max-width: 1100px) { .task-welcome { flex-wrap: wrap; } .task-welcome-actions { width: 100%; } .task-welcome-actions .button { flex: 1; } }

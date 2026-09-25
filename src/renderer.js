@@ -615,6 +615,7 @@ function currentFramePath() {
 
 function setSource(source) {
   resetFrameConsistency();
+  $("#whiteRemainderHint").classList.add("hidden");
   if (source?.kind === "sheet" && source.sheetPath !== state.source?.sheetPath) $("#sheetFitEach").checked = false;
   clearTimeout(posterTimer);
   clearTimeout(state.quickTimer);
@@ -2000,6 +2001,10 @@ async function requestFramePreview(inputPath) {
     const result = await window.spriteLab.previewFrame({ inputPath, options: collectOptions() });
     if (token !== state.quickToken || revision !== state.sourceRevision) return;
     state.framePreview = result;
+    const remainderHint = $("#whiteRemainderHint");
+    const count = result.whiteRemainders?.count || 0;
+    remainderHint.classList.toggle("hidden", !count);
+    if (count) remainderHint.textContent = "На прозрачном фоне видны замкнутые светлые области. Они могут быть деталями рисунка или остатками фона. Проверьте контур перед экспортом.";
     $("#framePreviewTabs").classList.remove("hidden");
     hideError();
     if (["before", "after", "compare"].includes(state.previewMode)) setPreviewMode(state.previewMode);

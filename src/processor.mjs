@@ -13,6 +13,7 @@ import { decontaminateEdges } from "./edge-decontaminate.mjs";
 import { refineEdgeRgba } from "./edge-refine.mjs";
 import { compositeAttachments, trackAttachmentPlacements } from "./attachment-tracker.mjs";
 import { inspectAtlas } from "./atlas-inspector.mjs";
+import { findWhiteRemainders } from "./white-remainders.mjs";
 import { makeTempWorkspace, finishQuickPreview } from "./temp-workspace.mjs";
 import { modelById } from "./ai-models.mjs";
 import { loadAuxSession, inpaintLama, interpolateRife, upscaleEsrgan, estimateDepth } from "./aux-ai.mjs";
@@ -2430,6 +2431,11 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
     aiModel: options.aiModel,
     aiModelDirs: options.aiModelDirs,
   });
+  let whiteRemainders = { count: 0, regions: [] };
+  if (options.keyScope !== "all" && options.keyMode !== "alpha" && keyed.keyColor?.every((value) => value >= 230)) {
+    const raw = await sharp(keyed.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    whiteRemainders = findWhiteRemainders(raw.data, raw.info, keyed.keyColor);
+  }
   if (options.edgeRefine) keyed = await applyEdgeRefine(keyed, options.edgeRefine);
   const previewFrameIndex = options.previewFrameIndex ?? 0;
   const placements = options.attachmentPlacements?.[previewFrameIndex]
@@ -2457,6 +2463,7 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
     afterPath,
     bounds: keyed.bounds,
     keyColor: keyed.keyColor,
+    whiteRemainders,
   };
 }
 

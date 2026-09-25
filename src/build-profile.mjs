@@ -23,12 +23,13 @@ export const profileOptionKeys = new Set([
   "fringeCleanup", "fringeStrength", "edgeDecontaminate", "keyColor", "aiProvider", "aiQuality", "aiForceModel", "pixelate", "frameParallelism", "attachments", "attachmentPlacements",
   "frameOverrides", "frameTransforms", "fitEachFrame", "timeline", "loopMode",
   "loopRange", "packing", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo",
-  "cleanOutput", "animationName", "auxAI",
+  "cleanOutput", "animationName", "auxAI", "keyScope", "aiModel", "edgeRefine", "toning",
 ]);
 
 const sourceKinds = ["video", "frames", "sheet"];
 const enumValues = {
   keyMode: ["auto", "alpha", "ai", "white", "black", "green", "blue", "custom"],
+  keyScope: ["exterior", "all"],
   aiProvider: ["auto", "cpu", "dml"],
   aiQuality: ["fast", "balanced", "max"],
   anchor: ["ground", "center", "motion", "body"],
@@ -66,6 +67,32 @@ function normalizeOptions(value, problem, label, baseDir) {
   }
   if (options.atlasPowerOfTwo !== undefined && typeof options.atlasPowerOfTwo !== "boolean") {
     problem(`${label}.atlasPowerOfTwo: ожидалось true или false.`);
+  }
+  if (options.aiModel !== undefined && (typeof options.aiModel !== "string" || !/^[a-z0-9][a-z0-9-]*$/i.test(options.aiModel))) {
+    problem(`${label}.aiModel: ожидался идентификатор модели.`);
+  }
+  if (options.edgeRefine !== undefined) {
+    if (!isPlainObject(options.edgeRefine)) problem(`${label}.edgeRefine: ожидался объект.`);
+    else {
+      for (const key of Object.keys(options.edgeRefine)) {
+        if (!["mode", "width", "depth", "whiteOnly"].includes(key)) problem(`${label}.edgeRefine.${key}: неизвестная настройка.`);
+      }
+      if (!["none", "trim", "recolor"].includes(options.edgeRefine.mode)) problem(`${label}.edgeRefine.mode: ожидается none, trim или recolor.`);
+      if (boundedInteger(options.edgeRefine.width, 1, 3) === null) problem(`${label}.edgeRefine.width: ожидалось целое 1…3.`);
+      if (boundedInteger(options.edgeRefine.depth, 1, 5) === null) problem(`${label}.edgeRefine.depth: ожидалось целое 1…5.`);
+      if (typeof options.edgeRefine.whiteOnly !== "boolean") problem(`${label}.edgeRefine.whiteOnly: ожидалось true или false.`);
+    }
+  }
+  if (options.toning !== undefined && options.toning !== null) {
+    if (!isPlainObject(options.toning)) problem(`${label}.toning: ожидался объект или null.`);
+    else {
+      for (const key of Object.keys(options.toning)) {
+        if (!["color", "strength"].includes(key)) problem(`${label}.toning.${key}: неизвестная настройка.`);
+      }
+      if (!/^#[0-9a-f]{6}$/i.test(options.toning.color)) problem(`${label}.toning.color: ожидался цвет #RRGGBB.`);
+      const strength = Number(options.toning.strength);
+      if (!Number.isFinite(strength) || strength < 0 || strength > 100) problem(`${label}.toning.strength: ожидалось число 0…100.`);
+    }
   }
   if (options.exports !== undefined) {
     if (!isPlainObject(options.exports)) {

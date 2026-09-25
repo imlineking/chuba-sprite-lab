@@ -16,6 +16,7 @@ import { assertGitHubDownloadUrl, compareVersions, parseSha256 } from "./update-
 import { resolveAIModel, segmentSubject } from "./ai-segmentation.mjs";
 import { finishSheetImport, makeTempWorkspace, pruneStaleTempWorkspaces } from "./temp-workspace.mjs";
 import { planSuggestions, planTaskScenarios } from "./copilot-rules.mjs";
+import { readProfile } from "./build-profile.mjs";
 import * as editorSession from "./editor-session.mjs";
 import * as autoPilot from "./auto-pilot.mjs";
 import { assertDownloadUrl, canDownload, modelById, modelFiles, rejectedModels, validateModelFile, verificationOf } from "./ai-models.mjs";
@@ -391,6 +392,7 @@ ipcMain.handle("profile:save", async (_event, request = {}) => {
   });
   if (result.canceled || !result.filePath) return null;
   const target = result.filePath.toLowerCase().endsWith(".json") ? result.filePath : `${result.filePath}.json`;
+  readProfile(profile, { baseDir: path.dirname(target) });
   await fs.writeFile(target, `${JSON.stringify(profile, null, 2)}\n`, "utf8");
   return { path: target };
 });

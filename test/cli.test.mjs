@@ -67,6 +67,21 @@ test("--dry-run validates without writing anything", async () => {
   assert.equal(existsSync(outputDir), false, "a dry run must not create the output folder");
 });
 
+test("a recipe with the window's keying, model, edge and toning controls builds in CLI", async () => {
+  const { profilePath } = await prepareProfile();
+  const recipe = JSON.parse(await fs.readFile(profilePath, "utf8"));
+  Object.assign(recipe.options, {
+    keyScope: "exterior",
+    aiModel: "u2netp",
+    edgeRefine: { mode: "recolor", width: 1, depth: 2, whiteOnly: true },
+    toning: { color: "#8bb8ff", strength: 35 },
+  });
+  await fs.writeFile(profilePath, JSON.stringify(recipe), "utf8");
+  const run = runCli(["--profile", profilePath, "--json"]);
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(JSON.parse(run.stdout).ok, true);
+});
+
 test("the exit code separates usage problems from build failures", async () => {
   const missing = runCli(["--json"]);
   assert.equal(missing.status, 1);
