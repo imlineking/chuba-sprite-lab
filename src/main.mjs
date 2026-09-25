@@ -412,7 +412,9 @@ ipcMain.handle("frame-edit:open", async (_event, request = {}) => {
 const onlineFrameEditors = {
   photopea: "https://www.photopea.com/",
   canva: "https://www.canva.com/photo-editor/",
+  figma: "https://www.figma.com/design/",
   pixlr: "https://pixlr.com/e/",
+  "pixlr-x": "https://pixlr.com/express/",
 };
 
 ipcMain.handle("frame-edit:online", async (_event, request = {}) => {
