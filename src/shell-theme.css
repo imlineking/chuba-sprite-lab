@@ -169,7 +169,7 @@ html[data-theme] :is(.preview-meta, .export-details, .about-hotkeys) { color: va
 html[data-theme] :is(.preview-meta > div, .about-meta div) { border-color: var(--line); }
 html[data-theme] .preview-meta strong { color: var(--text); }
 html[data-theme] .preview-meta span { color: var(--muted); }
-html[data-theme] :is(.process-action-dock, .export-action-dock) { background: var(--shell-glass); border-color: var(--line); box-shadow: 0 -10px 24px #0000000d; }
+html[data-theme] :is(.process-action-dock, .export-action-dock) { background: var(--panel); border-color: var(--line); box-shadow: 0 -10px 24px #0000000d; }
 html[data-theme] :is(.process-action-dock.blocked > div, .export-action-dock.blocked) { color: var(--muted); }
 html[data-theme] :is(.warning-box, .atlas-warning, .atlas-warning.resolved, .error-card) { color: var(--text); background: var(--panel); border-color: var(--line-bright); }
 html[data-theme] .warning-box header { background: var(--shell-raised); color: var(--text); }
@@ -276,3 +276,8 @@ html[data-shell-motion="off"] :is(#appShell, .titlebar, .modal-backdrop, .color-
 html[data-shell-motion="off"] :is(#appShell, .titlebar, .modal-backdrop, .color-picker-dialog) *::after { transition: none !important; animation: none !important; }
 html[data-theme] .pixel-editor-badge { background: var(--shell-selected); color: var(--orange-soft); border-color: var(--line-bright); }
 html[data-theme] .pixel-layer-flag { filter: grayscale(1); }
+
+/* Popup growth starts at its invoking control; detail content unfolds below its summary. */
+.backdrop-menu { transform-origin: bottom right; }
+.transform-panel { transform-origin: bottom left; }
+.tool-details > :not(summary), .advanced-panel > :not(summary), .export-details > :not(summary) { transform-origin: top; }

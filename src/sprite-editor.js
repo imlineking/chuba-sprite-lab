@@ -91,7 +91,7 @@ function pixelEditorRenderCanvas() {
   $("#pixelGrid").disabled = pixelEditor.zoom < 4;
   canvas.style.width = `${pixelEditor.width * pixelEditor.zoom}px`;
   canvas.style.height = `${pixelEditor.height * pixelEditor.zoom}px`;
-  $("#pixelZoomValue").textContent = `${pixelEditor.zoom}×`;
+  $("#pixelZoomValue").textContent = `${Math.round(pixelEditor.zoom * 100)}%`;
 }
 
 function pixelEditorRenderLayers() {
@@ -201,7 +201,7 @@ function pixelEditorApplyState(answer) {
     : new Uint8ClampedArray(answer.composite);
   $("#pixelUndo").disabled = !answer.canUndo;
   $("#pixelRedo").disabled = !answer.canRedo;
-  $("#pixelEditorBadge").textContent = `КАДР ${answer.frameIndex + 1}`;
+  $("#pixelEditorBadge").textContent = t("КАДР {number}", { number: answer.frameIndex + 1 });
   $("#pixelEditorSize").textContent = `${answer.width} × ${answer.height}`;
   pixelEditorRenderCanvas();
   pixelEditorRenderLayers();
@@ -214,10 +214,10 @@ function pixelEditorPaletteFromComposite(composite) { return window.SpriteLabPix
 
 function pixelEditorFitZoom() {
   const wrap = $("#pixelCanvasWrap");
-  const availableWidth = Math.max(160, wrap.clientWidth - 24);
-  const availableHeight = Math.max(160, wrap.clientHeight - 24);
+  const availableWidth = Math.max(1, wrap.clientWidth - 28);
+  const availableHeight = Math.max(1, wrap.clientHeight - 28);
   const fit = Math.min(availableWidth / Math.max(1, pixelEditor.width), availableHeight / Math.max(1, pixelEditor.height));
-  return Math.max(1, Math.min(24, Math.floor(fit)));
+  return Math.max(0.01, Math.min(24, fit >= 1 ? Math.floor(fit) : fit));
 }
 
 function pixelEditorSetTool(tool) {
@@ -242,7 +242,7 @@ async function pixelEditorOpen() {
   pixelEditorCancelPreview();
   pixelEditorApplyState(answer);
   pixelEditor.palette = pixelEditorPaletteFromComposite(pixelEditor.composite);
-  pixelEditor.zoom = pixelEditorFitZoom();
+  pixelEditor.zoom = 1;
   pixelEditorRenderCanvas();
   $("#pixelPalette").scrollTop = 0;
   pixelEditorRenderPalette();
@@ -250,6 +250,9 @@ async function pixelEditorOpen() {
   pixelEditorSetColor(pixelEditor.color);
   pixelEditorStatus("Кадр открыт. Рисуйте и сохраните — он встанет в спрайт-лист.", "ready");
   setModalOpen($("#pixelEditorModal"), true, $("#pixelToolPencil"), $("#openPixelEditor"));
+  // Measure after the dialog is laid out; hidden elements have no viewport.
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  if (pixelEditorIsOpen()) pixelEditorSetZoom(pixelEditorFitZoom());
 }
 
 async function pixelEditorClose() {
@@ -350,11 +353,11 @@ function pixelEditorPointerUp(event) {
 function pixelEditorWheel(event) {
   if (!event.ctrlKey && !event.metaKey) return;
   event.preventDefault();
-  pixelEditorSetZoom(pixelEditor.zoom + (event.deltaY < 0 ? 1 : -1));
+  pixelEditorSetZoom(pixelEditor.zoom * (event.deltaY < 0 ? 1.25 : 0.8));
 }
 
 function pixelEditorSetZoom(value) {
-  pixelEditor.zoom = Math.max(1, Math.min(24, value));
+  pixelEditor.zoom = Math.max(0.01, Math.min(24, value));
   pixelEditorRenderCanvas();
 }
 
@@ -392,8 +395,8 @@ $("#pixelEraseTransparent").addEventListener("click", () => {
 });
 $("#pixelInkColor").addEventListener("input", () => pixelEditorSetColor(pixelEditorColorFromHex($("#pixelInkColor").value)));
 $("#pixelGrid").addEventListener("change", () => { pixelEditor.gridOn = $("#pixelGrid").checked; pixelEditorRenderCanvas(); });
-$("#pixelZoomIn").addEventListener("click", () => pixelEditorSetZoom(pixelEditor.zoom + 1));
-$("#pixelZoomOut").addEventListener("click", () => pixelEditorSetZoom(pixelEditor.zoom - 1));
+$("#pixelZoomIn").addEventListener("click", () => pixelEditorSetZoom(pixelEditor.zoom * 1.25));
+$("#pixelZoomOut").addEventListener("click", () => pixelEditorSetZoom(pixelEditor.zoom * 0.8));
 $("#pixelZoomFit").addEventListener("click", () => pixelEditorSetZoom(pixelEditorFitZoom()));
 $("#pixelUndo").addEventListener("click", () => { if (pixelEditor.preview) pixelEditorCancelPreview(); else pixelEditorSend({ op: "undo" }); });
 $("#pixelRedo").addEventListener("click", () => pixelEditorSend({ op: "redo" }));
@@ -432,8 +435,8 @@ document.addEventListener("keydown", (event) => {
   else if (key === "[" || key === "]") {
     $("#pixelBrushSize").value = String(Math.max(1, Math.min(16, pixelEditor.brush + (key === "]" ? 1 : -1))));
     pixelEditorSyncBrush();
-  } else if (key === "+" || key === "=") pixelEditorSetZoom(pixelEditor.zoom + 1);
-  else if (key === "-" || key === "_") pixelEditorSetZoom(pixelEditor.zoom - 1);
+  } else if (key === "+" || key === "=") pixelEditorSetZoom(pixelEditor.zoom * 1.25);
+  else if (key === "-" || key === "_") pixelEditorSetZoom(pixelEditor.zoom * 0.8);
 });
 
 pixelEditorSyncBrush();

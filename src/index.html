@@ -198,9 +198,9 @@
               <strong>Подобрать инструменты под задачу</strong>
               <small>смотрит на кадры и решает, что применить</small>
             </header>
-            <p>Режим сам измеряет кадры — однотонность фона, сложность края, долю полупрозрачных пикселей, плотность мелких деталей и переходы цвета — и по этим числам выбирает инструмент для каждого шага. Правила локальные и объяснимые: рядом с каждым шагом написано, почему он выбран.</p>
+            <p>Выберите задачу через помощника или проанализируйте исходники здесь. План покажет подходящие инструменты и причину выбора.</p>
             <div class="auto-pilot-actions">
-              <button id="runAutoPilot" class="button primary" type="button">Разобрать кадры</button>
+              <button id="runAutoPilot" class="button primary" type="button">Анализировать исходники</button>
               <button id="applyAutoPilot" class="button secondary" type="button" disabled>Применить план</button>
               <button id="openModels" class="button ghost" type="button">Модели ИИ</button>
             </div>
@@ -702,9 +702,9 @@
             <button id="imageAutoCleanup" class="filmstrip-action image-only" type="button" title="Оркестратор анализирует каждый файл и выбирает обработку; результат сохраняется в отдельную папку">Автоочистка всех</button>
             <button id="duplicateFrame" class="filmstrip-action" type="button" title="Повторить кадр в таймлайне (Ctrl+D)">Дублировать</button>
             <button id="excludeFrame" class="filmstrip-action" type="button">Исключить кадр</button>
-            <button id="editFrame" class="filmstrip-action edit" type="button">Редактировать кадр</button>
+            <button id="editFrame" class="filmstrip-action edit" type="button" title="Открыть во внешнем редакторе и вернуть результат в проект">Внешний редактор</button>
             <button id="copyFrame" class="filmstrip-action" type="button" title="Скопировать готовый кадр в буфер обмена (Ctrl+C)">Копировать</button>
-            <button id="openPixelEditor" class="filmstrip-action edit" type="button" title="Встроенный пиксельный редактор">Пиксельный редактор</button>
+            <button id="openPixelEditor" class="filmstrip-action edit" type="button" title="Изменить цвета, свет и пиксели в программе">Цвет и пиксели</button>
           </div>
         </div>
 
@@ -931,8 +931,8 @@
               <button id="pixelZoomFit" class="pixel-tool-button" type="button" title="Вписать кадр в окно">Вписать</button>
             </div>
             <div class="pixel-tool-group">
-              <button id="pixelUndo" class="pixel-tool-button" type="button" title="Отменить (Ctrl+Z)">↶ Отменить</button>
-              <button id="pixelRedo" class="pixel-tool-button" type="button" title="Повторить (Ctrl+Shift+Z)">↷ Повторить</button>
+              <button id="pixelUndo" class="pixel-tool-button" type="button" title="Отменить (Ctrl+Z)"><span aria-hidden="true">↶</span> <span>Отменить</span></button>
+              <button id="pixelRedo" class="pixel-tool-button" type="button" title="Повторить (Ctrl+Shift+Z)"><span aria-hidden="true">↷</span> <span>Повторить</span></button>
             </div>
             <label class="pixel-tool-group">
               <input id="pixelGrid" type="checkbox" checked /> Сетка
@@ -944,31 +944,31 @@
         </div>
 
         <aside class="pixel-editor-side">
+          <section id="pixelColorForm" class="pixel-panel pixel-color-form hidden" aria-label="Замена цвета кадра">
+            <strong id="pixelColorSource"></strong>
+            <div id="pixelColorField" class="pixel-color-field" role="slider" tabindex="0" aria-label="Насыщенность и яркость цвета"><span id="pixelColorPoint"></span></div>
+            <label class="pixel-color-label">Оттенок <input id="pixelColorHue" type="range" min="0" max="359" value="0"></label>
+            <label class="pixel-color-label">HEX <input id="pixelColorHex" type="text" maxlength="7" spellcheck="false" value="#000000" aria-label="HEX нового цвета"></label>
+            <div class="pixel-rgb-inputs">
+              <label>R<input id="pixelColorR" type="number" min="0" max="255" value="0"></label>
+              <label>G<input id="pixelColorG" type="number" min="0" max="255" value="0"></label>
+              <label>B<input id="pixelColorB" type="number" min="0" max="255" value="0"></label>
+            </div>
+            <label class="pixel-color-label">Допуск <output id="pixelColorToleranceValue">0 · точно</output><input id="pixelColorTolerance" type="range" min="0" max="80" value="0"></label>
+            <small id="pixelColorCount" aria-live="polite"></small>
+            <div class="pixel-color-actions">
+              <button id="pixelColorApply" class="button primary" type="button">Заменить цвет</button>
+              <button id="pixelColorDelete" class="button secondary" type="button">Удалить цвет</button>
+              <button id="pixelColorCancel" class="button secondary" type="button">Отмена просмотра</button>
+              <button id="pixelColorBrush" class="button secondary" type="button">Для кисти</button>
+            </div>
+          </section>
           <section class="pixel-panel">
             <header>Цвета кадра <span id="pixelPaletteCount"></span>
               <button id="pixelPaletteToggle" class="pixel-tool-button" type="button" aria-expanded="true" aria-controls="pixelPalette">4 ряда ↑</button>
             </header>
             <div id="pixelPalette" class="pixel-palette" tabindex="0" aria-label="Палитра sRGB текущего кадра"></div>
             <p class="pixel-editor-hint">Нажмите цвет: заменить во всём кадре, удалить или взять для кисти.</p>
-            <section id="pixelColorForm" class="pixel-color-form hidden" aria-label="Замена цвета кадра">
-              <strong id="pixelColorSource"></strong>
-              <div id="pixelColorField" class="pixel-color-field" role="slider" tabindex="0" aria-label="Насыщенность и яркость цвета"><span id="pixelColorPoint"></span></div>
-              <label class="pixel-color-label">Оттенок <input id="pixelColorHue" type="range" min="0" max="359" value="0"></label>
-              <label class="pixel-color-label">HEX <input id="pixelColorHex" type="text" maxlength="7" spellcheck="false" value="#000000" aria-label="HEX нового цвета"></label>
-              <div class="pixel-rgb-inputs">
-                <label>R<input id="pixelColorR" type="number" min="0" max="255" value="0"></label>
-                <label>G<input id="pixelColorG" type="number" min="0" max="255" value="0"></label>
-                <label>B<input id="pixelColorB" type="number" min="0" max="255" value="0"></label>
-              </div>
-              <label class="pixel-color-label">Допуск <output id="pixelColorToleranceValue">0 · точно</output><input id="pixelColorTolerance" type="range" min="0" max="80" value="0"></label>
-              <small id="pixelColorCount" aria-live="polite"></small>
-              <div class="pixel-color-actions">
-                <button id="pixelColorApply" class="button primary" type="button">Заменить цвет</button>
-                <button id="pixelColorDelete" class="button secondary" type="button">Удалить цвет</button>
-                <button id="pixelColorCancel" class="button secondary" type="button">Отмена просмотра</button>
-                <button id="pixelColorBrush" class="button secondary" type="button">Для кисти</button>
-              </div>
-            </section>
           </section>
           <section class="pixel-panel pixel-adjust-panel">
             <details id="pixelAdjustDetails"><summary>Свет и цвет</summary>
@@ -998,8 +998,10 @@
         </aside>
 
         <footer class="pixel-editor-foot">
-          <span id="pixelCursorInfo">—</span>
-          <span id="pixelEditorStatus" class="pixel-editor-status ready">Откройте кадр из полосы кадров.</span>
+          <div class="pixel-editor-info">
+            <span id="pixelCursorInfo">—</span>
+            <span id="pixelEditorStatus" class="pixel-editor-status ready">Откройте кадр из полосы кадров.</span>
+          </div>
           <button id="pixelSaveFrame" class="button primary pixel-editor-save" type="button">Сохранить кадр</button>
         </footer>
       </article>

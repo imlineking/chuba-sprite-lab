@@ -499,8 +499,8 @@ function updateStepStates() {
 
 function trapModalFocus(modal, event) {
   if (event.key !== "Tab") return;
-  const focusable = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), summary, [tabindex]:not([tabindex="-1"])')]
-    .filter((element) => !element.closest(".hidden"));
+  const focusable = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), summary, [tabindex]:not([tabindex="-1"])')]
+    .filter((element) => element.checkVisibility({ checkVisibilityCSS: true }) && !element.closest(".hidden"));
   if (!focusable.length) return;
   const first = focusable[0]; const last = focusable.at(-1);
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
@@ -509,14 +509,15 @@ function trapModalFocus(modal, event) {
 
 function setModalOpen(modal, open, focusTarget, returnTarget) {
   if (open) {
-    modalReturnFocus = returnTarget || document.activeElement;
+    modalReturnFocus = returnTarget?.checkVisibility?.({ checkVisibilityCSS: true }) ? returnTarget : document.activeElement;
     modal.classList.remove("hidden");
     $("#appShell").inert = true; $(".tabs").inert = true; $(".workspace-actions").inert = true;
     focusTarget?.focus?.();
   } else {
     modal.classList.add("hidden");
     if (!state.busy) { $("#appShell").inert = false; $(".tabs").inert = false; $(".workspace-actions").inert = false; }
-    (returnTarget || modalReturnFocus)?.focus?.();
+    const target = returnTarget?.checkVisibility?.({ checkVisibilityCSS: true }) ? returnTarget : modalReturnFocus;
+    target?.focus?.();
     modalReturnFocus = null;
   }
 }

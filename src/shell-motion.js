@@ -15,6 +15,11 @@
     for (const animation of animations.values()) animation.cancel();
     animations.clear();
   }
+  function cancelWithin(root) {
+    for (const [node, animation] of animations) {
+      if (node === root || root.contains(node)) { animation.cancel(); animations.delete(node); }
+    }
+  }
   function animate(node, frames, options = {}) {
     animations.get(node)?.cancel();
     if (!enabled() || !node?.animate) return;
@@ -34,7 +39,7 @@
     }
   }
   function transition(panel) {
-    cancel();
+    cancelWithin(deck);
     if (!enabled() || !panel) return;
     curtains.querySelectorAll("i").forEach((strip, i) => animate(strip,
       [{ transform: "scaleY(0)" }, { transform: "scaleY(.98)", offset: .32 }, { transform: "scaleY(0)" }],
@@ -44,6 +49,7 @@
   const observer = new MutationObserver(records => {
     for (const record of records) {
       const node = record.target;
+      if (node.classList.contains("hidden") || (record.attributeName === "open" && !node.open)) { cancelWithin(node); continue; }
       if (record.attributeName === "open") {
         if (node.open) node.querySelectorAll(":scope > :not(summary)").forEach(child => animate(child, [{ opacity: 0, transform: "translateY(-5px)" }, { opacity: 1, transform: "none" }], { duration: 220 }));
       } else if (!node.classList.contains("hidden") && String(record.oldValue).split(/\s+/).includes("hidden")) reveal(node);

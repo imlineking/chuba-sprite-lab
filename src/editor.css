@@ -280,7 +280,7 @@
   min-height: 0;
   overflow: auto;
   display: grid;
-  place-items: center;
+  place-items: safe center;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -447,7 +447,7 @@
 .pixel-palette .pixel-swatch { position: absolute; width: calc(12.5% - 4px); height: 30px; aspect-ratio: auto; }
 #pixelPaletteToggle { white-space: nowrap; font-size: 10px; width: auto; padding: 4px 7px; height: 28px; }
 #pixelPaletteCount { letter-spacing: 0; }
-.pixel-color-form { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.pixel-color-form { margin: 0; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .pixel-color-form.hidden { display: none; }
 .pixel-color-form > strong { font-size: 12px; }
 .pixel-color-form > small { color: var(--muted); font-size: 11px; line-height: 1.5; }
@@ -469,3 +469,19 @@
 #pixelAdjustTintField { height: 104px; margin-top: 10px; }
 
 .pixel-color-actions { position: sticky; bottom: 0; background: var(--panel-2); padding: 8px 0 2px; z-index: 1; }
+
+/* Keep the current action beside the image, and centre footer text with its button. */
+.pixel-editor-status { min-height: 0; line-height: 1.5; flex: 1; }
+.pixel-editor-hint { margin: 10px 0 0; line-height: 1.5; }
+.pixel-editor-head h2 { margin: 0; }
+.pixel-color-form .pixel-color-actions { position: static; background: transparent; padding: 0; }
+html[data-theme] .pixel-color-actions .button { min-height: 40px; padding: 8px 6px; }
+.pixel-color-actions { grid-auto-rows: minmax(40px, auto); align-items: stretch; }
+.pixel-panel #pixelPaletteToggle[hidden] { display: none; }
+#pixelZoomValue { min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Footer content has its own inset, separate from the outer dialog padding. */
+.pixel-editor-foot { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; padding: 12px 16px; }
+.pixel-editor-info { display: grid; gap: 6px; min-width: 0; }
+.pixel-editor-info > span { min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
+.pixel-editor-foot .pixel-editor-save { margin: 0; align-self: center; min-width: 140px; }

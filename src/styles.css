@@ -988,7 +988,7 @@ body[data-intent="images"] #resultPreviewTabs { display: none !important; }
 .mask-history-actions { flex-wrap: wrap; gap: 6px; }
 .workspace-actions { position: static; transform: none; margin-left: auto; }
 .workspace-actions button { padding: 0 8px; }
-@media (max-width: 1120px) { .workspace-actions button:not(#undoAction):not(#redoAction) { display: none; } }
+@media (max-width: 1120px) { .workspace-actions button:not(#undoAction):not(#redoAction):not(#openCommands) { display: none; } }
 .window-actions #copilotRestore { width: 40px; height: 40px; padding: 10px; border: 0; background: transparent; box-shadow: none; }
 .window-actions #copilotRestore .ui-icon { width: 20px; height: 20px; }
 .mask-editor-layout { grid-template-columns: minmax(0, 1fr) 320px; }
@@ -1020,3 +1020,6 @@ body[data-intent="images"] #resultPreviewTabs { display: none !important; }
 .user-profile-card .feedback-field input { font-size: 15px; }
 .user-profile-card footer { display: flex; justify-content: flex-end; gap: 8px; }
 .user-profile-card footer .button { display: inline-flex; align-items: center; justify-content: center; padding: 10px 16px; }
+
+@media (max-width: 1120px) { .workspace-actions kbd { display: none; } }
+body[data-intent="images"] .filmstrip-actions { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }

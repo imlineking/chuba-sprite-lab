@@ -11,6 +11,7 @@ function pixelEditorCancelPreview() {
   pixelColorDraft=null;pixelAdjustDraft=null;pixelEditor.preview=null;
   $('#pixelColorForm').classList.add('hidden');$('#pixelAdjustDetails').open=false;
   pixelEditorRenderCanvas();
+  if (pixelEditor.sessionId) pixelEditorStatus(t('Предпросмотр отменён · правки кадра сохранены'), 'ready');
 }
 function pixelEditorChooseFrameColor(color) {
   if(pixelColorBusy)return;
@@ -19,7 +20,7 @@ function pixelEditorChooseFrameColor(color) {
   $('#pixelColorSource').textContent=t("Цвет {color} · весь кадр",{color:pixelEditorHex(color)});
   $('#pixelColorTolerance').value='0';$('#pixelColorHex').setCustomValidity('');
   $('#pixelColorForm').classList.remove('hidden');
-  pixelColorSyncFields();pixelColorPreview();$('#pixelColorForm').scrollIntoView({block:'nearest'});
+  pixelColorSyncFields();pixelColorPreview();$('.pixel-editor-side').scrollTop=0;
 }
 function pixelColorSyncFields() {
   if(!pixelColorDraft)return;
@@ -38,7 +39,7 @@ function pixelColorPreview() {
     const offsets=window.SpriteLabPixelColors.matches(pixelEditor.composite,pixelColorDraft.source,pixelColorDraft.tolerance);
     pixelEditor.preview=window.SpriteLabPixelColors.preview(pixelEditor.composite,offsets,pixelColorDraft.replacement);
     $('#pixelColorCount').textContent=t("{count} пикселей · предпросмотр, ещё не применено",{count:offsets.length.toLocaleString()});
-    $('#pixelColorToleranceValue').textContent=pixelColorDraft.tolerance?String(pixelColorDraft.tolerance):t('0 · точно');pixelEditorRenderCanvas();
+    $('#pixelColorToleranceValue').textContent=pixelColorDraft.tolerance?String(pixelColorDraft.tolerance):t('0 · точно');pixelEditorRenderCanvas();pixelEditorStatus(t('Замена цвета · предпросмотр, ещё не применено'),'ready');
   });
 }
 function pixelColorSetBusy(busy) {
@@ -56,6 +57,9 @@ function pixelPaletteRender() {
   $('#pixelPaletteToggle').textContent=t(pixelPaletteExpanded?'4 ряда ↑':'Развернуть ↓');
   $('#pixelPaletteToggle').setAttribute('aria-expanded',String(pixelPaletteExpanded));
   $('#pixelPaletteCount').textContent=String(pixelEditor.palette.length);
+  const rows=Math.ceil(pixelEditor.palette.length/8);
+  viewport.style.height=`${Math.max(30,Math.min(pixelPaletteExpanded?300:132,rows*34-4))}px`;
+  $('#pixelPaletteToggle').hidden=rows<=4;
   const inner=document.createElement('div');inner.className='pixel-palette-inner';
   inner.style.height=`${Math.ceil(pixelEditor.palette.length/8)*34}px`;
   const first=Math.max(0,Math.floor(viewport.scrollTop/34)-1)*8;
