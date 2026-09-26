@@ -8,6 +8,17 @@ import { preparePortableModels } from "./prepare-portable-models.mjs";
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const builder = path.join(appRoot, "node_modules", "electron-builder", "cli.js");
 const localElectronDist = path.join(appRoot, "node_modules", "electron", "dist");
+const packageInfo = JSON.parse(await fs.readFile(path.join(appRoot, "package.json"), "utf8"));
+
+function assertNoRunningBuild() {
+  if (process.platform !== "win32") return;
+  const probe = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='Chuba Sprite Lab.exe'\" | Select-Object -ExpandProperty ExecutablePath"], { encoding: "utf8", windowsHide: true, timeout: 15000 });
+  if (probe.status !== 0) throw new Error("Не удалось проверить запущенные экземпляры. Закройте приложение перед пересборкой.");
+  const prefix = (appRoot + path.sep).toLowerCase();
+  if (probe.stdout.split(/\r?\n/).some((entry) => entry.trim().toLowerCase().startsWith(prefix))) throw new Error("Закройте Chuba Sprite Lab из папки проекта перед заменой portable-комплекта.");
+}
+
+assertNoRunningBuild();
 
 await prepareVendor(appRoot);
 const models = await preparePortableModels(appRoot);
@@ -41,7 +52,8 @@ if (result.status !== 0) throw new Error(`electron-builder завершился 
 
 const staging = await checked(".build/win-unpacked");
 await fs.access(path.join(staging, "Chuba Sprite Lab.exe"));
-await fs.writeFile(path.join(staging, "START-HERE.txt"), `Chuba Sprite Lab 1.8.0\n\nЗапуск: Chuba Sprite Lab.exe\nКопируйте на флешку ВСЮ папку portable. Resources и DLL нужны приложению.\n\nВсе ${models.length} поддержанных моделей работают локально. Интернет нужен только для\nпроверки обновлений и внешних сайтов/онлайн-редакторов. Node.js и Python не нужны.\nВнутренние EXE (FFmpeg и компоненты Electron) не являются другими версиями программы.\n`);
+await fs.writeFile(path.join(staging, "START-HERE.txt"), `Chuba Sprite Lab ${packageInfo.version}\n\nЗапуск: Chuba Sprite Lab.exe\nКопируйте на флешку ВСЮ папку portable. Resources и DLL нужны приложению.\n\nВсе ${models.length} поддержанных моделей работают локально. Интернет нужен только для\nпроверки обновлений и внешних сайтов/онлайн-редакторов. Node.js и Python не нужны.\nВнутренние EXE (FFmpeg и компоненты Electron) не являются другими версиями программы.\n`);
+assertNoRunningBuild();
 await fs.mkdir(await checked(".build-archive"), { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 const archiveFolder = async (relative, label) => {

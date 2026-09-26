@@ -3,7 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import * as ort from "onnxruntime-node";
 import sharp from "sharp";
-import { familyInputSize, modelById, modelFamilies, readSessionShapes } from "./ai-models.mjs";
+import { aiModelCatalog, familyInputSize, modelById, modelFamilies, readSessionShapes } from "./ai-models.mjs";
+import { modelSearchDirectories } from "./model-paths.mjs";
 
 const BUNDLED_MODEL = "u2netp.onnx";
 const MEAN = [0.485, 0.456, 0.406];
@@ -37,8 +38,7 @@ function clamp(value, min, max) {
 
 async function exists(candidate) {
   try {
-    await fs.access(candidate);
-    return true;
+    return (await fs.stat(candidate)).isFile();
   } catch {
     return false;
   }
@@ -46,13 +46,12 @@ async function exists(candidate) {
 
 // Every extra model is looked up by its own file name. The bundled one stays the fallback, so a
 // missing download degrades to the shipped model instead of stopping the build.
-export async function resolveAIModel(appRoot, { file = BUNDLED_MODEL, extraDirs = [] } = {}) {
+export async function resolveAIModel(appRoot, { file = BUNDLED_MODEL, extraDirs = [], resourcesPath = process.resourcesPath } = {}) {
+  const model = aiModelCatalog.find((entry) => entry.file === file);
   const candidates = [
-    ...extraDirs.map((directory) => path.join(directory, file)),
-    process.resourcesPath ? path.join(process.resourcesPath, "models", file) : null,
-    path.join(appRoot, "models", file),
+    ...modelSearchDirectories(model, { appRoot, aiModelDirs: extraDirs, resourcesPath }).map((directory) => path.join(directory, file)),
     // The bundled fallback is always available.
-    process.resourcesPath ? path.join(process.resourcesPath, "models", BUNDLED_MODEL) : null,
+    resourcesPath ? path.join(resourcesPath, "models", BUNDLED_MODEL) : null,
     path.join(appRoot, "models", BUNDLED_MODEL),
   ].filter(Boolean);
   for (const candidate of candidates) if (await exists(candidate)) return candidate;

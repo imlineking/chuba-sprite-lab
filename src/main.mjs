@@ -559,20 +559,15 @@ async function modelsStatus() {
     for (const file of modelFiles(summary)) {
       let bytes = 0;
       let origin = null;
-      try {
-        bytes = (await fs.stat(path.join(directory, file.file))).size;
-        origin = "downloaded";
-      } catch {
-        bytes = 0;
-      }
-      if (!bytes) {
-        for (const bundledDir of bundledDirs) {
-          try {
-            bytes = (await fs.stat(path.join(bundledDir, file.file))).size;
-            origin = "bundled";
-            break;
-          } catch { /* Not in this folder. */ }
-        }
+      const locations = summary.bundled ? [...bundledDirs, directory] : [directory, ...bundledDirs];
+      for (const location of locations) {
+        try {
+          const stat = await fs.stat(path.join(location, file.file));
+          if (!stat.isFile() || !stat.size) continue;
+          bytes = stat.size;
+          origin = location === directory ? "downloaded" : "bundled";
+          break;
+        } catch { /* Not in this folder. */ }
       }
       const recorded = (record.files || []).find((entry) => entry.file === file.file)?.sha256 || null;
       files.push({

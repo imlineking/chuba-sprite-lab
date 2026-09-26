@@ -2,7 +2,7 @@
   const api = window.desktopCompanion;
   const pet = document.querySelector('#pet'); const message = document.querySelector('#message'); const choices = document.querySelector('#choices');
   document.body.dataset.surface = new URLSearchParams(location.search).get('surface');
-  let state = { loading:true }; let dots = 1; let drag = null; let suppressClick = false;
+  let state = { loading:true }; let dots = 1; let dotPhase = 0; let drag = null; let suppressClick = false;
   const action = (request) => api.action(request).catch(() => {});
   const command = (kind, id, approach) => action({ action:'command', command:{kind,id,approach} });
   function render() {
@@ -30,7 +30,7 @@
     } else button('Выбрать задачу','Автоматический или ручной сценарий',()=>action({action:'toggle'}));
   }
   api.onState(next=>{ state=next; render(); });
-  setInterval(()=>{ dots=dots%3+1; if(state.loading || state.busy) message.textContent=(state.loading?'Подождите, идёт загрузка':'Обрабатываю кадры')+'.'.repeat(dots); },450);
+  setInterval(()=>{ dotPhase=(dotPhase+1)%4; dots=[1,2,3,2][dotPhase]; if(state.loading || state.busy) message.textContent=(state.loading?'Подождите, идёт загрузка':'Обрабатываю кадры')+'.'.repeat(dots); },450);
   document.querySelector('#close').onclick=()=>action({action:'dismiss'});
   document.querySelector('#hide').onclick=()=>action({action:'hide'});
   for(const name of ['dragstart','drop','dragover']) document.addEventListener(name,event=>{event.preventDefault();event.stopPropagation();});

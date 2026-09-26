@@ -6,6 +6,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { aiModelCatalog, modelById } from "../src/ai-models.mjs";
 import { resolveAuxModel } from "../src/model-paths.mjs";
+import { resolveAIModel } from "../src/ai-segmentation.mjs";
 import { verifiedModel } from "../scripts/prepare-portable-models.mjs";
 
 test("portable resources include every bundled model and no optional download", async () => {
@@ -28,13 +29,28 @@ test("auxiliary lookup works with empty user cache, packaged resources and sourc
   await fs.mkdir(path.join(appRoot, "models"), { recursive: true });
   const packaged = path.join(resourcesPath, "models", file); const source = path.join(appRoot, "models", file);
   await fs.writeFile(packaged, "packaged"); await fs.writeFile(source, "source");
+  await fs.mkdir(cache, { recursive: true });
+  await fs.writeFile(path.join(cache, file), "stale cache");
   assert.equal(await resolveAuxModel("rife", { appRoot, resourcesPath, aiModelDirs: [cache] }), packaged);
   await fs.rm(packaged);
   assert.equal(await resolveAuxModel("rife", { appRoot, resourcesPath, aiModelDirs: [cache] }), source);
+  await fs.rm(path.join(cache, file));
   // A directory with the model's name must never be accepted as a model file.
   await fs.rm(source); await fs.mkdir(source);
   await assert.rejects(resolveAuxModel("rife", { appRoot, resourcesPath }), /не найдена/);
   await assert.rejects(resolveAuxModel("lama", { appRoot, resourcesPath }), /не найдена/);
+});
+
+test("bundled segmentation wins over a stale cache and directories are rejected", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-seg-path-test-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const cache = path.join(root, "cache"); const resourcesPath = path.join(root, "resources"); const appRoot = path.join(root, "app");
+  const file = "isnet-anime.onnx"; const packaged = path.join(resourcesPath, "models", file);
+  await fs.mkdir(path.dirname(packaged), { recursive: true }); await fs.mkdir(cache);
+  await fs.writeFile(packaged, "verified bundle"); await fs.writeFile(path.join(cache, file), "stale cache");
+  assert.equal(await resolveAIModel(appRoot, { file, resourcesPath, extraDirs: [cache] }), packaged);
+  await fs.rm(packaged); await fs.mkdir(packaged); await fs.rm(path.join(cache, file));
+  await assert.rejects(resolveAIModel(appRoot, { file, resourcesPath, extraDirs: [cache] }), /не найдена/);
 });
 
 test("model preparation rejects a corrupt file even when its size is correct", async (t) => {
