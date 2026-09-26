@@ -61,6 +61,13 @@ contextBridge.exposeInMainWorld("spriteLab", {
   planAutoPilot: (request) => ipcRenderer.invoke("autopilot:plan", request),
   suggest: (snapshot) => ipcRenderer.invoke("copilot:suggest", snapshot),
   suggestScenarios: (snapshot) => ipcRenderer.invoke("copilot:scenarios", snapshot),
+  updateCompanion: (state) => ipcRenderer.invoke("companion:update", state),
+  showCompanion: (request) => ipcRenderer.invoke("companion:show", request),
+  onCompanionCommand: (callback) => {
+    const listener = (_event, command) => callback(command);
+    ipcRenderer.on("companion:command", listener);
+    return () => ipcRenderer.removeListener("companion:command", listener);
+  },
   getAppInfo: () => ipcRenderer.invoke("app:info"),
   checkForUpdates: () => ipcRenderer.invoke("app:check-updates"),
   installUpdate: () => ipcRenderer.invoke("app:install-update"),

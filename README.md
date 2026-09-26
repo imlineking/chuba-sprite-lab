@@ -10,13 +10,9 @@
 
 ## Скачать
 
-Откройте раздел [Releases](https://github.com/imlineking/chuba-sprite-lab/releases/latest) и скачайте единственный файл:
+Текущий локальный офлайн-комплект: **1.8.0**. Запуск: `portable/Chuba Sprite Lab.exe`. На флешку копируйте всю папку portable: resources и DLL обязательны. В комплект входят все 14 поддержанных моделей и FFmpeg; установка, Node.js и Python не требуются. Подробности — [офлайн-инструкция](docs/OFFLINE_DEMO.md).
 
-```text
-Chuba-Sprite-Lab-portable.exe
-```
-
-Установка не требуется. FFmpeg, Sharp, локальная ИИ-модель и необходимые компоненты уже находятся внутри portable EXE. Для обновления откройте меню `?` в правом верхнем углу программы и нажмите **«Проверить обновления»**.
+Старые публикации в [Releases](https://github.com/imlineking/chuba-sprite-lab/releases/latest) могут иметь прежнюю версию. Новая локальная сборка не означает автоматическую публикацию релиза.
 
 ## Возможности
 
@@ -188,10 +184,10 @@ npm run pack
 Однофайловая сборка появится здесь:
 
 ```text
-dist/Chuba-Sprite-Lab-portable.exe
+portable/Chuba Sprite Lab.exe
 ```
 
-Команда `npm run release:build` дополнительно создаёт EXE и SHA-256 в папке `release/`.
+Команда `npm run release:build` дополнительно создаёт архивы офлайн-папки и SHA-256 в `release/`, без второго EXE.
 
 Проект встроенного пиксельного редактора — модель данных, инструменты, слои, кадры и порядок внедрения — лежит в `docs/PIXEL_EDITOR_DESIGN.md`.
 
@@ -222,9 +218,9 @@ npm run release:build
 Затем на машине без Node.js и без установленных инструментов разработчика:
 
 ```powershell
-cd release
-.\Chuba-Sprite-Lab-portable.exe --self-test              # код 0 и отчёт chuba-self-test.json
-.\Chuba-Sprite-Lab-portable.exe --screenshot shot.png    # интерфейс отрисовался
+cd portable
+& ".\Chuba Sprite Lab.exe" --self-test              # код 0 и отчёт chuba-self-test.json
+& ".\Chuba Sprite Lab.exe" --screenshot shot.png    # интерфейс отрисовался
 ```
 
 Обратите внимание на `.\`: без него PowerShell не ищет программы в текущей папке и отвечает «имя не распознано как имя командлета». И на то, что читать надо **файл отчёта**, а не вывод в терминал: portable-сборка работает в GUI-подсистеме и ничего не печатает. Путь отчёта задаётся `--self-test-report`.

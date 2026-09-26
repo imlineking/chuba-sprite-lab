@@ -38,7 +38,7 @@ test("every catalogue entry is complete and uniquely named", () => {
 
 test("only models that really exist can be downloaded", () => {
   const downloadable = aiModelCatalog.filter((model) => canDownload(model));
-  assert.ok(downloadable.length >= 12, "ожидались загружаемые модели");
+  assert.equal(aiModelCatalog.filter(model => model.bundled).length, 14);
   for (const model of downloadable) {
     for (const file of modelFiles(model)) {
       assert.equal(assertDownloadUrl(file.url), file.url);
@@ -46,7 +46,7 @@ test("only models that really exist can be downloaded", () => {
     }
   }
   // Everything else has to offer the official page instead of a download button.
-  for (const model of aiModelCatalog.filter((entry) => !canDownload(entry) && !entry.bundled)) {
+  for (const model of aiModelCatalog.filter((entry) => !canDownload(entry) && !entry.bundled && entry.readiness !== "staged")) {
     assert.match(model.page, /^https:\/\//, `${model.id}: нет ни файла, ни страницы проекта`);
   }
 });

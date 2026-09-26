@@ -1,6 +1,6 @@
 {
   "name": "chuba-sprite-lab",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "private": true,
   "type": "module",
   "description": "Standalone Windows sprite-sheet preparation tool for Chuba the Game",
@@ -20,7 +20,7 @@
     "copyright": "Copyright © 2026 Hanuman Media Company — Demidenko Dmitriy. All rights reserved.",
     "asar": false,
     "directories": {
-      "output": "dist"
+      "output": ".build"
     },
     "files": [
       "src/**/*",
@@ -40,7 +40,23 @@
       {
         "from": "models",
         "to": "models",
-        "filter": ["u2netp.onnx", "lama_fp32.onnx", "RIFE_fp32_timestep.onnx", "realesrgan-x4plus.onnx", "depth-anything-v2-small.onnx", "bundled-models.json"]
+        "filter": [
+          "u2netp.onnx",
+          "silueta.onnx",
+          "u2net.onnx",
+          "u2net-portrait-matting.onnx",
+          "isnet-general-use.onnx",
+          "isnet-anime.onnx",
+          "BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx",
+          "BiRefNet-general-epoch_244.onnx",
+          "BiRefNet_HR-matting-epoch_135.onnx",
+          "BiRefNet-portrait-epoch_150.onnx",
+          "lama_fp32.onnx",
+          "RIFE_fp32_timestep.onnx",
+          "realesrgan-x4plus.onnx",
+          "depth-anything-v2-small.onnx",
+          "bundled-models.json"
+        ]
       }
     ],
     "win": {

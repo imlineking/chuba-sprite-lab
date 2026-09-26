@@ -274,7 +274,7 @@ function autoPilotRenderModels() {
     else if (entry.installed) statuses.push("на этом компьютере запуск ещё не проверялся");
     const verified = entry.files.filter((file) => file.verification?.level === "published").length;
     if (verified) statuses.push(`контрольная сумма опубликована (${verified})`);
-    else if (entry.installed) statuses.push("сумма записана при загрузке");
+    else if (entry.installed) statuses.push(entry.bundled ? "контрольная сумма в манифесте комплекта" : "сумма записана при загрузке");
     stateLine.textContent = statuses.join(" · ");
 
     const actions = document.createElement("div");
@@ -304,6 +304,14 @@ function autoPilotRenderModels() {
         });
         actions.append(remove);
       }
+    } else if (entry.readiness !== "ready") {
+      const later = document.createElement("small");
+      later.textContent = "Этап в разработке. Загрузка модели сейчас не нужна.";
+      actions.append(later);
+    } else if (entry.bundled) {
+      const missing = document.createElement("small");
+      missing.textContent = "Файл комплекта отсутствует. Скопируйте папку portable полностью.";
+      actions.append(missing);
     } else if (entry.url) {
       const download = document.createElement("button");
       download.type = "button";

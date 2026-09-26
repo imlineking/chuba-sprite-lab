@@ -1053,7 +1053,7 @@ const postRenderOptionKeys = new Set([
 export const exportFormats = ["chuba", "phaser3", "godot", "texturepacker", "unity"];
 // The version that ends up inside exported metadata. It lives in one place because it
 // used to be duplicated per exporter and would drift on the next release.
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.8.0";
 
 function stableStringify(value) {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;

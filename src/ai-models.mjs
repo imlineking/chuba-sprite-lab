@@ -1,7 +1,7 @@
 // Local AI models the tool can use, and the rules for getting them.
 //
-// Portable builds include U²-Net small and the four auxiliary models. Other segmentation
-// models are optional downloads. Source URLs, exact sizes and available digests are recorded
+// Portable folders include all runnable segmentation and auxiliary models. Future stages
+// remain in the catalogue. Source URLs, exact sizes and available digests are recorded
 // per export; loading and running a file is checked separately from downloading its bytes.
 
 import { createHash } from "node:crypto";
@@ -306,7 +306,7 @@ export const aiModelCatalog = [
     quality: "good",
     note: "Создаёт серую карту относительной глубины выбранного кадра для параллакса.",
   },
-];
+].map((model) => ({ ...model, bundled: model.readiness === "ready" }));
 
 // Models that were considered and left out. Keeping the reason in the code is what stops the question
 // from being reopened every few months.
@@ -360,7 +360,7 @@ export function formatBytes(bytes) {
 }
 
 export function canDownload(model) {
-  return Boolean(model && !model.bundled && model.url && modelFiles(model).every((file) => file.url));
+  return Boolean(model && model.readiness === "ready" && !model.bundled && model.url && modelFiles(model).every((file) => file.url));
 }
 
 // Only HTTPS from a known host, and only the file types this list actually publishes. A catalogue

@@ -2,6 +2,7 @@ import globals from "globals";
 import { collectRendererGlobals, rendererFiles } from "./scripts/renderer-globals.mjs";
 
 export default [
+  { files: ["src/companion.js"], languageOptions: { ecmaVersion: 2024, sourceType: "script", globals: globals.browser }, rules: { "no-undef": "error" } },
   { ignores: ["dist/**", "node_modules/**", "release/**", "vendor/**", "models/**"] },
   {
     files: ["src/**/*.mjs", "scripts/**/*.mjs", "test/**/*.mjs", "eslint.config.mjs"],

@@ -474,6 +474,18 @@ function drawPlayer() {
     if (previous && previous !== current) drawSprite(context, previous.image, left, top, scale, studio.onionOpacity);
   }
   drawSprite(context, current.image, left, top, scale, 1);
+  if (state.guides) {
+    // Screen coordinates derive from the same cell origin, zoom and pan as the sprite.
+    const step = Math.max(2, Number($("#gridSpacing").value) * scale);
+    const right = Math.min(width, left + cellWidth * scale); const bottom = Math.min(height, top + cellHeight * scale);
+    const startX = Math.max(0, Math.ceil(-left / step)); const startY = Math.max(0, Math.ceil(-top / step));
+    context.save(); context.beginPath(); context.rect(left, top, cellWidth * scale, cellHeight * scale); context.clip();
+    context.lineWidth = 1; context.strokeStyle = "#17c8c6"; context.shadowColor = "#064d52"; context.shadowBlur = 1;
+    context.beginPath();
+    for (let x = left + startX * step; x <= right; x += step) { context.moveTo(Math.round(x) + .5, Math.max(0, top)); context.lineTo(Math.round(x) + .5, bottom); }
+    for (let y = top + startY * step; y <= bottom; y += step) { context.moveTo(Math.max(0, left), Math.round(y) + .5); context.lineTo(right, Math.round(y) + .5); }
+    context.stroke(); context.restore();
+  }
   if (game && studio.hitbox) {
     const bounds = frameBounds(current.image);
     context.lineWidth = 1;

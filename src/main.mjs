@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, net, Notification, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, net, Notification, screen, shell } from "electron";
 import crypto from "node:crypto";
 import fsSync from "node:fs";
 import path from "node:path";
@@ -15,6 +15,7 @@ import { describePaths as describePathsFrom, describeSpriteSheet as describeSpri
 import { assertGitHubDownloadUrl, compareVersions, parseSha256 } from "./update-utils.mjs";
 import { resolveAIModel, segmentSubject } from "./ai-segmentation.mjs";
 import { resolveAuxModel } from "./model-paths.mjs";
+import { DesktopCompanion } from "./desktop-companion.mjs";
 import { finishSheetImport, makeTempWorkspace, pruneStaleTempWorkspaces } from "./temp-workspace.mjs";
 import { planSuggestions, planTaskScenarios } from "./copilot-rules.mjs";
 import { readProfile } from "./build-profile.mjs";
@@ -32,10 +33,12 @@ for (const stream of [process.stdout, process.stderr]) {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, "..");
 let mainWindow = null;
+let companion = null;
 let copyableFrames = new Map();
 let activeJob = null;
 const selfTestMode = process.argv.includes("--self-test") || process.env.CHUBA_SPRITE_SELF_TEST === "1";
 const startupProbePath = process.env.CHUBA_SPRITE_STARTUP_PROBE || "";
+const desktopProbePath = argumentValue("--desktop-probe");
 
 function argumentValue(name) {
   const index = process.argv.indexOf(name);
@@ -44,7 +47,7 @@ function argumentValue(name) {
 
 // An isolated diagnostic profile proves the portable build does not rely on models
 // previously downloaded by the developer. Normal launches keep their existing profile.
-if (selfTestMode && argumentValue("--self-test-user-data")) {
+if ((selfTestMode || desktopProbePath) && argumentValue("--self-test-user-data")) {
   const diagnosticProfile = path.resolve(argumentValue("--self-test-user-data"));
   fsSync.mkdirSync(diagnosticProfile, { recursive: true });
   app.setPath("userData", diagnosticProfile);
@@ -217,6 +220,10 @@ function createWindow() {
       sandbox: false,
     },
   });
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+    if (companion) void companion.save().catch(() => {}).finally(() => { companion.destroy(); app.quit(); });
+  });
   let allowClose = false;
   let closeDecisionPending = false;
   mainWindow.on("close", (event) => {
@@ -263,6 +270,9 @@ function createWindow() {
       fsSync.writeFileSync(startupProbePath, JSON.stringify(result), "utf8");
       setTimeout(() => app.exit(result.visible ? 0 : 1), 250);
     });
+  }
+  if (desktopProbePath) {
+    mainWindow.webContents.once("did-finish-load", () => { void runDesktopProbe(); });
   }
   if (screenshotPath) {
     // capturePage() renders the page into an offscreen buffer, so the result does not
@@ -1151,6 +1161,7 @@ ipcMain.handle("app:check-updates", async () => {
 
     const executableAsset = release.assets?.find((asset) => asset.name === updateAssetName);
     const checksumAsset = release.assets?.find((asset) => asset.name === `${updateAssetName}.sha256`);
+    if (release.assets?.some(asset => /^Chuba-Sprite-Lab-.*-offline\.7z\.001$/.test(asset.name))) return { status: "available", currentVersion, latestVersion, portable: false };
     if (!executableAsset || !checksumAsset) throw new Error("В релизе отсутствует portable EXE или его SHA-256.");
     return { status: "available", currentVersion, latestVersion, portable: Boolean(process.env.PORTABLE_EXECUTABLE_FILE) };
   } catch (error) {
@@ -1165,6 +1176,10 @@ ipcMain.handle("app:install-update", async () => {
     const currentVersion = app.getVersion();
     if (!latestVersion) throw new Error("В последнем релизе GitHub не указана версия.");
     if (compareVersions(latestVersion, currentVersion) <= 0) return { status: "current", currentVersion, latestVersion };
+    if (release.assets?.some(asset => /^Chuba-Sprite-Lab-.*-offline\.7z\.001$/.test(asset.name))) {
+      await shell.openExternal(`${repositoryUrl}/releases/tag/${encodeURIComponent(release.tag_name)}`);
+      return { status: "manual", latestVersion };
+    }
     const executableAsset = release.assets?.find((asset) => asset.name === updateAssetName);
     const checksumAsset = release.assets?.find((asset) => asset.name === `${updateAssetName}.sha256`);
     if (!executableAsset || !checksumAsset) throw new Error("В релизе отсутствует portable EXE или его SHA-256.");
@@ -1216,6 +1231,55 @@ function writeSelfTestReport(report) {
   }
 }
 
+async function runDesktopProbe() {
+  const report = { ok: false, checks: [] };
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    const area = screen.getPrimaryDisplay().workArea;
+    companion.pet.setPosition(area.x + 150, area.y + 150);
+    const first = companion.pet.getBounds();
+    await companion.pet.webContents.executeJavaScript("desktopCompanion.action({action:'drag-start',x:200,y:200}).then(()=>desktopCompanion.action({action:'drag-move',x:280,y:240})).then(()=>desktopCompanion.action({action:'drag-end'}))");
+    const moved = companion.pet.getBounds();
+    if (moved.x !== first.x + 80 || moved.y !== first.y + 40) throw new Error("Перемещение окна помощника не совпало с координатами мыши.");
+    report.checks.push({ name: "native-drag", ok: true, bounds: moved });
+    const noFileDrag = await companion.pet.webContents.executeJavaScript("(() => { const img=document.querySelector('#pet img'); const event=new DragEvent('dragstart',{bubbles:true,cancelable:true}); img.dispatchEvent(event); return !img.draggable && event.defaultPrevented; })()");
+    if (!noFileDrag) throw new Error("PNG помощника допускает перетаскивание файла.");
+    report.checks.push({ name: "no-file-drag", ok: true });
+    await companion.save(); companion.destroy(); await companion.create();
+    const restored = companion.pet.getBounds();
+    if (restored.x !== moved.x || restored.y !== moved.y) throw new Error("Позиция не восстановилась.");
+    report.checks.push({ name: "persisted-position", ok: true, bounds: restored });
+    mainWindow.minimize();
+    if (!companion.pet.isVisible()) throw new Error("Помощник исчез при сворачивании приложения.");
+    report.checks.push({ name: "independent-of-minimize", ok: true });
+    mainWindow.restore();
+    await companion.pet.webContents.executeJavaScript("desktopCompanion.action({action:'command',command:{kind:'quick',id:'clipping'}})");
+    await new Promise(resolve => setTimeout(resolve, 150));
+    if (await mainWindow.webContents.executeJavaScript("document.body.dataset.task") !== "clipping") throw new Error("Команда помощника не открыла нужный сценарий.");
+    report.checks.push({ name: "guided-task-command", ok: true });
+    companion.state.loading = true; companion.send();
+    const loadingA = await companion.bubble.webContents.executeJavaScript("document.querySelector('#message').textContent");
+    await new Promise(resolve => setTimeout(resolve, 550));
+    const loadingB = await companion.bubble.webContents.executeJavaScript("document.querySelector('#message').textContent");
+    if (!loadingB.startsWith("Подождите, идёт загрузка") || loadingA === loadingB) throw new Error("Облако загрузки не анимируется.");
+    report.checks.push({ name: "animated-loading", ok: true });
+    companion.state.loading = false;
+    companion.show(true);
+    await new Promise(resolve => setTimeout(resolve, 600));
+    const image = await companion.bubble.webContents.capturePage();
+    await fs.writeFile(`${desktopProbePath}.bubble.png`, image.toPNG());
+    const petImage = await companion.pet.webContents.capturePage();
+    await fs.writeFile(`${desktopProbePath}.pet.png`, petImage.toPNG());
+    const petBounds = companion.pet.getBounds(); const windowBounds = mainWindow.getBounds();
+    report.checks.push({ name: "separate-windows", ok: companion.pet !== mainWindow && companion.bubble !== mainWindow, petBounds, windowBounds });
+    const desktopText = await companion.bubble.webContents.executeJavaScript("document.body.innerText");
+    report.text = desktopText;
+    report.ok = true;
+  } catch (error) { report.error = error.message; }
+  await fs.writeFile(desktopProbePath, JSON.stringify(report, null, 2));
+  companion?.destroy(); app.exit(report.ok ? 0 : 1);
+}
+
 async function runSelfTest() {
   const report = { ok: false, startedAt: new Date().toISOString(), appRoot, checks: [] };
   try {
@@ -1250,12 +1314,13 @@ async function runSelfTest() {
     }
     if (process.argv.includes("--self-test-all-models")) {
       const status = await modelsStatus();
-      for (const id of ["lama", "rife", "real-esrgan", "depth-anything-v2"]) {
+      for (const { id } of status.entries.filter(entry => entry.bundled && entry.readiness === "ready" && entry.id !== "u2netp")) {
         const model = modelById(id);
         const filePath = await resolveAuxModel(id, { appRoot, aiModelDirs: [modelsDirectory()] });
         const validation = await validateModelFile(filePath, { family: model.family });
         const installed = status.entries.find((entry) => entry.id === id);
         report.checks.push({ name: id, path: filePath, bundled: installed.bundledOnDisk, ...validation });
+        writeSelfTestReport({ ...report, checking: id });
         console.log(`${model.name}: inference OK (${validation.ms} ms)`);
       }
       report.userData = app.getPath("userData");
@@ -1273,7 +1338,16 @@ async function runSelfTest() {
   }
 }
 
-const hasInstanceLock = selfTestMode || Boolean(startupProbePath) || Boolean(screenshotPath) || app.requestSingleInstanceLock();
+ipcMain.handle("companion:update", (event, state) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error("Недопустимый отправитель.");
+  companion?.update(state);
+});
+ipcMain.handle("companion:show", (event, request = {}) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error("Недопустимый отправитель.");
+  companion?.show(request.open !== false);
+});
+
+const hasInstanceLock = selfTestMode || Boolean(desktopProbePath) || Boolean(startupProbePath) || Boolean(screenshotPath) || app.requestSingleInstanceLock();
 
 if (!hasInstanceLock) {
   app.quit();
@@ -1285,6 +1359,10 @@ if (!hasInstanceLock) {
     mainWindow.focus();
   });
   app.whenReady().then(async () => {
+    if (!selfTestMode && (!screenshotPath || desktopProbePath)) {
+      companion = new DesktopCompanion({ app, BrowserWindow, screen, ipcMain, appRoot, mainWindow: () => mainWindow });
+      await companion.create();
+    }
     await pruneStaleTempWorkspaces().catch(() => {});
     return selfTestMode ? runSelfTest() : createWindow();
   }).catch((error) => {

@@ -15,6 +15,9 @@
   cursor: pointer;
 }
 
+/* The workspace keeps a hidden task registry; the visible companion has native windows. */
+#copilotPet, #copilotBubble, #copilotPanel { display: none !important; }
+
 .copilot-pet {
   right: 18px;
   bottom: 54px;

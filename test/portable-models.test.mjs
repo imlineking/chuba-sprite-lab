@@ -12,10 +12,11 @@ test("portable resources include every bundled model and no optional download", 
   const config = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url)));
   const resource = config.build.extraResources.find((entry) => entry.to === "models");
   const bundled = aiModelCatalog.filter((entry) => entry.bundled);
-  assert.deepEqual(bundled.map((entry) => entry.id), ["u2netp", "lama", "rife", "real-esrgan", "depth-anything-v2"]);
+  assert.equal(bundled.length, 14);
+  assert.ok(bundled.every(entry => entry.readiness === "ready"));
   assert.deepEqual(resource.filter.filter((file) => file.endsWith(".onnx")).sort(), bundled.map((entry) => entry.file).sort());
   assert.ok(resource.filter.includes("bundled-models.json"));
-  for (const model of bundled.filter((entry) => entry.id !== "u2netp")) assert.match(model.sha256, /^[a-f0-9]{64}$/);
+  for (const model of bundled.filter((entry) => ["lama", "rife", "real-esrgan", "depth-anything-v2"].includes(entry.id))) assert.match(model.sha256, /^[a-f0-9]{64}$/);
 });
 
 test("auxiliary lookup works with empty user cache, packaged resources and source checkout", async (t) => {

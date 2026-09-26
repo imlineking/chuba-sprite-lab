@@ -883,7 +883,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   .export-action-dock { margin-left: -24px; margin-right: -24px; padding-left: 24px; padding-right: 24px; }
   #playerCounter { min-width: 0; }
 }
-.filmstrip-actions { align-items: center; flex-wrap: nowrap; }
+.filmstrip-actions { align-items: center; flex-wrap: wrap; min-width: 0; max-width: 100%; justify-content: flex-start; }
 .frame-duration { margin-right: 0; margin-left: 8px; flex: 0 0 auto; }
 .filmstrip-actions .filmstrip-note { flex: 1 1 auto; min-width: 0; margin: 0 4px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
 .filmstrip-action { flex: 0 0 auto; }

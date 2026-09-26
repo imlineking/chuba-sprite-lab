@@ -10,7 +10,7 @@
     combine: "Собрать общий атлас объектов",
     extract: "Вырезать один объект из листа",
     objectEdit: "Изменить объект и вернуть в лист",
-    match: "Выровнять размеры персонажа",
+    match: "Выровнять размеры объекта",
     edit: "Править кадры",
     cutout: "Вырезать объект",
     stylize: "Стилизовать в пиксель-арт",
@@ -231,7 +231,7 @@
       }
     } else if (selected === "match") {
       if (!source) {
-        guide.textContent = "Откройте спрайт-лист или серию кадров персонажа. Выберите эталон и выровняйте похожие позы по габариту контура.";
+        guide.textContent = "Откройте спрайт-лист или серию кадров объекта. Выберите эталон и выровняйте сопоставимые кадры по габариту контура.";
         primary.textContent = "1 · Открыть лист";
         primaryAction = () => chooseSource("chooseSheet");
         secondary.textContent = "Открыть кадры";
@@ -507,5 +507,5 @@
     return value;
   };
   taskRender();
-  if (!selected && !state.source) setTimeout(() => setCopilotPanel(true), 350);
+  // Startup greeting is shown by the desktop companion; the task list opens on request.
 })();

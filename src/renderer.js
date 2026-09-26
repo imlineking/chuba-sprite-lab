@@ -1882,8 +1882,8 @@ function applyZoom() {
 
 function updateGuideGrid() {
   const layer = $("#guideLayer");
-  const image = $("#previewImage");
-  const shown = Boolean(state.guides && !image.classList.contains("hidden") && image.naturalWidth);
+  const image = state.previewMode === "compare" ? $("#compareAfter") : $("#previewImage");
+  const shown = Boolean(state.guides && !["animation", "game"].includes(state.previewMode) && !image.classList.contains("hidden") && image.naturalWidth);
   layer.classList.toggle("hidden", !shown);
   $("#gridSpacingLabel").classList.toggle("hidden", !state.guides);
   if (!shown) return;
@@ -2179,6 +2179,7 @@ function savePreferences() {
       keyMode: state.keyMode, solidKeyMode: state.solidKeyMode, anchor: state.anchor, outputFolder: state.outputFolder,
       preferredEditor: state.preferredEditor,
       backdrop: state.backdrop === "scene" ? state.backdropBeforeGame : state.backdrop,
+      gridSpacing: $("#gridSpacing").value,
       values: Object.fromEntries(preferenceValueIds.map((id) => [id, $(`#${id}`).value])),
       checks: Object.fromEntries(preferenceCheckIds.map((id) => [id, $(`#${id}`).checked])),
     }));
@@ -2189,6 +2190,7 @@ function loadPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem("spriteLab.preferences") || "null");
     if (!saved) return;
+    if (["10", "25", "50", "100", "200", "500"].includes(String(saved.gridSpacing))) $("#gridSpacing").value = String(saved.gridSpacing);
     setBackdrop(previewBackdrops.includes(saved.backdrop) && saved.backdrop !== "scene" ? saved.backdrop : "checker", false);
     Object.entries(saved.values || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).value = value; });
     if (Number(saved.schema || 0) < 2) $("#aiSoftness").value = "0";
@@ -2604,8 +2606,9 @@ $("#toggleGuides").addEventListener("click", () => {
   $("#toggleGuides").classList.toggle("active", state.guides);
   $("#toggleGuides").setAttribute("aria-pressed", String(state.guides));
   updateGuideGrid();
+  drawPlayer();
 });
-$("#gridSpacing").addEventListener("change", updateGuideGrid);
+$("#gridSpacing").addEventListener("change", () => { updateGuideGrid(); drawPlayer(); savePreferences(); });
 $("#backdropToggle").addEventListener("click", () => {
   const open = $("#backdropMenu").classList.toggle("hidden") === false;
   $("#backdropToggle").setAttribute("aria-expanded", String(open));

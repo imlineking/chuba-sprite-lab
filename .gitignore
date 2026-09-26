@@ -5,6 +5,10 @@ vendor/*.exe
 models/*.onnx
 models/*.download
 models/bundled-models.json
+models/*.sha256
+.build/
+.build-archive/
+portable/
 *.log
 *.tmp
 .DS_Store
