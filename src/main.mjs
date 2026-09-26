@@ -16,6 +16,8 @@ import { assertGitHubDownloadUrl, compareVersions, parseSha256 } from "./update-
 import { resolveAIModel, segmentSubject } from "./ai-segmentation.mjs";
 import { resolveAuxModel } from "./model-paths.mjs";
 import { DesktopCompanion } from "./desktop-companion.mjs";
+import { windowsLoginName } from "./windows-user-name.mjs";
+import { readUserProfile, saveUserProfile, effectiveUserName } from "./user-profile.mjs";
 import { processImageBatch } from "./image-batch.mjs";
 import { finishSheetImport, makeTempWorkspace, pruneStaleTempWorkspaces } from "./temp-workspace.mjs";
 import { planSuggestions, planTaskScenarios } from "./copilot-rules.mjs";
@@ -36,6 +38,23 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, "..");
 let mainWindow = null;
 let companion = null;
+let profileSaveQueue=Promise.resolve();
+async function userProfileInfo() {
+  const profile=await readUserProfile(path.join(app.getPath("userData"),"user-profile.json"));
+  const accountName=await windowsLoginName();
+  return {...profile,accountName,effectiveName:effectiveUserName(profile,accountName)};
+}
+ipcMain.handle("user:profile",()=>userProfileInfo());
+ipcMain.handle("user:save-profile",(_event,name)=> {
+  profileSaveQueue=profileSaveQueue.catch(()=>{}).then(async()=>{
+    const profile=await saveUserProfile(path.join(app.getPath("userData"),"user-profile.json"),name);
+    const accountName=await windowsLoginName();
+    const effectiveName=effectiveUserName(profile,accountName);
+    companion?.setUserName(effectiveName);
+    return {...profile,accountName,effectiveName};
+  });
+  return profileSaveQueue;
+});
 let copyableFrames = new Map();
 let activeJob = null;
 const selfTestMode = process.argv.includes("--self-test") || process.env.CHUBA_SPRITE_SELF_TEST === "1";

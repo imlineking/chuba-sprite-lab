@@ -1,0 +1,388 @@
+{
+  "date": "2026-09-26",
+  "execution": "source Electron only; no EXE rebuild",
+  "verify": {
+    "tests": 246,
+    "passed": 246,
+    "failed": 0,
+    "skipped": 0
+  },
+  "before": {
+    "views": 28,
+    "viewsWithLayoutIssues": [
+      "images-light-1000",
+      "mask-light-1000",
+      "about-light-1000",
+      "images-dark-1000",
+      "mask-dark-1000",
+      "about-dark-1000",
+      "images-light-1360",
+      "mask-light-1360",
+      "about-light-1360",
+      "images-dark-1360",
+      "mask-dark-1360",
+      "about-dark-1360",
+      "yarn-light-1000",
+      "yarn-dark-1000",
+      "yarn-light-1360",
+      "yarn-dark-1360"
+    ]
+  },
+  "workspace": {
+    "ok": true,
+    "views": 41,
+    "viewsWithLayoutIssues": [],
+    "runtimeErrors": [],
+    "firstRunShown": true,
+    "nameSettingsSavedAndCancelPreserves": true,
+    "nameSurvivesAppRestart": true,
+    "editedSourceAnalyzed": true,
+    "states": [
+      {
+        "name": "empty-light-1000-source",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "empty-light-1000-process",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "empty-light-1000-export",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "empty-dark-1000-source",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "empty-dark-1000-process",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "empty-dark-1000-export",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "empty-light-1360-source",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "empty-light-1360-process",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "empty-light-1360-export",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "empty-dark-1360-source",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "empty-dark-1360-process",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "empty-dark-1360-export",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "images-light-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "mask-light-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "about-light-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "models-light-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "frame-editor-light-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "settings-light-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "images-dark-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "mask-dark-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "about-dark-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "models-dark-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "frame-editor-dark-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "settings-dark-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "images-light-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "mask-light-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "about-light-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "models-light-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "frame-editor-light-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "settings-light-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "images-dark-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "mask-dark-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "about-dark-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "models-dark-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "frame-editor-dark-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "settings-dark-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "yarn-light-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "yarn-dark-1000",
+        "size": [
+          1000,
+          720
+        ]
+      },
+      {
+        "name": "yarn-light-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "yarn-dark-1360",
+        "size": [
+          1360,
+          900
+        ]
+      },
+      {
+        "name": "name-saved-after-restart",
+        "size": [
+          1285,
+          825
+        ]
+      }
+    ]
+  },
+  "copilot": {
+    "ok": true,
+    "checks": [
+      {
+        "name": "saved-name-updates-visible-desktop-greeting",
+        "ok": true
+      },
+      {
+        "name": "one-Ctrl-Z-restores-settings-and-preview",
+        "ok": true
+      },
+      {
+        "name": "desktop-bubble-undo",
+        "ok": true
+      },
+      {
+        "name": "automatic-multi-tool-plan-one-undo",
+        "ok": true
+      },
+      {
+        "name": "invalid-plan-keeps-workspace-and-visible-error",
+        "ok": true
+      },
+      {
+        "name": "separate-desktop-pet-and-planner-selector",
+        "ok": true
+      },
+      {
+        "name": "refresh-retries-cached-plans-and-runtime-status",
+        "ok": true
+      },
+      {
+        "name": "real-three-planner-comparison-dialog",
+        "ok": true
+      }
+    ],
+    "runtimeErrors": []
+  },
+  "styleComparison": {
+    "samePreparedAlpha": true,
+    "modes": [
+      "clean",
+      "shaded",
+      "lineart"
+    ],
+    "contactSheet": "<lab>/workspace-style-fixes-2026-09-26/style-before-after.png",
+    "subjectiveSinglePortraitRating": {
+      "shaded": 3,
+      "lineart": "3–3.5"
+    },
+    "notGenerative": true
+  },
+  "limitations": [
+    "Windows account providers on this PC return User, not the friendly Microsoft-account name. Manual profile name works.",
+    "DPI and all English dialogs were not exhaustively checked.",
+    "Mask quality, white-detail preservation and independent stitch remain open.",
+    "Portable executable was not rebuilt or validated by this source audit."
+  ]
+}

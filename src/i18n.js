@@ -14,6 +14,19 @@
 
 const i18nSources = {
   en: {
+    "ЗНАКОМСТВО": "WELCOME",
+    "НАСТРОЙКИ": "SETTINGS",
+    "Настройки": "Settings",
+    "Привет, давай знакомиться!": "Hello, let's get acquainted!",
+    "Как к вам обращаться?": "What should I call you?",
+    "Копилот запомнит имя и будет использовать его в приветствии.": "The copilot will remember your name and use it in greetings.",
+    "Измените имя для приветствия копилота. Пустое поле вернёт имя учётной записи.": "Change your copilot greeting name. An empty field restores your account name.",
+    "Ваше имя": "Your name",
+    "Введите имя": "Enter your name",
+    "Пропустить": "Skip",
+    "Начать работу": "Get started",
+    "Стежок — эксперимент": "Stitch — experimental",
+    "Экспериментальный режим: без дизеринга результат пока совпадает с чистой пикселизацией": "Experimental mode: without dithering the result currently matches clean pixelation",
     /* window and workflow */
     "Новый": "New",
     "Открыть проект": "Open project",

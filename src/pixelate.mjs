@@ -16,7 +16,7 @@ export const pixelPalettes = {
   zx: ["#000000", "#0000d7", "#d70000", "#d700d7", "#00d700", "#00d7d7", "#d7d700", "#d7d7d7"],
   grayscale4: ["#000000", "#555555", "#aaaaaa", "#ffffff"],
   grayscale16: Array.from({ length: 16 }, (_value, index) => {
-    const level = index.toString(16).padStart(2, "0");
+    const level = (index * 17).toString(16).padStart(2, "0");
     return `#${level}${level}${level}`;
   }),
 };
@@ -142,11 +142,12 @@ function toGrid(data, info, gridWidth, gridHeight, options) {
       for (let y = top; y < bottom; y += 1) {
         for (let x = left; x < right; x += 1) {
           const offset = (y * width + x) * channels;
-          const weight = data[offset + 3] / 255;
+          const pixelAlpha = channels > 3 ? data[offset + 3] : 255;
+          const weight = pixelAlpha / 255;
           red += data[offset] * weight;
           green += data[offset + 1] * weight;
           blue += data[offset + 2] * weight;
-          alpha += data[offset + 3];
+          alpha += pixelAlpha;
           count += 1;
         }
       }
@@ -160,9 +161,10 @@ function toGrid(data, info, gridWidth, gridHeight, options) {
       grid[offset + 2] = clamp(Math.round(blue / Math.max(1, alphaWeight)), 0, 255);
       grid[offset + 3] = Math.round(alpha / weight);
       if (options.shadingSteps > 1) {
-        grid[offset] = posterizeLevel(grid[offset], options.shadingSteps);
-        grid[offset + 1] = posterizeLevel(grid[offset + 1], options.shadingSteps);
-        grid[offset + 2] = posterizeLevel(grid[offset + 2], options.shadingSteps);
+        // Quantize brightness together. Independent RGB steps change skin and other hues.
+        const peak = Math.max(grid[offset], grid[offset + 1], grid[offset + 2]);
+        const scale = peak ? posterizeLevel(peak, options.shadingSteps) / peak : 0;
+        for (let channel = 0; channel < 3; channel++) grid[offset + channel] = Math.round(grid[offset + channel] * scale);
       }
     }
   }
@@ -265,8 +267,9 @@ function drawLineArt(grid, gridWidth, gridHeight, palette, percent) {
   const output = Buffer.alloc(gridWidth * gridHeight * 4);
   const paper = palette[palette.length - 1];
   const ink = palette[0];
-  const luminance = (x, y) => {
-    if (x < 0 || y < 0 || x >= gridWidth || y >= gridHeight) return 255;
+  const opaque = (x,y) => x>=0&&y>=0&&x<gridWidth&&y<gridHeight&&grid[(y*gridWidth+x)*4+3]>=8;
+  const luminance = (x, y, fallback = 255) => {
+    if (!opaque(x,y)) return fallback;
     const index = (y * gridWidth + x) * 4;
     return grid[index] * 0.3 + grid[index + 1] * 0.59 + grid[index + 2] * 0.11;
   };
@@ -274,10 +277,12 @@ function drawLineArt(grid, gridWidth, gridHeight, palette, percent) {
   let peak = 0;
   for (let y = 0; y < gridHeight; y += 1) {
     for (let x = 0; x < gridWidth; x += 1) {
-      const gx = -luminance(x - 1, y - 1) - 2 * luminance(x - 1, y) - luminance(x - 1, y + 1)
-        + luminance(x + 1, y - 1) + 2 * luminance(x + 1, y) + luminance(x + 1, y + 1);
-      const gy = -luminance(x - 1, y - 1) - 2 * luminance(x, y - 1) - luminance(x + 1, y - 1)
-        + luminance(x - 1, y + 1) + 2 * luminance(x, y + 1) + luminance(x + 1, y + 1);
+      if(!opaque(x,y)) continue;
+      const sample=(dx,dy)=>luminance(x+dx,y+dy,luminance(x,y));
+      const gx = -sample(-1,-1) - 2 * sample(-1,0) - sample(-1,1)
+        + sample(1,-1) + 2 * sample(1,0) + sample(1,1);
+      const gy = -sample(-1,-1) - 2 * sample(0,-1) - sample(1,-1)
+        + sample(-1,1) + 2 * sample(0,1) + sample(1,1);
       const edge = Math.hypot(gx, gy) / 4;
       magnitude[y * gridWidth + x] = edge;
       if (edge > peak) peak = edge;
@@ -288,7 +293,8 @@ function drawLineArt(grid, gridWidth, gridHeight, palette, percent) {
     for (let x = 0; x < gridWidth; x += 1) {
       const index = y * gridWidth + x;
       if (grid[index * 4 + 3] < 8) continue;
-      const color = magnitude[index] >= limit ? ink : paper;
+      const contour=!opaque(x-1,y)||!opaque(x+1,y)||!opaque(x,y-1)||!opaque(x,y+1);
+      const color = contour || magnitude[index] >= limit ? ink : paper;
       output[index * 4] = color[0];
       output[index * 4 + 1] = color[1];
       output[index * 4 + 2] = color[2];
@@ -329,7 +335,8 @@ export function pixelate(data, info, options = {}) {
     ? (fixed ? [fixed[0], fixed[fixed.length - 1]] : [[16, 16, 20], [245, 244, 238]])
     : (fixed || medianCutPalette(sampled.length ? sampled : [[0, 0, 0]], colorCount));
 
-  if (palette.length > 1) grid = quantize(grid, gridWidth, gridHeight, palette, dither, clamp(Number(options.ditherStrength ?? 0.75), 0.1, 1));
+  // Line art needs the original luminance edges; reducing to ink/paper first erases them.
+  if (mode !== "lineart" && palette.length > 1) grid = quantize(grid, gridWidth, gridHeight, palette, dither, clamp(Number(options.ditherStrength ?? 0.75), 0.1, 1));
   if (mode === "lineart") grid = drawLineArt(grid, gridWidth, gridHeight, palette, Number(options.edgeThreshold) || 35);
   else if (mode === "outline") grid = drawContour(grid, gridWidth, gridHeight, Array.isArray(options.inkColor) ? options.inkColor : [18, 18, 22]);
 

@@ -33,6 +33,43 @@ function pixel(buffer, width, x, y) {
   return [buffer[offset], buffer[offset + 1], buffer[offset + 2], buffer[offset + 3]];
 }
 
+test("16 grey levels span black to white and preserve a white source", () => {
+  const palette = resolvePalette("grayscale16");
+  assert.equal(new Set(palette.map(color => color[0])).size, 16);
+  assert.deepEqual(palette[0], [0, 0, 0]);
+  assert.deepEqual(palette.at(-1), [255, 255, 255]);
+  const result = pixelate(Buffer.from([255,255,255,255]), {width:1,height:1,channels:4}, {size:1,palette:"grayscale16"});
+  assert.deepEqual([...result.data], [255,255,255,255]);
+});
+
+test("RGB input matches the same opaque RGBA image", () => {
+  const rgb = Buffer.from([194,151,125, 40,100,200]);
+  const rgba = Buffer.from([194,151,125,255, 40,100,200,255]);
+  const settings = {size:1,colors:2};
+  const a = pixelate(rgb,{width:2,height:1,channels:3},settings).data;
+  const b = pixelate(rgba,{width:2,height:1,channels:4},settings).data;
+  assert.deepEqual([...a], [...b.subarray(0,3), ...b.subarray(4,7)]);
+});
+
+test("shaded retains a warm colour's channel ratios instead of turning it green", () => {
+  const result = pixelate(Buffer.from([194,151,125,255]),{width:1,height:1,channels:4},{size:1,mode:"shaded",shadingSteps:4,colors:2});
+  const [red,green,blue] = result.data;
+  assert.ok(red>green && green>blue);
+  assert.ok(Math.abs(green/red-151/194)<.01);
+  assert.ok(Math.abs(blue/red-125/194)<.01);
+});
+
+test("line art sees interior contrast even when both colours would quantize to ink", () => {
+  const width=24, data=Buffer.alloc(width*width*4);
+  for(let y=0;y<width;y++) for(let x=0;x<width;x++) {
+    const level=x>=8&&x<16&&y>=8&&y<16?120:90;
+    data.set([level,level,level,255],(y*width+x)*4);
+  }
+  const result=pixelate(data,{width,height:width,channels:4},{size:1,mode:"lineart",edgeThreshold:10});
+  assert.deepEqual(pixel(result.data,width,8,11),[16,16,20,255]);
+  assert.deepEqual(pixel(result.data,width,11,11),[245,244,238,255]);
+});
+
 test("the grid follows the requested pixel size and the cell keeps its size", () => {
   const { data, info } = fixture(32, 16);
   const result = pixelate(data, info, { size: 4, colors: 8 });

@@ -40,6 +40,14 @@ async function connect(surface) {
 }
 try {
   const main = await connect("index.html"); const bubble = await connect("surface=bubble"); const pet = await connect("surface=pet");
+  await main.evaluate("window.userProfileReady");
+  await main.evaluate("spriteLab.saveUserProfile(''); setModalOpen($('#userNameModal'),false)");
+  const profile=await main.evaluate("spriteLab.saveUserProfile('Дмитрий')");
+  assert.equal(profile.effectiveName,"Дмитрий");
+  for(let i=0;i<40;i++) { if(await bubble.evaluate("document.querySelector('#message').textContent.includes('Дмитрий')")) break; await pause(200); }
+  assert.ok(await bubble.evaluate("document.querySelector('#message').textContent.includes('Привет, Дмитрий')"));
+  await bubble.screenshot("named-greeting.png");
+  report.checks.push({name:"saved-name-updates-visible-desktop-greeting",ok:true});
   await main.evaluate(`(async () => { const source = await window.spriteLab.resliceSheet({ sheetPath: ${JSON.stringify(sheet)}, options: { mode: 'objects' } }); setSource(source); state.intent='animation'; $('#autoSize').checked=true; $('#pixelPerfect').checked=true; $('#fps').value='8'; setAnchor('body'); window.taskChoose('animation','manual'); await runBuild(true); initializeHistory('Контрольное состояние'); setTab('process'); return state.result.frameCount; })()`);
   assert.equal(await main.evaluate("state.result.frameCount"), 6);
   const before = await main.evaluate("({fps:$('#fps').value,packing:$('#atlasPacking').value,index:state.historyIndex,key:state.result.sheetPath})");
@@ -80,6 +88,13 @@ try {
   assert.ok(await bubble.evaluate("!!document.querySelector('.planner-control select')"));
   const petDrag = await pet.evaluate("(async()=>{ await desktopCompanion.action({action:'drag-start',x:200,y:200}); await desktopCompanion.action({action:'drag-move',x:250,y:240}); await desktopCompanion.action({action:'drag-end'}); return document.querySelector('#pet img').draggable; })()");
   assert.equal(petDrag, false); report.checks.push({ name: "separate-desktop-pet-and-planner-selector", ok: true });
+  await main.evaluate("copilotState.planner='rules'; copilotState.planKey='stale'; copilotState.semanticKey='stale'");
+  await bubble.evaluate("desktopCompanion.action({action:'command',command:{kind:'refresh',id:'refresh'}})");
+  for(let i=0;i<40;i++) { if(!await main.evaluate("copilotState.refreshing")) break; await pause(200); }
+  assert.notEqual(await main.evaluate("copilotState.planKey"),"stale");
+  assert.equal(await main.evaluate("copilotState.semanticKey"),null);
+  assert.ok(await main.evaluate("!!copilotState.plannerStatus"));
+  report.checks.push({name:"refresh-retries-cached-plans-and-runtime-status",ok:true});
   for (const theme of ["light", "dark"]) {
     await main.evaluate(`document.documentElement.dataset.theme='${theme}'; if(!state.guides) $('#toggleGuides').click(); $('#gridSpacing').value='50'; updateGuideGrid(); drawPlayer();`);
     await pause(300); await main.screenshot(`${theme}-yarn.png`); await bubble.screenshot(`${theme}-copilot.png`);

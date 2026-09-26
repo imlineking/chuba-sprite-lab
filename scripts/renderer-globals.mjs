@@ -7,7 +7,9 @@ import { readFileSync } from "node:fs";
 // because the second declaration silently replaces the first at load time.
 const DECLARATION = /^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)|^(?:const|let|var)\s+([A-Za-z_$][\w$]*)/gm;
 
-export const rendererFiles = ["src/i18n.js", "src/renderer.js", "src/studio.js", "src/sheet-editor.js", "src/frame-consistency.js", "src/copilot.js", "src/sprite-editor.js", "src/auto-pilot.js", "src/task-mode.js", "src/mask-region-ui.js", "src/image-workspace.js", "src/feedback.js"];
+// Keep lint coverage in sync with every script actually loaded by the app.
+const rendererMarkup = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
+export const rendererFiles = [...rendererMarkup.matchAll(/<script src="\.\/([^"]+)"/g)].map(match => `src/${match[1]}`);
 
 // Name -> files that declare it, in file order.
 export function collectRendererDeclarations(files = rendererFiles) {

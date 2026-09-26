@@ -146,7 +146,7 @@ async function refreshCopilot() {
     if (state.source && typeof autoPilotSourcePaths === "function") {
       const paths = autoPilotSourcePaths();
       const target = autoPilotTarget();
-      const key = JSON.stringify({ paths, target, kind: state.source.kind, frames: state.source.estimatedFrames });
+      const key = JSON.stringify({ paths, target, kind: state.source.kind, frames: state.source.estimatedFrames, maskPrepared: Boolean(state.source.maskPrepared) });
       if (paths.length && key !== copilotState.planKey) {
         copilotState.aiPlan = await window.spriteLab.planAutoPilot({
           paths, target,
@@ -286,7 +286,7 @@ window.spriteLab.onCompanionCommand(command => {
   else if (command.kind === 'task') window.taskChoose?.(command.id, command.approach === 'auto' ? 'auto' : 'manual');
   else if (command.kind === 'quick') document.querySelector('[data-quick-task="' + command.id.replace(/[^a-z]/g, '') + '"]')?.click();
   else if (command.kind === 'models') void autoPilotOpenModels();
-  else if (command.kind === 'refresh') { copilotState.errorOrigin = null; void refreshCopilot(); }
+  else if (command.kind === 'refresh') { copilotState.errorOrigin = null; copilotState.planKey = null; copilotState.semanticKey = null; void refreshCopilot(); void window.spriteLab.copilotPlannerStatus().then(status => { copilotState.plannerStatus = status; renderCopilot(); }).catch(error => copilotReportError(error, 'analysis')); }
   else if (command.kind === 'compare-planners') void compareCopilotPlanners();
   else if (command.kind === 'planner' && ['rules', 'qwen', 'gemma'].includes(command.id)) { copilotState.planner = command.id; copilotState.semanticKey = null; saveCopilotPreferences(); void refreshCopilot(); }
   else if (command.kind === 'undo-advice') {

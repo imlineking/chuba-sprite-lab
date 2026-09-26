@@ -27,6 +27,7 @@
         <button id="openCommands" type="button" aria-label="Открыть список команд">Команды <kbd>Ctrl K</kbd></button>
       </div>
       <div class="window-actions" aria-label="Управление окном">
+        <button id="openPreferences" class="window-button theme-toggle" type="button" aria-label="Настройки" title="Настройки"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.7 2.2-2.2 1.3L4 6l-2 3 1.7 1.6v2.8L2 15l2 3 2.1-.5 2.2 1.3L9 21h6l.7-2.2 2.2-1.3 2.1.5 2-3-1.7-1.6v-2.8L22 9l-2-3-2.1.5-2.2-1.3L15 3Z"/><circle cx="12" cy="12" r="3"/></svg></button>
         <button id="themeToggle" class="window-button theme-toggle" type="button" aria-label="Включить светлую тему" aria-pressed="false" title="Светлая тема"><svg class="ui-icon theme-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg><svg class="ui-icon theme-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 15.5A8.5 8.5 0 0 1 8.5 3.5a8.5 8.5 0 1 0 12 12Z"/></svg></button>
         <button id="aboutApp" class="window-button help" type="button" aria-label="О программе"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2.5-2.5 4.5M12 17.5h.01"/></svg></button>
         <button id="minimizeWindow" class="window-button" type="button" aria-label="Свернуть"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14"/></svg></button>
@@ -411,7 +412,7 @@
                   <option value="shaded">Плоский тон — ступени цвета</option>
                   <option value="outline">С контуром — как в спрайте</option>
                   <option value="lineart">Штриховой — тушь по контуру</option>
-                  <option value="stitch">Стежок — узорный дизеринг</option>
+                  <option value="stitch" title="Экспериментальный режим: без дизеринга результат пока совпадает с чистой пикселизацией">Стежок — эксперимент</option>
                 </select>
               </label>
               <label class="field"><span>Дизеринг</span>
@@ -1065,6 +1066,19 @@
       <div><span class="drop-icon"><span></span><span></span><span></span></span><strong>Отпустите файлы</strong><small>видео, кадры, GIF или папка — в любом месте окна</small></div>
     </div>
 
+    <div id="userNameModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="userNameTitle">
+      <article class="user-profile-card">
+        <header><div><p id="userNameEyebrow" class="eyebrow">ЗНАКОМСТВО</p><h2 id="userNameTitle">Привет, давай знакомиться!</h2></div><button id="closeUserName" class="about-close" type="button" aria-label="Закрыть">×</button></header>
+        <p id="userNameIntro">Как к вам обращаться? Копилот запомнит имя и будет использовать его в приветствии.</p>
+        <form id="userNameForm">
+          <label class="feedback-field" for="userNameInput">Ваше имя<input id="userNameInput" type="text" maxlength="80" autocomplete="given-name" placeholder="Введите имя" /></label>
+          <p id="userNameAccountHint" class="user-profile-hint"></p>
+          <p id="userNameStatus" class="feedback-status" role="status" aria-live="polite"></p>
+          <footer><button id="skipUserName" class="button secondary" type="button">Пропустить</button><button id="saveUserName" class="button primary" type="submit">Начать работу</button></footer>
+        </form>
+      </article>
+    </div>
+
     <button id="copilotPet" class="copilot-pet" type="button" aria-label="Помощник" aria-expanded="false" data-mood="idle">
       <img class="copilot-pet-art" src="../assets/mascot.png" alt="" />
       <span id="copilotBadge" class="copilot-badge hidden">0</span>
@@ -1121,5 +1135,6 @@
     <script src="./image-workspace.js"></script>
     <script src="./task-mode.js"></script>
     <script src="./feedback.js"></script>
+    <script src="./user-profile.js"></script>
   </body>
 </html>

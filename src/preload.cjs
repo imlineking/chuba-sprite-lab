@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("spriteLab", {
+  getUserProfile:()=>ipcRenderer.invoke("user:profile"),
+  saveUserProfile:(name)=>ipcRenderer.invoke("user:save-profile",name),
   chooseSource: () => ipcRenderer.invoke("source:any"),
   addImages: (paths) => ipcRenderer.invoke("source:add-images", paths),
   useImageObject: (filePath) => ipcRenderer.invoke("source:use-image-object", filePath),

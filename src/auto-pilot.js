@@ -32,11 +32,11 @@ function autoPilotSetSummary(text, kind = "idle") {
 
 function autoPilotSourcePaths() {
   const fromResult = state.result?.allSourceFramePaths || [];
-  if (fromResult.length) return fromResult;
+  if (fromResult.length) return fromResult.map((file, index) => state.frameOverrides?.[index] || file);
   const source = state.source || {};
   if ((source.kind === "video" || source.kind === "video-batch") && source.samplePaths?.length) return source.samplePaths;
   const raw = Array.isArray(source.frames) ? source.frames : source.paths || [];
-  return raw.filter((item) => typeof item === "string");
+  return raw.map((file, index) => state.frameOverrides?.[index] || file).filter((item) => typeof item === "string");
 }
 
 function autoPilotTarget() {

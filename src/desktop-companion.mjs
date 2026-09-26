@@ -1,21 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import os from "node:os";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { petSize, clampPet, bubbleBounds, greeting } from "./companion-layout.mjs";
-
-const runFile = promisify(execFile);
-export async function windowsLoginName() {
-  if (process.platform === "win32") {
-    try {
-      const command = "$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; $account=Get-CimInstance Win32_UserAccount -Filter ('SID=' + [char]39 + $sid + [char]39); if ($account.FullName) { $account.FullName } else { [System.Security.Principal.WindowsIdentity]::GetCurrent().Name.Split([char]92)[-1] }";
-      const { stdout } = await runFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; " + command], { windowsHide: true, timeout: 3500, encoding: "utf8" });
-      if (stdout.trim()) return stdout.trim();
-    } catch { /* The OS may not permit reading the full account name. */ }
-  }
-  try { return os.userInfo().username || ""; } catch { return ""; }
-}
+import { readUserProfile, effectiveUserName } from "./user-profile.mjs";
+import { windowsLoginName } from "./windows-user-name.mjs";
+export { windowsLoginName } from "./windows-user-name.mjs";
 
 export class DesktopCompanion {
   constructor({ app, BrowserWindow, screen, ipcMain, appRoot, mainWindow }) {
@@ -50,7 +38,7 @@ export class DesktopCompanion {
     }
     await Promise.all([this.pet.loadFile(path.join(this.appRoot, "src", "companion.html"), { query: { surface: "pet" } }), this.bubble.loadFile(path.join(this.appRoot, "src", "companion.html"), { query: { surface: "bubble" } })]);
     this.positionBubble(); this.send(); this.pet.showInactive(); this.bubble.showInactive();
-    void windowsLoginName().then((name) => { this.state.greeting = greeting(name); this.send(); });
+    void windowsLoginName().then(async (name) => { this.accountName=name; const profile=await readUserProfile(path.join(this.app.getPath("userData"),"user-profile.json")); this.setUserName(effectiveUserName(profile,name)); });
     this.displayListener = () => { if (!this.pet?.isDestroyed()) { const bounds = this.pet.getBounds(); const point = clampPet(bounds, this.areas(), bounds); this.pet.setPosition(point.x, point.y); this.positionBubble(); void this.save().catch(() => {}); } };
     this.screen.on("display-removed", this.displayListener);
     this.screen.on("display-metrics-changed", this.displayListener);
@@ -62,6 +50,7 @@ export class DesktopCompanion {
     const size = this.bubble.getBounds();
     this.bubble.setBounds(bubbleBounds(pet, { width: 360, height: size.height }, area));
   }
+  setUserName(name) { this.state.greeting=greeting(name); this.send(); }
   async save() {
     if (!this.pet || this.pet.isDestroyed()) return;
     const { x, y } = this.pet.getBounds();
