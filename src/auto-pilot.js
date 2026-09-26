@@ -271,7 +271,7 @@ function autoPilotRenderModels() {
     else if (origin === "downloaded") statuses.push("файл скачан");
     else statuses.push("файл не установлен");
     if (entry.validation) statuses.push(`проверена запуском: вход ${entry.validation.inputSize}×${entry.validation.inputSize}, ${entry.validation.ms} мс`);
-    else if (entry.installed) statuses.push("запуском не проверялась");
+    else if (entry.installed) statuses.push("на этом компьютере запуск ещё не проверялся");
     const verified = entry.files.filter((file) => file.verification?.level === "published").length;
     if (verified) statuses.push(`контрольная сумма опубликована (${verified})`);
     else if (entry.installed) statuses.push("сумма записана при загрузке");
