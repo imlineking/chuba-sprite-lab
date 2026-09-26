@@ -31,3 +31,17 @@ test("model cannot replace the user's explicitly chosen job", () => {
   assert.throws(() => validatePlannerResponse({ scenarios: [{ task: "animation", why: "Guess" }], advice: [] }, chosen), /выбранную задачу/);
   assert.equal(validatePlannerResponse({ scenarios: [{ task: "edit", why: "Respect choice" }], advice: [] }, chosen).scenarios[0].task, "edit");
 });
+test("an image background task stays first even when edit would otherwise outrank it", async () => {
+  const result = await planWithCopilot({ snapshot: { source: { kind: "frames", frameCount: 1 }, ui: { goal: "background" } } });
+  assert.equal(result.scenarios[0].task, "background");
+});
+test("no supported advice yields an empty schema array, not an invalid none tool", async () => {
+  let payload;
+  const result = await planWithCopilot({ planner: "qwen", snapshot: { ...snapshot, ui: { goal: "edit", intent: "images" } } }, async (url, request) => {
+    if (url.endsWith("tags")) return { ok: true, json: async () => ({ models: [{ name: "qwen3-vl:4b-instruct" }] }) };
+    payload = JSON.parse(request.body);
+    return { ok: true, json: async () => ({ response: JSON.stringify({ scenarios: [{ task: "edit", why: "Правка" }], advice: [] }) }) };
+  });
+  assert.equal(payload.format.properties.advice.maxItems, 0);
+  assert.equal(result.fallback, false);
+});

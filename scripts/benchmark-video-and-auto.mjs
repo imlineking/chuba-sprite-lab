@@ -1,0 +1,31 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import sharp from "sharp";
+import { inspectSource, processSprites, processFramePreview, clearRenderCache } from "../src/processor.mjs";
+import { measureSource, planAutoPilot } from "../src/auto-pilot.mjs";
+import { aiModelCatalog } from "../src/ai-models.mjs";
+const root = path.resolve(import.meta.dirname, "..");
+const game = path.resolve(process.argv[2]), output = path.resolve(process.argv[3]);
+const options = { aiProvider: "cpu", aiQuality: "fast", aiCutoff: "auto", aiSoftness: 0, aiForceModel: true, aiModelDirs: [path.join(root, "models")], autoSize: true, autoColumns: true, anchor: "body", padding: 12, pixelPerfect: true, removeDuplicates: false, fps: 1, maxFrames: 2, exports: { sheet: true, metadata: true, frames: true, preview: true } };
+const report = { cases: [] };
+const save = () => fs.writeFile(path.join(output, "video-auto-report.json"), JSON.stringify(report, null, 2));
+for (const model of ["u2netp", "birefnet-tiny"]) {
+  clearRenderCache(); const source = await inspectSource({ kind: "video", paths: [path.join(game, "public/images/video/pig artist.mp4")], appRoot: root });
+  const started = performance.now();
+  const result = await processSprites({ source, appRoot: root, outputDir: output, name: `video-cut-${model}`, options: { ...options, aiModel: model, keyMode: "ai" } });
+  report.cases.push({ id: `video-cut-${model}`, elapsedMs: Math.round(performance.now() - started), result }); await save();
+}
+clearRenderCache();
+const source = await inspectSource({ kind: "video", paths: [path.join(game, "public/images/comic-events/paper-crumple-unfold-cycle.webm")], appRoot: root });
+const start = performance.now();
+const result = await processSprites({ source, appRoot: root, outputDir: output, name: "paper-clean", options: { ...options, keyMode: "auto", fps: 12, maxFrames: 80, removeDuplicates: true } });
+report.cases.push({ id: "paper-clean", elapsedMs: Math.round(performance.now() - start), result }); await save();
+const photo = path.join(game, "public/images/NEW sprites/Varyag/references/gudkov-indoor-front.jpeg");
+const installed = []; for (const entry of aiModelCatalog) if (await fs.stat(path.join(root, "models", entry.file)).catch(() => null)) installed.push(entry.id);
+const measurements = await measureSource([photo]);
+const plan = planAutoPilot({ measurements, installed, source: { kind: "frames", frameCount: 1 }, target: { cellWidth: 256, cellHeight: 256, pixelPerfect: true, pixelArt: true } });
+const matting = plan.steps.find(step => step.stage === "matting"), drawing = plan.steps.find(step => step.stage === "pixelate");
+const automatic = await processFramePreview({ inputPath: photo, appRoot: root, options: { ...options, keyMode: matting ? "ai" : "auto", aiModel: matting?.modelId, aiQuality: plan.settings.quality, pixelate: drawing.settings } });
+const file = path.join(output, "portrait-automatic.png"); await fs.copyFile(automatic.afterPath, file);
+report.cases.push({ id: "portrait-automatic", plan, output: file, metadata: await sharp(file).metadata() }); await save();
+console.log(JSON.stringify(report.cases.map(({id,elapsedMs,output,result})=>({id,elapsedMs,output,frames:result?.frameCount}))));
