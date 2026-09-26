@@ -12,7 +12,7 @@ const packageInfo = JSON.parse(await fs.readFile(path.join(appRoot, "package.jso
 
 function assertNoRunningBuild() {
   if (process.platform !== "win32") return;
-  const probe = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='Chuba Sprite Lab.exe'\" | Select-Object -ExpandProperty ExecutablePath"], { encoding: "utf8", windowsHide: true, timeout: 15000 });
+  const probe = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; foreach ($item in @(Get-Process | Where-Object ProcessName -eq 'Chuba Sprite Lab')) { if (-not $item.Path) { throw 'Executable path unavailable' }; $item.Path }"], { encoding: "utf8", windowsHide: true, timeout: 30000 });
   if (probe.status !== 0) throw new Error("Не удалось проверить запущенные экземпляры. Закройте приложение перед пересборкой.");
   const prefix = (appRoot + path.sep).toLowerCase();
   if (probe.stdout.split(/\r?\n/).some((entry) => entry.trim().toLowerCase().startsWith(prefix))) throw new Error("Закройте Chuba Sprite Lab из папки проекта перед заменой portable-комплекта.");
