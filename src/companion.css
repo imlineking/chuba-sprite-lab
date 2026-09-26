@@ -1,5 +1,5 @@
 :root { color-scheme: dark; --paper:#171c23; --ink:#eff3f5; --muted:#aab6c2; --line:#3b4652; --accent:#ff8c32; }
-:root[data-theme="light"] { color-scheme:light; --paper:#fff; --ink:#202a31; --muted:#566771; --line:#ccd4da; --accent:#26343e; }
+:root[data-theme="light"] { color-scheme:light; --paper:#fff; --ink:#252525; --muted:#606060; --line:#d3d3d3; --accent:#303030; }
 * { box-sizing:border-box; } html,body { margin:0; width:100%; background:transparent; overflow:hidden; font-family:Bahnschrift,Segoe UI,sans-serif; color:var(--ink); }
 button { font:inherit; cursor:pointer; } button:focus-visible { outline:2px solid #33c8c7; outline-offset:2px; }
 #pet { display:none; width:112px; height:128px; padding:8px; border:0; background:transparent; touch-action:none; user-select:none; cursor:grab; }

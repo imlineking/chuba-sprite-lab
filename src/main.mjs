@@ -47,7 +47,7 @@ function argumentValue(name) {
 
 // An isolated diagnostic profile proves the portable build does not rely on models
 // previously downloaded by the developer. Normal launches keep their existing profile.
-if ((selfTestMode || desktopProbePath) && argumentValue("--self-test-user-data")) {
+if ((selfTestMode || desktopProbePath || argumentValue("--screenshot") || process.env.CHUBA_SPRITE_SCREENSHOT) && argumentValue("--self-test-user-data")) {
   const diagnosticProfile = path.resolve(argumentValue("--self-test-user-data"));
   fsSync.mkdirSync(diagnosticProfile, { recursive: true });
   app.setPath("userData", diagnosticProfile);
