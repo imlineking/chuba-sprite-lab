@@ -19,6 +19,7 @@ import { DesktopCompanion } from "./desktop-companion.mjs";
 import { processImageBatch } from "./image-batch.mjs";
 import { finishSheetImport, makeTempWorkspace, pruneStaleTempWorkspaces } from "./temp-workspace.mjs";
 import { planSuggestions, planTaskScenarios } from "./copilot-rules.mjs";
+import { planWithCopilot, comparePlanners, plannerStatus } from "./copilot-planner.mjs";
 import { readProfile } from "./build-profile.mjs";
 import { formatFeedbackDraft } from "./feedback.mjs";
 import * as editorSession from "./editor-session.mjs";
@@ -38,6 +39,7 @@ let companion = null;
 let copyableFrames = new Map();
 let activeJob = null;
 const selfTestMode = process.argv.includes("--self-test") || process.env.CHUBA_SPRITE_SELF_TEST === "1";
+const uiRegressionMode = process.argv.includes("--ui-regression");
 const startupProbePath = process.env.CHUBA_SPRITE_STARTUP_PROBE || "";
 const desktopProbePath = argumentValue("--desktop-probe");
 
@@ -48,7 +50,7 @@ function argumentValue(name) {
 
 // An isolated diagnostic profile proves the portable build does not rely on models
 // previously downloaded by the developer. Normal launches keep their existing profile.
-if ((selfTestMode || desktopProbePath || argumentValue("--screenshot") || process.env.CHUBA_SPRITE_SCREENSHOT) && argumentValue("--self-test-user-data")) {
+if ((selfTestMode || uiRegressionMode || desktopProbePath || argumentValue("--screenshot") || process.env.CHUBA_SPRITE_SCREENSHOT) && argumentValue("--self-test-user-data")) {
   const diagnosticProfile = path.resolve(argumentValue("--self-test-user-data"));
   fsSync.mkdirSync(diagnosticProfile, { recursive: true });
   app.setPath("userData", diagnosticProfile);
@@ -1141,6 +1143,9 @@ ipcMain.handle("feedback:copy", (_event, request) => {
 // testable module instead of a second copy inside the classic renderer scripts.
 ipcMain.handle("copilot:suggest", (_event, snapshot = {}) => planSuggestions(snapshot));
 ipcMain.handle("copilot:scenarios", (_event, snapshot = {}) => planTaskScenarios(snapshot));
+ipcMain.handle("copilot:plan", (_event, request = {}) => planWithCopilot(request));
+ipcMain.handle("copilot:compare", (_event, request = {}) => comparePlanners(request));
+ipcMain.handle("copilot:status", () => plannerStatus());
 
 ipcMain.handle("app:info", () => ({
   version: app.getVersion(),
@@ -1378,7 +1383,7 @@ ipcMain.handle("companion:show", (event, request = {}) => {
   companion?.show(request.open !== false);
 });
 
-const hasInstanceLock = selfTestMode || Boolean(desktopProbePath) || Boolean(startupProbePath) || Boolean(screenshotPath) || app.requestSingleInstanceLock();
+const hasInstanceLock = selfTestMode || uiRegressionMode || Boolean(desktopProbePath) || Boolean(startupProbePath) || Boolean(screenshotPath) || app.requestSingleInstanceLock();
 
 if (!hasInstanceLock) {
   app.quit();

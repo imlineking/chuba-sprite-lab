@@ -858,7 +858,7 @@ test("warning frame numbers follow the source frames, not the filtered list", as
   assert.ok(result.frameIssues.some((issue) => issue.frameIndex === 3), "the wide source frame must be reported");
   assert.ok(!result.frameIssues.some((issue) => issue.frameIndex === 0), "an excluded frame must not be reported");
   for (const issue of result.frameIssues) {
-    assert.ok(result.warnings.includes(issue.message), "every structured issue must also appear in the plain list");
+    assert.ok(result.warningGroups.some(group => group.code === issue.code && group.frameIndexes.includes(issue.frameIndex)), "every structured issue must remain reachable through its group");
   }
 
   const report = JSON.parse(await fs.readFile(result.reportPath, "utf8"));

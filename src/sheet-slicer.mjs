@@ -72,7 +72,7 @@ function unionBounds(items, width, height, padding) {
   return { left, top, width: right - left + 1, height: bottom - top + 1 };
 }
 
-async function detectObjectCells(sheetPath, tolerance = 34, padding = 0, alphaOnly = false, attachFragments = false) {
+async function detectObjectCells(sheetPath, tolerance = 34, padding = 0, alphaOnly = false, attachFragments = true) {
   const { data, info } = await sharp(sheetPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const { width, height, channels } = info;
   const corner = averageCornerColor(data, width, height, channels);
@@ -91,6 +91,9 @@ async function detectObjectCells(sheetPath, tolerance = 34, padding = 0, alphaOn
     }
   }
   const { components, labels } = connectedComponents(mask, width, height);
+  const issues = [];
+  const attached = new Set();
+  const largestArea = Math.max(0, ...components.map(item => item.area));
   if (attachFragments && components.length) {
     const largest = Math.max(...components.map(item => item.area));
     const major = components.filter(item => item.area >= Math.max(64, largest * 0.02));
@@ -106,7 +109,7 @@ async function detectObjectCells(sheetPath, tolerance = 34, padding = 0, alphaOn
         if (distance <= maxGap && score < best) { nearest = object; best = score; }
       }
       // Keep every pixel and component label, but order nearby loose leaves with their tree.
-      if (nearest) { fragment.centerX = nearest.centerX; fragment.centerY = nearest.centerY; }
+      if (nearest) { fragment.centerX = nearest.centerX; fragment.centerY = nearest.centerY; attached.add(fragment.id); }
     }
   }
   const rows = clusterByCenter(components, "centerY", Math.max(52, height * 0.115));
@@ -115,7 +118,14 @@ async function detectObjectCells(sheetPath, tolerance = 34, padding = 0, alphaOn
     const columns = clusterByCenter(row, "centerX", Math.max(62, width * 0.105));
     for (const column of columns) cells.push({ ...unionBounds(column, width, height, padding), componentIds: column.map((item) => item.id) });
   }
-  return { width, height, background: background.map(Math.round), cells, labels };
+  if (attached.size) issues.push({ code: "slice-fragments-attached", severity: "info", count: attached.size,
+    message: `Мелкие фрагменты (${attached.size}) сохранены вместе с близкими объектами. Проверьте рамки нарезки.` });
+  cells.forEach((cell, frameIndex) => {
+    const area = components.filter(item => cell.componentIds.includes(item.id)).reduce((sum, item) => sum + item.area, 0);
+    if (largestArea > 0 && area < largestArea * 0.005) issues.push({ code: "slice-small-object", severity: "warning", frameIndex, area,
+      message: `Кадр ${frameIndex + 1}: очень маленький отдельный объект. Проверьте, не является ли он соринкой.` });
+  });
+  return { width, height, background: background.map(Math.round), cells, labels, issues };
 }
 
 function validateManualCells(cells, width, height) {
@@ -155,6 +165,7 @@ export async function sliceSpriteSheet(sheetPath, outputDir, options = {}) {
   let cells;
   let background = null;
   let labels = null;
+  let issues = [];
   if (mode === "manual") {
     cells = validateManualCells(options.cells, width, height);
   } else if (mode === "grid") {
@@ -164,6 +175,7 @@ export async function sliceSpriteSheet(sheetPath, outputDir, options = {}) {
     cells = detected.cells;
     background = detected.background;
     labels = detected.labels;
+    issues = detected.issues;
   }
   if (!cells.length) throw new Error("На листе не удалось найти отдельные кадры. Попробуйте режим равномерной сетки.");
   const framePaths = [];
@@ -181,5 +193,5 @@ export async function sliceSpriteSheet(sheetPath, outputDir, options = {}) {
     } else await sharp(sheetPath).extract(rect).png().toFile(framePath);
     framePaths.push(framePath);
   }
-  return { mode, width, height, cells: cells.map(({ componentIds, ...cell }) => cell), framePaths, background };
+  return { mode, width, height, cells: cells.map(({ componentIds, ...cell }) => cell), framePaths, background, maskPrepared: mode === "objects", issues };
 }

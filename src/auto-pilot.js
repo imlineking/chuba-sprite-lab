@@ -46,6 +46,9 @@ function autoPilotTarget() {
     cellHeight: Number($("#cellHeight").value) || 0,
     atlasMaxSize: Number($("#atlasMaxSize").value) || 0,
     pixelArt: $("#pixelateEnabled").checked,
+    pixelPerfect: $("#pixelPerfect").checked,
+    columns: Number($("#columns").value) || 1,
+    autoColumns: $("#autoColumns").checked,
     attachments: state.attachments?.filter((attachment) => attachment.enabled !== false).length || 0,
     depthRequested: $("#auxDepth").checked,
     inpaintMaskPath: state.auxMaskPath || null,
@@ -176,6 +179,13 @@ async function autoPilotRun() {
 function autoPilotApply() {
   const plan = autoPilotState.plan;
   if (!plan) return;
+  const nested = state.historyApplying;
+  clearTimeout(state.historyTimer);
+  if (!nested) pushHistory("До применения автоплана");
+  const before = captureHistoryState("До применения автоплана");
+  state.historyApplying = true;
+  let committed = false;
+  try {
   const applied = [];
   for (const id of ["auxRife", "auxEsrgan", "auxDepth"]) $("#" + id).checked = false;
   for (const step of plan.steps || []) {
@@ -225,6 +235,14 @@ function autoPilotApply() {
       : "В плане нет дополнительных настроек: конвейер выполнит встроенные этапы при сборке.", blocked.length ? "error" : "done");
   setStatus("План авто-режима применён · проверьте предпросмотр", "done", 0);
   if (typeof scheduleFramePreview === "function") scheduleFramePreview(120);
+  committed = true;
+  } catch (error) {
+    applyHistorySnapshot(before);
+    autoPilotSetSummary(`Автоплан не применён: ${error.message}. Настройки восстановлены.`, "error");
+  } finally {
+    state.historyApplying = nested;
+    if (!nested && committed) pushHistory("Помощник: применён автоплан");
+  }
 }
 
 /* ------------------------------------------------------------------ models window */

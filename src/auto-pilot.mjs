@@ -12,6 +12,7 @@
 import sharp from "sharp";
 import { aiModelCatalog, modelById, modelTotalBytes } from "./ai-models.mjs";
 import { checkerMask } from "./region-color.mjs";
+import { analyseBorderBackground } from "./background-analysis.mjs";
 
 export const SOFT_ALPHA_LOW = 6;
 export const SOFT_ALPHA_HIGH = 249;
@@ -111,6 +112,7 @@ export function analyseFrame(data, info) {
   }
 
   const stats = neighbourStats(data, info);
+  const border = analyseBorderBackground(data, info);
   return {
     width,
     height,
@@ -121,6 +123,11 @@ export function analyseFrame(data, info) {
     borderColourCount: borderColours.size,
     colourCount: colours.size,
     thinStructure: opaque ? boundary / opaque : 0,
+    outlineComplexity: opaque ? boundary / Math.sqrt(opaque) : 0,
+    borderSolidRatio: border.solidRatio,
+    borderNoise: border.noise,
+    borderColour: border.colour,
+    solidBackground: border.solid,
     detailDensity: stats.detailDensity,
     fringeScore: soft ? lightSoft / soft : 0,
     flatShare: stats.flatShare,
@@ -144,6 +151,10 @@ export function mergeFrameAnalyses(list) {
     else if (key === "width") merged[key] = Math.max(...frames.map((frame) => frame.width));
     else if (key === "height") merged[key] = Math.max(...frames.map((frame) => frame.height));
     else if (key === "colourCount" || key === "borderColourCount") merged[key] = Math.max(...frames.map((frame) => frame[key]));
+    else if (key === "borderColour") merged[key] = frames[0][key];
+    else if (key === "edgeMeasurement") merged[key] = frames.every(frame => frame[key] === "native") ? "native" : "thumbnail";
+    else if (key === "outlineComplexity" && frames.some(frame => frame[key] == null)) merged[key] = null;
+    else if (key === "borderSolidRatio") merged[key] = Math.min(...frames.map(frame => frame[key]));
     else merged[key] = averageNumbers(frames, key);
   }
   merged.sampled = frames.length;
@@ -178,6 +189,13 @@ export async function measureSource(paths, { limit = 3, sampleSize = 192 } = {})
       if (metadata.width * metadata.height <= 16000000) {
         const raw = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
         analyses.at(-1).checkerPixels = checkerMask(raw.data, raw.info).count;
+        const native = analyseFrame(raw.data, raw.info);
+        // Edge decisions use native pixels. Thumbnail resampling creates artificial soft/detail edges.
+        for (const metric of ["thinStructure", "outlineComplexity", "softShare", "detailDensity", "fringeScore", "borderSolidRatio", "borderNoise", "borderColour", "solidBackground"]) analyses.at(-1)[metric] = native[metric];
+        analyses.at(-1).edgeMeasurement = "native";
+      } else {
+        analyses.at(-1).edgeMeasurement = "thumbnail";
+        analyses.at(-1).outlineComplexity = null;
       }
     } catch (error) {
       failures.push({ file, message: error?.message || "не удалось прочитать кадр" });
@@ -297,10 +315,12 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
   };
 
   /* 1. Preserve an existing alpha channel before considering background removal. */
-  const alreadyTransparent = measurements.transparentShare > 0.15 && measurements.borderOpaqueRatio < 0.2;
+  const alreadyTransparent = source.maskPrepared === true || (measurements.transparentShare > 0.15 && measurements.borderOpaqueRatio < 0.2);
   const independent = target.intent === "images" || (source.kind === "images" && !target.cellWidth);
   const checker = Number(measurements.checkerPixels) >= 64;
-  const solid = measurements.borderOpaqueRatio > SOLID_BORDER_RATIO && measurements.borderColourCount <= SOLID_BORDER_COLOURS;
+  const solid = measurements.solidBackground !== undefined
+    ? measurements.solidBackground && Number(measurements.borderSolidRatio) >= 0.92
+    : measurements.borderOpaqueRatio > SOLID_BORDER_RATIO && measurements.borderColourCount <= SOLID_BORDER_COLOURS;
   if (alreadyTransparent) {
     steps.push({
       stage: "key",
@@ -319,14 +339,14 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
       kind: "builtin",
       tool: "key",
       title: "Убрать однотонный фон контуром",
-      why: `У краёв кадра ${Math.round(measurements.borderOpaqueRatio * 100)}% пикселей непрозрачны и заняты ${measurements.borderColourCount} цветами — фон однотонный. Контур быстрее модели и не придумывает детали.`,
+      why: `Фон у края почти постоянный${measurements.borderSolidRatio !== undefined ? ` (${Math.round(measurements.borderSolidRatio * 100)}% близких цветов, шум ${Math.round(measurements.borderNoise || 0)})` : ""}. Контурное удаление сохраняет внутренние детали и не требует модели.`,
       confidence: "high",
       status: "ready",
     });
   } else {
-    const hairy = measurements.thinStructure > HAIRY_STRUCTURE
+    const hairy = measurements.edgeMeasurement !== "thumbnail" && ((measurements.outlineComplexity != null ? measurements.outlineComplexity > 14 : measurements.thinStructure > HAIRY_STRUCTURE)
       || measurements.softShare > HAIRY_SOFT_SHARE
-      || measurements.detailDensity > HAIRY_DETAIL_DENSITY;
+      || measurements.detailDensity > HAIRY_DETAIL_DENSITY);
     const order = independent
       ? ["birefnet-tiny", "isnet-general", "isnet-anime", "u2net", "silueta", "u2netp"]
       : hairy ? mattingPreference.fine : measurements.flatShare > ART_FLAT_SHARE ? mattingPreference.art : mattingPreference.general;
@@ -359,7 +379,7 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
   /* 3. A source smaller than its own cell is stretched into mush without an upscaler. */
   const cellWidth = Number(target.cellWidth) || 0;
   const smaller = cellWidth > 0 && Math.max(measurements.width, measurements.height) < cellWidth * 1.25;
-  if (smaller && !independent) {
+  if (smaller && !independent && !target.pixelPerfect) {
     steps.push({
       stage: "upscale",
       kind: "model",
@@ -375,7 +395,7 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
 
   /* 4. A short video reads as a slideshow. */
   const frameCount = Number(source.frameCount ?? measurements.frameCount ?? 0);
-  if (!independent && source.kind === "video" && frameCount > 0 && frameCount < 8) {
+  if (!independent && !target.pixelPerfect && source.kind === "video" && frameCount > 0 && frameCount < 8) {
     steps.push({
       stage: "interpolate",
       kind: "model",
@@ -438,14 +458,16 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
   }
 
   /* 7. Pages, not one impossible sheet. */
-  const estimated = cellWidth > 0 ? cellWidth * Math.max(1, frameCount || measurements.frameCount || 1) : 0;
+  const count = Math.max(1, frameCount || measurements.frameCount || 1);
+  const columns = target.autoColumns === false ? Math.max(1, Math.min(count, Number(target.columns) || 1)) : Math.ceil(Math.sqrt(count));
+  const estimated = Math.max(cellWidth * columns, (Number(target.cellHeight) || cellWidth) * Math.ceil(count / columns));
   if (!independent && estimated > Number(target.atlasMaxSize || 0) && Number(target.atlasMaxSize || 0) > 0) {
     steps.push({
       stage: "atlas",
       kind: "builtin",
       tool: "atlas-pages",
       title: "Разложить атлас на страницы",
-      why: `Один ряд из ${frameCount} кадров занял бы ${estimated} px при лимите ${target.atlasMaxSize} px.`,
+      why: `Оценка сетки ${columns}×${Math.ceil(count / columns)}: сторона до ${estimated} px при лимите ${target.atlasMaxSize} px. Итоговую раскладку проверим при сборке.`,
       confidence: "high",
       status: "ready",
     });

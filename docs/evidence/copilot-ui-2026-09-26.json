@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "name": "one-Ctrl-Z-restores-settings-and-preview",
+      "ok": true
+    },
+    {
+      "name": "desktop-bubble-undo",
+      "ok": true
+    },
+    {
+      "name": "automatic-multi-tool-plan-one-undo",
+      "ok": true
+    },
+    {
+      "name": "invalid-plan-keeps-workspace-and-visible-error",
+      "ok": true
+    },
+    {
+      "name": "separate-desktop-pet-and-planner-selector",
+      "ok": true
+    },
+    {
+      "name": "real-three-planner-comparison-dialog",
+      "ok": true
+    }
+  ],
+  "runtimeErrors": []
+}

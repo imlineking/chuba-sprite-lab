@@ -1,0 +1,821 @@
+{
+  "generatedAt": "2026-09-26T16:54:30.614Z",
+  "runtime": "Ollama local only",
+  "models": [
+    "qwen3-vl:4b-instruct",
+    "gemma3:4b"
+  ],
+  "cases": [
+    {
+      "id": "yarn-layout",
+      "expected": [
+        "layout"
+      ],
+      "results": [
+        {
+          "scenarios": [
+            {
+              "task": "layout",
+              "why": "Открыт готовый лист; найдено 6 объектов. Их можно разнести в отдельные ячейки и записать новые координаты в JSON.",
+              "recommended": true
+            },
+            {
+              "task": "extract",
+              "why": "На листе несколько объектов: выберите один и сохраните его отдельным PNG.",
+              "recommended": false
+            },
+            {
+              "task": "objectEdit",
+              "why": "Выберите объект на листе, поправьте его внутри программы или в редакторе и верните в новый атлас.",
+              "recommended": false
+            },
+            {
+              "task": "background",
+              "why": "У края листа найден непрозрачный фон; его можно отделить перед новой раскладкой.",
+              "recommended": false
+            },
+            {
+              "task": "animation",
+              "why": "Если объекты на листе — фазы одного движения, соберите из них анимацию и JSON тайминга.",
+              "recommended": false
+            },
+            {
+              "task": "combine",
+              "why": "Если это разные предметы, соберите общий атлас и JSON координат для игры.",
+              "recommended": false
+            },
+            {
+              "task": "remove",
+              "why": "На готовом листе можно указать лишний объект и убрать его из всей серии после проверки кадров.",
+              "recommended": false
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "rules",
+          "elapsedMs": 0.34619999999998186,
+          "fallback": false,
+          "firstTaskAccepted": true,
+          "expectedOffered": true,
+          "validModelPlan": true
+        },
+        {
+          "scenarios": [
+            {
+              "task": "layout",
+              "why": "Картинка содержит шесть отдельных объектов, которые можно разместить в безопасных ячейках на новом листе.",
+              "recommended": true
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "qwen",
+          "model": "qwen3-vl:4b-instruct",
+          "elapsedMs": 4163,
+          "fallback": false,
+          "imageCount": 1,
+          "tokens": 56,
+          "loadMs": 2548,
+          "firstTaskAccepted": true,
+          "expectedOffered": true,
+          "validModelPlan": true
+        },
+        {
+          "scenarios": [
+            {
+              "task": "layout",
+              "why": "Необходимо разделить объекты на отдельные безопасные ячейки для дальнейшей обработки, чтобы избежать повреждений при редактировании отдельных элементов.",
+              "recommended": true
+            },
+            {
+              "task": "extract",
+              "why": "Нужно извлечь отдельные шары из исходного листа, чтобы можно было их редактировать независимо.",
+              "recommended": false
+            },
+            {
+              "task": "edit",
+              "why": "Необходимо очистить шары от цветовых паттернов и контрольных квадратов, чтобы обеспечить высокое качество пиксельной графики.",
+              "recommended": false
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "gemma",
+          "model": "gemma3:4b",
+          "elapsedMs": 6025,
+          "fallback": false,
+          "imageCount": 1,
+          "tokens": 160,
+          "loadMs": 2823,
+          "firstTaskAccepted": true,
+          "expectedOffered": true,
+          "validModelPlan": true
+        }
+      ]
+    },
+    {
+      "id": "squirrel-animation-intent",
+      "expected": [
+        "animation"
+      ],
+      "results": [
+        {
+          "scenarios": [
+            {
+              "task": "animation",
+              "why": "Если объекты на листе — фазы одного движения, соберите из них анимацию и JSON тайминга.",
+              "recommended": true
+            },
+            {
+              "task": "layout",
+              "why": "Открыт готовый лист; найдено 5 объектов. Их можно разнести в отдельные ячейки и записать новые координаты в JSON.",
+              "recommended": false
+            },
+            {
+              "task": "extract",
+              "why": "На листе несколько объектов: выберите один и сохраните его отдельным PNG.",
+              "recommended": false
+            },
+            {
+              "task": "objectEdit",
+              "why": "Выберите объект на листе, поправьте его внутри программы или в редакторе и верните в новый атлас.",
+              "recommended": false
+            },
+            {
+              "task": "combine",
+              "why": "Если это разные предметы, соберите общий атлас и JSON координат для игры.",
+              "recommended": false
+            },
+            {
+              "task": "remove",
+              "why": "На готовом листе можно указать лишний объект и убрать его из всей серии после проверки кадров.",
+              "recommended": false
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "rules",
+          "elapsedMs": 0.03130000000055588,
+          "fallback": false,
+          "firstTaskAccepted": true,
+          "expectedOffered": true,
+          "validModelPlan": true
+        },
+        {
+          "scenarios": [
+            {
+              "task": "animation",
+              "why": "Пользователь явно указал цель — анимация, и имеется набор кадров, которые могут быть объединены в последовательность движения.",
+              "recommended": true
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "qwen",
+          "model": "qwen3-vl:4b-instruct",
+          "elapsedMs": 4197,
+          "fallback": false,
+          "imageCount": 1,
+          "tokens": 60,
+          "loadMs": 2535,
+          "firstTaskAccepted": true,
+          "expectedOffered": true,
+          "validModelPlan": true
+        },
+        {
+          "scenarios": [
+            {
+              "task": "animation",
+              "why": "Пользователь выбрал цель анимации, необходимо собрать фазы движения с таймингом JSON.",
+              "recommended": true
+            },
+            {
+              "task": "layout",
+              "why": "Нужно разделить объекты на отдельные PNG+JSON файлы для дальнейшей обработки.",
+              "recommended": false
+            },
+            {
+              "task": "edit",
+              "why": "Необходимо очистить спрайт-лист от контрольных квадратов, чтобы получить финальный результат.",
+              "recommended": false
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "gemma",
+          "model": "gemma3:4b",
+          "elapsedMs": 5683,
+          "fallback": false,
+          "imageCount": 1,
+          "tokens": 133,
+          "loadMs": 2833,
+          "firstTaskAccepted": true,
+          "expectedOffered": true,
+          "validModelPlan": true
+        }
+      ]
+    },
+    {
+      "id": "mixed-objects",
+      "expected": [
+        "edit",
+        "combine"
+      ],
+      "results": [
+        {
+          "scenarios": [
+            {
+              "task": "edit",
+              "why": "Правка изображений: обрезка, цвет в выделении и фон; каждый PNG сохраняется отдельно, без анимации и изменения размеров.",
+              "recommended": true
+            },
+            {
+              "task": "combine",
+              "why": "Атлас объектов — разные изображения в одном PNG + JSON с координатами; проигрывание не требуется.",
+              "recommended": false
+            },
+            {
+              "task": "animation",
+              "why": "Анимация — последовательные фазы движения одного объекта или персонажа; получите спрайт-лист и JSON тайминга.",
+              "recommended": false
+            },
+            {
+              "task": "batch",
+              "why": "Несколько изображений можно очистить по одному профилю: каждый файл получит отдельный PNG и JSON; исходники останутся на месте.",
+              "recommended": false
+            },
+            {
+              "task": "remove",
+              "why": "Лишний объект можно выделить один раз и найти в соседних кадрах.",
+              "recommended": false
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "rules",
+          "elapsedMs": 0.02509999999892898,
+          "fallback": false,
+          "firstTaskAccepted": true,
+          "expectedOffered": true,
+          "validModelPlan": true
+        },
+        {
+          "scenarios": [
+            {
+              "task": "batch",
+              "why": "Три независимых объекта, подходят для обработки в одном профиле.",
+              "recommended": true
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "qwen",
+          "model": "qwen3-vl:4b-instruct",
+          "elapsedMs": 4441,
+          "fallback": false,
+          "imageCount": 3,
+          "tokens": 48,
+          "loadMs": 2824,
+          "firstTaskAccepted": false,
+          "expectedOffered": false,
+          "validModelPlan": true
+        },
+        {
+          "scenarios": [
+            {
+              "task": "layout",
+              "why": "Требуется разделить объекты на безопасные ячейки и создать новые PNG+JSON файлы, учитывая, что это отдельные объекты (mixedSizes). ",
+              "recommended": true
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "gemma",
+          "model": "gemma3:4b",
+          "elapsedMs": 4931,
+          "fallback": false,
+          "imageCount": 3,
+          "tokens": 76,
+          "loadMs": 2807,
+          "firstTaskAccepted": false,
+          "expectedOffered": false,
+          "validModelPlan": true
+        }
+      ]
+    },
+    {
+      "id": "bzzz-white-detail",
+      "expected": [
+        "edit",
+        "cutout",
+        "background"
+      ],
+      "results": [
+        {
+          "scenarios": [
+            {
+              "task": "edit",
+              "why": "Правьте один файл: очистите фон, запечённую клетку или цвет в выделении и сохраните отдельный PNG исходного размера.",
+              "recommended": true
+            },
+            {
+              "task": "cutout",
+              "why": "Один непрозрачный JPG, PNG или WebP: можно отделить главный объект и сохранить прозрачный PNG.",
+              "recommended": false
+            },
+            {
+              "task": "stylize",
+              "why": "Одно изображение можно перевести в пиксель-арт с подобранной палитрой и размером пикселя.",
+              "recommended": false
+            },
+            {
+              "task": "depth",
+              "why": "Фото содержит плавные переходы; отдельная карта глубины пригодится для параллакса.",
+              "recommended": false
+            },
+            {
+              "task": "animation",
+              "why": "Это один кадр. Добавьте другие изображения или видео, если хотите собрать анимацию.",
+              "recommended": false
+            },
+            {
+              "task": "combine",
+              "why": "Добавьте изображения других предметов, чтобы собрать один атлас с JSON и уменьшить число файлов.",
+              "recommended": false
+            },
+            {
+              "task": "extract",
+              "why": "Если на PNG несколько отдельных объектов, выберите один и сохраните отдельным файлом.",
+              "recommended": false
+            },
+            {
+              "task": "layout",
+              "why": "Если файл на самом деле спрайт-лист, можно найти его объекты и разнести по сетке.",
+              "recommended": false
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "rules",
+          "elapsedMs": 0.026099999999132706,
+          "fallback": false,
+          "firstTaskAccepted": true,
+          "expectedOffered": true,
+          "validModelPlan": true
+        },
+        {
+          "scenarios": [
+            {
+              "task": "edit",
+              "why": "Объекты на листе — независимые изображения, требуют отдельной обработки.",
+              "recommended": true
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "qwen",
+          "model": "qwen3-vl:4b-instruct",
+          "elapsedMs": 4341,
+          "fallback": false,
+          "imageCount": 1,
+          "tokens": 53,
+          "loadMs": 2773,
+          "firstTaskAccepted": true,
+          "expectedOffered": true,
+          "validModelPlan": true
+        },
+        {
+          "scenarios": [
+            {
+              "task": "layout",
+              "why": "Необходимо разделить объект на отдельные слои для дальнейшей обработки, чтобы сохранить качество пиксельной графики.  (Need to separate the object into individual layers for further processing to preserve pixel art quality.)",
+              "recommended": true
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "gemma",
+          "model": "gemma3:4b",
+          "elapsedMs": 5221,
+          "fallback": false,
+          "imageCount": 1,
+          "tokens": 87,
+          "loadMs": 2838,
+          "firstTaskAccepted": false,
+          "expectedOffered": false,
+          "validModelPlan": true
+        }
+      ]
+    },
+    {
+      "id": "branch-baked-checker",
+      "expected": [
+        "edit"
+      ],
+      "results": [
+        {
+          "scenarios": [
+            {
+              "task": "edit",
+              "why": "Правьте один файл: очистите фон, запечённую клетку или цвет в выделении и сохраните отдельный PNG исходного размера.",
+              "recommended": true
+            },
+            {
+              "task": "stylize",
+              "why": "Одно изображение можно перевести в пиксель-арт с подобранной палитрой и размером пикселя.",
+              "recommended": false
+            },
+            {
+              "task": "depth",
+              "why": "Фото содержит плавные переходы; отдельная карта глубины пригодится для параллакса.",
+              "recommended": false
+            },
+            {
+              "task": "animation",
+              "why": "Это один кадр. Добавьте другие изображения или видео, если хотите собрать анимацию.",
+              "recommended": false
+            },
+            {
+              "task": "combine",
+              "why": "Добавьте изображения других предметов, чтобы собрать один атлас с JSON и уменьшить число файлов.",
+              "recommended": false
+            },
+            {
+              "task": "extract",
+              "why": "Если на PNG несколько отдельных объектов, выберите один и сохраните отдельным файлом.",
+              "recommended": false
+            },
+            {
+              "task": "layout",
+              "why": "Если файл на самом деле спрайт-лист, можно найти его объекты и разнести по сетке.",
+              "recommended": false
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "rules",
+          "elapsedMs": 0.02049999999871943,
+          "fallback": false,
+          "firstTaskAccepted": true,
+          "expectedOffered": true,
+          "validModelPlan": true
+        },
+        {
+          "scenarios": [
+            {
+              "task": "background",
+              "why": "Объекты на фоне — это белый фон, который нужно удалить, чтобы оставить только ветку и листья.",
+              "recommended": true
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "qwen",
+          "model": "qwen3-vl:4b-instruct",
+          "elapsedMs": 4064,
+          "fallback": false,
+          "imageCount": 1,
+          "tokens": 54,
+          "loadMs": 2512,
+          "firstTaskAccepted": false,
+          "expectedOffered": false,
+          "validModelPlan": true
+        },
+        {
+          "scenarios": [
+            {
+              "task": "layout",
+              "why": "Изображение содержит несколько объектов, требующих разделения на отдельные PNG файлы с JSON метаданными для дальнейшей обработки.  (Разделение объектов для удобства редактирования).",
+              "recommended": true
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "gemma",
+          "model": "gemma3:4b",
+          "elapsedMs": 5153,
+          "fallback": false,
+          "imageCount": 1,
+          "tokens": 83,
+          "loadMs": 2818,
+          "firstTaskAccepted": false,
+          "expectedOffered": false,
+          "validModelPlan": true
+        }
+      ]
+    },
+    {
+      "id": "white-flowers-preserve",
+      "expected": [
+        "edit"
+      ],
+      "results": [
+        {
+          "scenarios": [
+            {
+              "task": "edit",
+              "why": "Правьте один файл: очистите фон, запечённую клетку или цвет в выделении и сохраните отдельный PNG исходного размера.",
+              "recommended": true
+            },
+            {
+              "task": "stylize",
+              "why": "Одно изображение можно перевести в пиксель-арт с подобранной палитрой и размером пикселя.",
+              "recommended": false
+            },
+            {
+              "task": "depth",
+              "why": "Фото содержит плавные переходы; отдельная карта глубины пригодится для параллакса.",
+              "recommended": false
+            },
+            {
+              "task": "animation",
+              "why": "Это один кадр. Добавьте другие изображения или видео, если хотите собрать анимацию.",
+              "recommended": false
+            },
+            {
+              "task": "combine",
+              "why": "Добавьте изображения других предметов, чтобы собрать один атлас с JSON и уменьшить число файлов.",
+              "recommended": false
+            },
+            {
+              "task": "extract",
+              "why": "Если на PNG несколько отдельных объектов, выберите один и сохраните отдельным файлом.",
+              "recommended": false
+            },
+            {
+              "task": "layout",
+              "why": "Если файл на самом деле спрайт-лист, можно найти его объекты и разнести по сетке.",
+              "recommended": false
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "rules",
+          "elapsedMs": 0.02200000000448199,
+          "fallback": false,
+          "firstTaskAccepted": true,
+          "expectedOffered": true,
+          "validModelPlan": true
+        },
+        {
+          "scenarios": [
+            {
+              "task": "edit",
+              "why": "Цель пользователя — редактирование, а изображение содержит независимые объекты, подходящие для отдельной редакции.",
+              "recommended": true
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "qwen",
+          "model": "qwen3-vl:4b-instruct",
+          "elapsedMs": 4240,
+          "fallback": false,
+          "imageCount": 1,
+          "tokens": 60,
+          "loadMs": 2546,
+          "firstTaskAccepted": true,
+          "expectedOffered": true,
+          "validModelPlan": true
+        },
+        {
+          "scenarios": [
+            {
+              "task": "edit",
+              "why": "Пользователь выбрал редактирование, необходимо исправить ошибки в изображении.",
+              "recommended": true
+            }
+          ],
+          "suggestions": [
+            {
+              "severity": "info",
+              "id": "build-preview",
+              "title": "Собрать предпросмотр",
+              "why": "Настройки ещё не применены — результат не с чем сравнить.",
+              "effect": "Обработает кадры текущими настройками.",
+              "steps": [
+                {
+                  "op": "rebuild"
+                }
+              ]
+            }
+          ],
+          "planner": "gemma",
+          "model": "gemma3:4b",
+          "elapsedMs": 4686,
+          "fallback": false,
+          "imageCount": 1,
+          "tokens": 58,
+          "loadMs": 2819,
+          "firstTaskAccepted": true,
+          "expectedOffered": true,
+          "validModelPlan": true
+        }
+      ]
+    }
+  ]
+}

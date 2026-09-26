@@ -54,9 +54,12 @@ export async function describeSpriteSheet(appRoot, sheetPath, options = {}) {
     sheetHeight: sliced.height,
     sheetUrl: pathToFileURL(sheetPath).href,
     sheetBackground: sliced.background,
+    maskPrepared: sliced.maskPrepared,
+    sourceIssues: sliced.issues,
     title: path.basename(sheetPath),
     detail: `${sliced.width}×${sliced.height} · найдено объектов: ${sliced.framePaths.length}`,
     estimatedFrames: sliced.framePaths.length,
-    recommendations: { ...source.recommendations, anchor: "center" },
+    suggestedKeyMode: sliced.maskPrepared ? "alpha" : source.suggestedKeyMode,
+    recommendations: { ...source.recommendations, ...(sliced.maskPrepared ? { keyMode: "alpha" } : {}), anchor: "center" },
   };
 }

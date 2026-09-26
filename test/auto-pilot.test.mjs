@@ -247,7 +247,7 @@ test("the pixel-art style follows the frame, not a preset", () => {
 test("a sheet larger than the limit is split into pages", () => {
   const plan = planAutoPilot({
     measurements: measure({ frameCount: 60 }),
-    target: { cellWidth: 128, cellHeight: 128, atlasMaxSize: 4096 },
+    target: { cellWidth: 1024, cellHeight: 1024, atlasMaxSize: 4096 },
     source: { kind: "video", frameCount: 60 },
     installed: ["u2netp"],
   });

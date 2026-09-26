@@ -19,7 +19,7 @@ test("a video with a selected removal leads with that job and keeps animation av
 test("a frame touching the source edge offers the clipping repair route first", () => {
   const scenarios = planTaskScenarios({
     source: { kind: "sheet", frameCount: 6 },
-    built: { frameIssues: [{ frameIndex: 2, message: "Кадр 3: персонаж касается края исходного изображения." }] },
+    built: { frameIssues: [{ frameIndex: 2, code: "source-edge-touching", message: "Кадр 3: персонаж касается края исходного изображения." }] },
   });
   assert.equal(scenarios[0].task, "clipping");
   assert.ok(scenarios.some((item) => item.task === "layout"));
@@ -119,7 +119,7 @@ test("a long high-rate video is offered a lower frame rate", () => {
 test("silhouette spread and a loop seam each offer their own fix", () => {
   const spread = find({
     source: { kind: "frames" },
-    built: { warnings: [], frameIssues: [{ frameIndex: 2, message: "Кадр 3: ширина силуэта отличается более чем на 20%." }], atlasIssues: [] },
+    built: { warnings: [], frameIssues: [{ frameIndex: 2, code: "silhouette-width-spread", message: "Кадр 3: ширина силуэта отличается более чем на 20%." }], atlasIssues: [] },
     options: {},
     ui: settled,
   }, "size-spread");
@@ -127,12 +127,12 @@ test("silhouette spread and a loop seam each offer their own fix", () => {
 
   const seam = find({
     source: { kind: "frames" },
-    built: { warnings: ["Цикл: заметный скачок силуэта между кадрами 8 и 1."], frameIssues: [], atlasIssues: [] },
+    built: { issues: [{ code: "loop-seam", message: "Loop seam mismatch" }], warnings: [], frameIssues: [], atlasIssues: [] },
     options: {},
     ui: settled,
   }, "loop-seam");
   assert.equal(seam.severity, "warn");
-  assert.deepEqual(seam.steps, [{ op: "loopMode", value: "pingpong" }, { op: "rebuild" }]);
+  assert.deepEqual(seam.steps, [{ op: "openLoopEditor" }]);
 });
 
 test("atlas errors quote the first problem and open the export tab", () => {

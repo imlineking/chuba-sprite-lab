@@ -9,6 +9,7 @@ models/*.sha256
 .build/
 .build-archive/
 portable/
+.diagnostics/
 *.log
 *.tmp
 .DS_Store

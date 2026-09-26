@@ -1,0 +1,60 @@
+{
+  "generatedAt": "2026-09-26T16:30:56.598Z",
+  "cases": [
+    {
+      "id": "pig-original",
+      "sha256": "c1630bffea567c9b370fe61fb6ec15cf12a8a62afba3b52afb4b27eee170f032",
+      "opened": true,
+      "duration": 5.964292,
+      "containerDuration": 6.05,
+      "dimensions": [
+        2160,
+        3840
+      ],
+      "framesBuilt": 4
+    },
+    {
+      "id": "pig-game",
+      "sha256": "717948d253d55b5f234c82f53cb5982068b049f58eeede61d5e7b2cbf50f69a3",
+      "opened": true,
+      "duration": 5.958333,
+      "containerDuration": 6.04,
+      "dimensions": [
+        720,
+        1280
+      ],
+      "framesBuilt": 4
+    },
+    {
+      "id": "squirrel",
+      "sha256": "5dcf77b0dc4024fb8243975a3aa423a4ac438260e7046946ea385458984f6d98",
+      "objects": 5,
+      "lostPixels": 0,
+      "issues": [
+        {
+          "code": "slice-fragments-attached",
+          "severity": "info",
+          "count": 1,
+          "message": "Мелкие фрагменты (1) сохранены вместе с близкими объектами. Проверьте рамки нарезки."
+        }
+      ],
+      "atlas": [
+        1845,
+        1358
+      ],
+      "json": "squirrel.json"
+    },
+    {
+      "id": "yarn",
+      "sha256": "7784402ce0edca28e25d71bb568eab7aa87c624e61518273efb67682abb409f4",
+      "objects": 6,
+      "lostPixels": 0,
+      "issues": [],
+      "atlas": [
+        1821,
+        902
+      ],
+      "json": "yarn.json"
+    }
+  ]
+}

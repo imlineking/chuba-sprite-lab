@@ -18,6 +18,9 @@ import { findWhiteRemainders } from "./white-remainders.mjs";
 import { makeTempWorkspace, finishQuickPreview } from "./temp-workspace.mjs";
 import { resolveAuxModel } from "./model-paths.mjs";
 import { loadAuxSession, inpaintLama, interpolateRife, upscaleEsrgan, estimateDepth } from "./aux-ai.mjs";
+import { parseVideoMetadata } from "./video-metadata.mjs";
+import { analyseBorderBackground, backgroundKeyMode } from "./background-analysis.mjs";
+import { summarizeIssues } from "./diagnostics.mjs";
 
 export const supportedImageExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".avif"]);
 const naturalCompare = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare;
@@ -114,46 +117,31 @@ function throwIfAborted(signal) {
 
 async function probeVideo(filePath, appRoot) {
   const ffmpeg = await resolveBinary("ffmpeg", appRoot);
-  const { stderr } = await runProcess(ffmpeg, [
+  const { stderr, stdout } = await runProcess(ffmpeg, [
     "-hide_banner",
     "-i", filePath,
     "-map", "0:v:0",
-    "-frames:v", "0",
+    "-an", "-c:v", "copy", "-progress", "pipe:1",
     "-f", "null",
     "-",
   ]);
-  const durationMatch = stderr.match(/Duration:\s*(\d+):(\d+):([\d.]+)/i);
-  const videoLine = stderr.split(/\r?\n/).find((line) => /Video:/i.test(line)) || "";
-  const dimensionsMatch = videoLine.match(/(?:^|\D)(\d{2,5})x(\d{2,5})(?:\D|$)/);
-  const fpsMatch = videoLine.match(/([\d.]+)\s+fps\b/i);
-  const duration = durationMatch
-    ? Number(durationMatch[1]) * 3600 + Number(durationMatch[2]) * 60 + Number(durationMatch[3])
-    : 0;
-  const fps = fpsMatch ? Number(fpsMatch[1]) : 0;
-  const estimatedFrames = Math.round(duration * fps);
-  return {
-    width: Number(dimensionsMatch?.[1] || 0),
-    height: Number(dimensionsMatch?.[2] || 0),
-    duration,
-    fps,
-    estimatedFrames,
-  };
+  return parseVideoMetadata(stderr, stdout);
 }
 
 async function makeVideoFramePreview(filePath, time, appRoot) {
   const previewDir = await makeTempWorkspace("chuba-sprite-source-");
   const previewPath = path.join(previewDir, "first-frame.png");
   const ffmpeg = await resolveBinary("ffmpeg", appRoot);
-  const args = ["-hide_banner", "-loglevel", "error", "-y"];
-  if (Number(time) > 0) args.push("-ss", String(time));
-  args.push("-i", filePath,
-    "-map", "0:v:0",
-    "-frames:v", "1",
-    "-update", "1",
-    previewPath,
-  );
-  await runProcess(ffmpeg, args);
-  return previewPath;
+  const requested = Math.max(0, Number(time) || 0);
+  const attempts = [...new Set([requested, Math.max(0, requested - 0.25), Math.max(0, requested - 1), 0])];
+  for (const seek of attempts) {
+    const args = ["-hide_banner", "-loglevel", "error", "-y"];
+    if (seek > 0) args.push("-ss", String(seek));
+    args.push("-i", filePath, "-map", "0:v:0", "-frames:v", "1", "-update", "1", previewPath);
+    await runProcess(ffmpeg, args);
+    if ((await fs.stat(previewPath).catch(() => null))?.size > 0) return previewPath;
+  }
+  throw new Error("Видео не содержит доступных кадров. Проверьте файл или выберите другой источник.");
 }
 
 export async function makeSourcePreview(filePath, kind, appRoot, time = 0) {
@@ -174,32 +162,7 @@ async function makeSourceSamples(filePath, kind, duration, fps, framePaths, appR
 
 async function detectSuggestedKeyMode(filePath) {
   const { data, info } = await sharp(filePath).resize({ width: 320, height: 320, fit: "inside" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  const { width, height, channels } = info;
-  let transparentBorder = 0;
-  let borderCount = 0;
-  const count = (x, y) => { borderCount += 1; if (data[(y * width + x) * channels + 3] < 16) transparentBorder += 1; };
-  for (let x = 0; x < width; x += 1) { count(x, 0); count(x, height - 1); }
-  for (let y = 1; y < height - 1; y += 1) { count(0, y); count(width - 1, y); }
-  if (transparentBorder / Math.max(1, borderCount) > 0.55) return "alpha";
-  const [r, g, b] = borderKeyColor(data, info);
-  // A single-color key can erase parts of a subject when the border contains a scene.
-  // Recommend the bundled local model only when the sampled edge is clearly varied.
-  let opaqueBorder = 0;
-  let matchingBorder = 0;
-  const sample = (x, y) => {
-    const offset = (y * width + x) * channels;
-    if (data[offset + 3] < 16) return;
-    opaqueBorder += 1;
-    if (colorDistance(data, offset, [r, g, b]) <= 42) matchingBorder += 1;
-  };
-  for (let x = 0; x < width; x += 1) { sample(x, 0); sample(x, height - 1); }
-  for (let y = 1; y < height - 1; y += 1) { sample(0, y); sample(width - 1, y); }
-  if (opaqueBorder && matchingBorder / opaqueBorder < 0.62) return "ai";
-  if (Math.max(r, g, b) < 58) return "black";
-  if (Math.min(r, g, b) > 215) return "white";
-  if (g > r * 1.35 && g > b * 1.35) return "green";
-  if (b > r * 1.35 && b > g * 1.2) return "blue";
-  return "auto";
+  return backgroundKeyMode(analyseBorderBackground(data, info));
 }
 
 async function detectFastAIKeyMode(filePath) {
@@ -353,27 +316,7 @@ export async function inspectSource({ kind, paths, appRoot }) {
 }
 
 function borderKeyColor(data, info) {
-  const { width, height, channels } = info;
-  const histogram = new Map();
-  const add = (x, y) => {
-    const offset = (y * width + x) * channels;
-    if (data[offset + 3] < 16) return;
-    const r = data[offset] >> 4;
-    const g = data[offset + 1] >> 4;
-    const b = data[offset + 2] >> 4;
-    const key = `${r},${g},${b}`;
-    histogram.set(key, (histogram.get(key) || 0) + 1);
-  };
-  const stepX = Math.max(1, Math.floor(width / 180));
-  const stepY = Math.max(1, Math.floor(height / 180));
-  for (let x = 0; x < width; x += stepX) { add(x, 0); add(x, height - 1); }
-  for (let y = 0; y < height; y += stepY) { add(0, y); add(width - 1, y); }
-  let winner = "15,15,15";
-  let winnerCount = -1;
-  for (const [key, count] of histogram) {
-    if (count > winnerCount) { winner = key; winnerCount = count; }
-  }
-  return winner.split(",").map((part) => Number(part) * 16 + 8);
+  return analyseBorderBackground(data, info).colour;
 }
 
 function colorDistance(data, offset, key) {
@@ -492,12 +435,14 @@ async function applyCorrectionsToResult(result, inputPath, context = {}) {
 }
 
 export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, blackFeather = 0, context = {}) {
+  if (mode === "auto" && context.maskPrepared) mode = "alpha";
   const fileStats = await fs.stat(inputPath);
   const correctionSignature = JSON.stringify([
     context.fringeCleanup, context.fringeStrength,
     context.edgeDecontaminate,
     context.keyScope,
     Array.isArray(context.keyColor) ? context.keyColor.slice(0, 3) : null,
+    context.autoKeyColor || null,
     mode === "ai" ? context.aiProvider : null,
     mode === "ai" ? context.aiQuality : null,
     mode === "ai" ? context.aiCutoff : null,
@@ -568,7 +513,7 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
   const customKey = Array.isArray(context.keyColor) && context.keyColor.length >= 3
     ? context.keyColor.slice(0, 3).map((value) => clamp(Math.round(Number(value) || 0), 0, 255))
     : null;
-  const keyColor = mode === "custom" && customKey ? customKey : (keys[mode] || borderKeyColor(data, info));
+  const keyColor = mode === "custom" && customKey ? customKey : (keys[mode] || (mode === "auto" && context.autoKeyColor) || borderKeyColor(data, info));
   const threshold = clamp(Number(tolerance) || 28, 1, 100) * (mode === "black" ? 1.8 : 2.6);
   const { width, height, channels } = info;
 
@@ -760,19 +705,18 @@ function makeReport(frames, skipped, keyMode) {
   // index, so the interface never has to parse "Кадр N" back out of the text. The number
   // itself is the source index: it used to be the position inside the filtered list,
   // which disagreed with the frame the user saw once some frames were excluded.
-  const warn = (message, frameIndex = null) => entries.push({ message, frameIndex });
+  const warn = (code, message, frameIndex = null) => entries.push({ code, message, frameIndex });
   frames.forEach((frame) => {
     const number = frame.sourceIndex + 1;
-    if (Math.abs(frame.bounds.width - averageWidth) / Math.max(1, averageWidth) > 0.2) warn(`Кадр ${number}: ширина силуэта отличается более чем на 20%.`, frame.sourceIndex);
-    if (Math.abs(frame.bounds.height - averageHeight) / Math.max(1, averageHeight) > 0.2) warn(`Кадр ${number}: высота силуэта отличается более чем на 20%.`, frame.sourceIndex);
+    if (Math.abs(frame.bounds.width - averageWidth) / Math.max(1, averageWidth) > 0.2) warn("silhouette-width-spread", `Кадр ${number}: ширина силуэта отличается более чем на 20%.`, frame.sourceIndex);
+    if (Math.abs(frame.bounds.height - averageHeight) / Math.max(1, averageHeight) > 0.2) warn("silhouette-height-spread", `Кадр ${number}: высота силуэта отличается более чем на 20%.`, frame.sourceIndex);
     const { bounds, info } = frame;
     if (bounds.left <= 1 || bounds.top <= 1 || bounds.left + bounds.width >= info.width - 1 || bounds.top + bounds.height >= info.height - 1) {
-      warn(`Кадр ${number}: объект касается края исходного изображения.`, frame.sourceIndex);
+      warn("source-edge-touching", `Кадр ${number}: объект касается края исходного изображения.`, frame.sourceIndex);
     }
   });
   const unique = new Map();
   for (const entry of entries) if (!unique.has(entry.message)) unique.set(entry.message, entry);
-  const list = [...unique.values()].slice(0, 100);
   return {
     generatedAt: new Date().toISOString(),
     keyMode,
@@ -787,8 +731,7 @@ function makeReport(frames, skipped, keyMode) {
       minimumHeight: Math.min(...heights),
       maximumHeight: Math.max(...heights),
     },
-    warnings: list.map((entry) => entry.message),
-    frameIssues: list.filter((entry) => entry.frameIndex != null).map((entry) => ({ frameIndex: entry.frameIndex, message: entry.message })),
+    ...summarizeIssues([...unique.values()]),
   };
 }
 
@@ -1071,7 +1014,7 @@ async function renderCacheKey(source, options = {}) {
     ...Object.values(options.frameOverrides || {}),
     ...(options.auxAI?.inpaintMaskPath ? [options.auxAI.inpaintMaskPath] : []),
   ].map((item) => fileSignature(String(item))));
-  return stableStringify({ kind: source.kind, files, options: relevant });
+  return stableStringify({ kind: source.kind, maskPrepared: source.maskPrepared === true, files, options: relevant });
 }
 
 function rememberRender(key, built) {
@@ -1119,6 +1062,18 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
   }
   const extractedAt = performance.now();
   if (!inputFrames.length) throw new Error("Не удалось получить ни одного кадра.");
+  // A video/sheet is one source: do not re-learn its background from a tight crop.
+  // Unrelated imported images keep per-file analysis.
+  let autoKeyColor = null;
+  if ((options.keyMode || "auto") === "auto" && !source.maskPrepared && ["video", "sheet"].includes(source.kind)) {
+    const samples = source.sheetPath ? [source.sheetPath] : [inputFrames[0], inputFrames[Math.floor(inputFrames.length / 2)], inputFrames.at(-1)];
+    const borders = [];
+    for (const sample of new Set(samples)) {
+      const raw = await sharp(sample).resize({ width: 512, height: 512, fit: "inside", withoutEnlargement: true }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      borders.push(analyseBorderBackground(raw.data, raw.info));
+    }
+    if (borders.every(border => border.solid && border.colour.every((value, channel) => Math.abs(value - borders[0].colour[channel]) < 24))) autoKeyColor = borders[0].colour;
+  }
   if (options.frameOverrides && typeof options.frameOverrides === "object") {
     inputFrames = await Promise.all(inputFrames.map(async (framePath, index) => {
       const overridePath = options.frameOverrides[index];
@@ -1157,7 +1112,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
       await fs.writeFile(framePath, filled.buffer);
     }
     let keyed = await keyFrame(framePath, options.keyMode || "auto", options.tolerance ?? 28, options.blackOutline ?? 3, options.blackFeather ?? 0, {
-      appRoot, frameIndex: index, aiCutoff: options.aiCutoff, aiSoftness: options.aiSoftness,
+      appRoot, maskPrepared: source.maskPrepared === true, autoKeyColor, frameIndex: index, aiCutoff: options.aiCutoff, aiSoftness: options.aiSoftness,
       aiEdits: options.aiEdits, keyScope: options.keyScope, fringeCleanup: options.fringeCleanup, fringeStrength: options.fringeStrength,
       edgeDecontaminate: options.edgeDecontaminate, keyColor: options.keyColor, aiProvider: options.aiProvider,
       aiForceModel: options.aiForceModel, aiQuality: options.aiQuality, aiModel: options.aiModel, aiModelDirs: options.aiModelDirs,
@@ -1238,42 +1193,35 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
 
   const keyedAt = performance.now();
   const report = makeReport(prepared, skipped, options.keyMode || "auto");
-  const warnings = [...report.warnings];
-  const frameIssues = [...(report.frameIssues || [])];
-  const addWarning = (message, frameIndex = null) => {
-    if (warnings.includes(message)) return;
-    warnings.push(message);
-    if (frameIndex != null) frameIssues.push({ frameIndex, message });
-  };
+  report.background = { maskPrepared: source.maskPrepared === true, lockedColour: autoKeyColor };
+  let issues = [...report.issues, ...(source.sourceIssues || [])];
+  const addWarning = (code, message, frameIndex = null) => issues.push({ code, message, frameIndex });
   if (source.kind === "sheet") {
-    const drop = /ширина силуэта|высота силуэта|касается края исходного изображения/;
-    for (let index = warnings.length - 1; index >= 0; index -= 1) if (drop.test(warnings[index])) warnings.splice(index, 1);
-    for (let index = frameIssues.length - 1; index >= 0; index -= 1) if (drop.test(frameIssues[index].message)) frameIssues.splice(index, 1);
+    const drop = new Set(["silhouette-width-spread", "silhouette-height-spread", "source-edge-touching"]);
+    issues = issues.filter(issue => !drop.has(issue.code));
   }
   for (const frame of prepared) {
     if ((frame.maskTracking || []).some((tracking) => !tracking.matched || tracking.confidence < 0.18)) {
-      addWarning(`Кадр ${frame.sourceIndex + 1}: умная область не найдена уверенно.`, frame.sourceIndex);
+      addWarning("mask-tracking-uncertain", `Кадр ${frame.sourceIndex + 1}: умная область не найдена уверенно.`, frame.sourceIndex);
     }
     for (const placement of attachmentPlacements[frame.sourceIndex] || []) {
       if ((placement.points || []).some((point) => Number(point.confidence) < 0.22)) {
-        addWarning(`Кадр ${frame.sourceIndex + 1}: низкая уверенность привязки PNG «${placement.title || "элемент"}».`, frame.sourceIndex);
+        addWarning("attachment-tracking-uncertain", `Кадр ${frame.sourceIndex + 1}: низкая уверенность привязки PNG «${placement.title || "элемент"}».`, frame.sourceIndex);
       }
     }
   }
   for (const metrics of aiFrameMetrics) {
     if (metrics.coverage > 0.9) {
-      addWarning(`Кадр ${metrics.sourceIndex + 1}: ИИ-маска занимает ${Math.round(metrics.coverage * 100)}% кадра — фон, скорее всего, не отделился.`, metrics.sourceIndex);
+      addWarning("mask-coverage-high", `Кадр ${metrics.sourceIndex + 1}: ИИ-маска занимает ${Math.round(metrics.coverage * 100)}% кадра — фон, скорее всего, не отделился.`, metrics.sourceIndex);
     } else if (metrics.coverage < 0.005) {
-      addWarning(`Кадр ${metrics.sourceIndex + 1}: ИИ-маска почти пуста — объект не найден.`, metrics.sourceIndex);
+      addWarning("mask-coverage-low", `Кадр ${metrics.sourceIndex + 1}: ИИ-маска почти пуста — объект не найден.`, metrics.sourceIndex);
     }
   }
-  report.warnings = warnings.slice(0, 100);
-  const keptWarnings = new Set(report.warnings);
-  report.frameIssues = frameIssues.filter((issue) => keptWarnings.has(issue.message));
+  Object.assign(report, summarizeIssues(issues));
   onProgress?.({ stage: "normalize", value: 0.55, message: "Выравниваю кадры…" });
   const normalized = await renderFrames(prepared, options);
   const seamWarning = await warnLoopSeam(normalized.rendered, prepared, options);
-  if (seamWarning && !report.warnings.includes(seamWarning)) report.warnings.push(seamWarning);
+  if (seamWarning) Object.assign(report, summarizeIssues([...report.issues, { code: "loop-seam", message: seamWarning }]));
   const normalizedAt = performance.now();
   report.timingsMs = { extract: Math.round(extractedAt - startedAt), tracking: Math.round(trackedAt - extractedAt), key: Math.round(keyedAt - trackedAt), normalize: Math.round(normalizedAt - keyedAt) };
   // Which accelerator actually ran belongs in the report: DirectML and the processor can differ
@@ -2166,8 +2114,7 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
     ? {
       generatedAt: new Date().toISOString(),
       animations: animations.map((animation) => ({ name: animation.name, ...animation.built.report })),
-      warnings: animations.flatMap((animation) => animation.built.report.warnings.map((warning) => `${animation.name}: ${warning}`)).slice(0, 100),
-      frameIssues: animations.flatMap((animation) => (animation.built.report.frameIssues || []).map((issue) => ({ ...issue, animation: animation.name, message: `${animation.name}: ${issue.message}` }))),
+      ...summarizeIssues(animations.flatMap(animation => animation.built.report.issues.map(issue => ({ ...issue, animation: animation.name, message: `${animation.name}: ${issue.message}` })))),
     }
     : { ...primary.built.report, generatedAt: new Date().toISOString() };
   if (atlas.exceeds) report.atlas = { naturalWidth: atlas.naturalWidth, naturalHeight: atlas.naturalHeight, limit: atlas.limit, applied: atlas.applied, note: atlas.note };
@@ -2198,12 +2145,9 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
     for (const issue of report.atlasIssues) {
       if (issue.severity !== "error") continue;
       const message = `Лист: ${issue.message}`;
-      if (!report.warnings.includes(message)) report.warnings.push(message);
-      if (issue.sourceFrameIndex != null) (report.frameIssues ||= []).push({ frameIndex: issue.sourceFrameIndex, message });
+      report.issues.push({ ...issue, frameIndex: issue.sourceFrameIndex ?? null, message });
     }
-    report.warnings = report.warnings.slice(0, 100);
-    const keptIssues = new Set(report.warnings);
-    if (report.frameIssues) report.frameIssues = report.frameIssues.filter((issue) => keptIssues.has(issue.message));
+    Object.assign(report, summarizeIssues(report.issues));
   }
   // The JSON files are written after everything else: a run that fails half-way then never
   // leaves behind a manifest that points at images which were not produced yet.
@@ -2305,6 +2249,8 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
     // Structured companions to the warnings: the same messages with a source frame
     // index, plus the full atlas inspection for the interface.
     frameIssues: report.frameIssues || [],
+    issues: report.issues || [],
+    warningGroups: report.warningGroups || [],
     atlasIssues: report.atlasIssues || null,
     skipped: primary.built.skipped,
     attachmentPlacements: primary.built.attachmentPlacements,

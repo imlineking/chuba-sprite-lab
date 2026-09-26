@@ -1,0 +1,33 @@
+{
+  "model": "ToonOut",
+  "weightsSha256": "8c7f8a0bc24400f4caade76622f75ff22ca1e93e169add9d2b70093e2487fbe5",
+  "weightsBytes": 885046394,
+  "device": "cpu",
+  "inputSize": 1024,
+  "cases": [
+    {
+      "id": "bzzz",
+      "elapsedMs": 14298,
+      "opaqueShare": 0.4711,
+      "colouredPixelsRemoved": 624,
+      "colouredPixels": 431403,
+      "output": "bzzz.png"
+    },
+    {
+      "id": "branch-checker",
+      "elapsedMs": 13902,
+      "opaqueShare": 0.2439,
+      "colouredPixelsRemoved": 20,
+      "colouredPixels": 137790,
+      "output": "branch-checker.png"
+    },
+    {
+      "id": "white-flowers",
+      "elapsedMs": 13434,
+      "opaqueShare": 0.4378,
+      "colouredPixelsRemoved": 1,
+      "colouredPixels": 186810,
+      "output": "white-flowers.png"
+    }
+  ]
+}

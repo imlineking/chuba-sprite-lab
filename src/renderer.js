@@ -218,7 +218,10 @@ function updateHistoryActions() {
 
 function initializeHistory(label = "Начальное состояние") {
   state.history = [captureHistoryState(label)]; state.historyIndex = 0; updateHistoryActions();
+  historyPreviews.set(state.history[0], { result: state.result, dirty: state.resultDirty });
 }
+
+const historyPreviews = new WeakMap();
 
 function pushHistory(label = "Изменение") {
   if (state.historyApplying || !state.source) return;
@@ -227,6 +230,7 @@ function pushHistory(label = "Изменение") {
   if (previous && JSON.stringify({ ...previous, label: "" }) === JSON.stringify({ ...snapshot, label: "" })) return;
   state.history = state.history.slice(0, state.historyIndex + 1);
   state.history.push(snapshot);
+  historyPreviews.set(snapshot, { result: state.result, dirty: state.resultDirty });
   if (state.history.length > 60) state.history.shift();
   state.historyIndex = state.history.length - 1;
   updateHistoryActions(); saveSessionSoon();
@@ -254,18 +258,21 @@ function applyHistorySnapshot(snapshot) {
   updateMaskEditSummary(); renderAttachmentList();
   if (state.result) { buildFilmstrip(state.result); if (typeof refreshPlayer === "function") refreshPlayer(); }
   markPreviewDirty(); scheduleFramePreview(0); updateHistoryActions(); saveSessionSoon();
+  const preview = historyPreviews.get(snapshot);
+  if (preview?.result) { updatePreview(preview.result); state.resultDirty = preview.dirty; updateActionState(); }
   setStatus(snapshot.label || "История применена", "done", 0);
+  savePreferences();
 }
 
 function undoWorkspace() {
-  if (state.busy) return;
+  if (state.busy || state.adviceApplying) return;
   clearTimeout(state.historyTimer); pushHistory("Изменение настроек");
   if (state.historyIndex <= 0) return;
   state.historyIndex -= 1; applyHistorySnapshot(state.history[state.historyIndex]);
 }
 
 function redoWorkspace() {
-  if (state.busy) return;
+  if (state.busy || state.adviceApplying) return;
   clearTimeout(state.historyTimer);
   if (state.historyIndex >= state.history.length - 1) return;
   state.historyIndex += 1; applyHistorySnapshot(state.history[state.historyIndex]);
@@ -632,9 +639,10 @@ function updateActionState() {
   for (const [id, normal, images] of [["metaFrames", "КАДРЫ", "ФАЙЛЫ"], ["metaCell", "ЯЧЕЙКА", "РАЗМЕР"], ["metaAnchor", "ЯКОРЬ", "ПОЛОЖЕНИЕ"], ["metaAtlas", "ЛИСТ", "ФАЙЛ"]]) $(`#${id}`).previousElementSibling.textContent = imageLabels ? images : normal;
   const batchCount = state.source?.kind === "video-batch" ? state.source.paths.length : 0;
   const selectedNames = Object.entries(collectExports()).filter(([, selected]) => selected).map(([name]) => exportNames[name]);
-  $("#appShell").setAttribute("aria-busy", String(state.busy));
-  $(".control-deck").inert = state.busy;
-  $(".tabs").inert = state.busy;
+  $("#appShell").setAttribute("aria-busy", String(state.busy || state.adviceApplying));
+  $(".control-deck").inert = state.busy || state.adviceApplying;
+  $(".tabs").inert = state.busy || state.adviceApplying;
+  $(".preview-deck").inert = Boolean(state.adviceApplying);
   $("#buildPreview").disabled = !hasSource || state.busy || !state.timelineValid;
   $("#buildPreview").title = !hasSource ? "Недоступно: сначала добавьте источник"
     : state.busy ? "Недоступно: обработка уже выполняется"
@@ -942,7 +950,7 @@ function collectOptions() {
     tolerance: Number($("#tolerance").value), blackOutline: Number($("#blackOutline").value), blackFeather: Number($("#blackFeather").value),
     trimStart: isBatch ? 0 : Number($("#trimStart").value) || 0,
     trimEnd: isBatch ? 0 : Number($("#trimEnd").value) || 0,
-    keyMode: state.keyMode, keyScope: $("#keyScope").value, anchor: state.anchor, autoSize: $("#autoSize").checked, autoColumns: $("#autoColumns").checked,
+    keyMode: state.keyMode === "auto" && state.source?.maskPrepared ? "alpha" : state.keyMode, keyScope: $("#keyScope").value, anchor: state.anchor, autoSize: $("#autoSize").checked, autoColumns: $("#autoColumns").checked,
     pixelPerfect: $("#pixelPerfect").checked, removeDuplicates: $("#removeDuplicates").checked,
     outputBackground: $("#whiteOutput").checked ? "white" : "transparent",
     excludedFrames: [...state.excludedFrames], exports: collectExports(),
@@ -1126,56 +1134,34 @@ function selectWarning(delta = 0) {
   if (sourceIndex != null) selectFrame(sourceIndex);
 }
 
-function showWarnings(warnings, frameIssues = []) {
-  const list = $("#warningList");
-  list.replaceChildren();
-  state.warnings = warnings || []; state.warningIndex = 0;
-  state.warningRefs = new Map((frameIssues || [])
-    .filter((issue) => issue && issue.message && issue.frameIndex != null)
-    .map((issue) => [issue.message, issue.frameIndex]));
-  if (!state.warnings.length) { $("#warningBox").classList.add("hidden"); return; }
-  const groups = new Map();
-  state.warnings.forEach((warning) => {
-    const key = warning.includes("Лист:") ? "Проверка атласа"
-      : warning.includes("касается края") ? "Персонаж касается края"
-        : warning.includes("ширина силуэта") ? "Скачок ширины силуэта"
-          : warning.includes("высота силуэта") ? "Скачок высоты силуэта"
-            : warning.includes("уверенность привязки") ? "Проверьте привязку PNG"
-              : warning.includes("умная область") ? "Проверьте удаление объекта" : warning.replace(/Кадр\s+\d+:?\s*/i, "");
-    if (!groups.has(key)) groups.set(key, []);
-    // Groups carry source indexes, so a click needs no further mapping.
-    const sourceIndex = warningSourceIndex(warning);
-    if (sourceIndex != null) groups.get(key).push(sourceIndex);
-  });
-  [...groups.entries()].slice(0, 12).forEach(([label, frameIndexes]) => {
-    const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = frameIndexes.length ? `${label} · ${frameIndexes.length} кадр.` : label;
-    const severe = label.includes("края") || label.includes("привязку") || label.includes("удаление") || label.includes("атласа");
-    button.className = severe ? "severity-error" : "severity-info";
-    button.title = frameIndexes.length ? "Перейти к первому проблемному кадру" : label;
-    if (frameIndexes.length) button.addEventListener("click", () => selectFrame(frameIndexes[0]));
+function showWarnings(warnings, frameIssues = [], warningGroups = []) {
+  const list = $("#warningList"); list.replaceChildren();
+  const groups = warningGroups.length ? warningGroups : (warnings || []).map(message => ({ message, frameIndexes: frameIssues.filter(issue => issue.message === message).map(issue => issue.frameIndex) }));
+  // Keep every source index available through next/previous, even for a large group.
+  state.warnings = groups.flatMap(group => group.frameIndexes?.length ? group.frameIndexes.map(index => `${group.message} · кадр ${index + 1}`) : [group.message]);
+  state.warningIndex = 0; state.warningRefs = new Map();
+  for (const group of groups) for (const index of group.frameIndexes || []) state.warningRefs.set(`${group.message} · кадр ${index + 1}`, index);
+  if (!groups.length) { $("#warningBox").classList.add("hidden"); return; }
+  for (const group of groups) {
+    const item = document.createElement("li"); const button = document.createElement("button");
+    button.type = "button"; button.textContent = group.message;
+    button.className = group.severity === "error" ? "severity-error" : "severity-info";
+    button.title = group.frameIndexes?.length ? "Открыть первый кадр; остальные доступны кнопками предыдущий/следующий" : group.message;
+    if (group.frameIndexes?.length) button.onclick = () => {
+      const text = `${group.message} · кадр ${group.frameIndexes[0] + 1}`;
+      state.warningIndex = state.warnings.indexOf(text);
+      $("#warningPosition").textContent = `${state.warningIndex + 1} / ${state.warnings.length}`;
+      selectFrame(group.frameIndexes[0]);
+    };
     item.append(button); list.append(item);
-  });
-  // Offer the fix next to the problem: the silhouette comparison used to be a separate
-  // collapsed block that had to be remembered and opened by hand.
-  if (state.warnings.some((warning) => warning.includes("ширина силуэта") || warning.includes("высота силуэта"))) {
-    const item = document.createElement("li");
-    const action = document.createElement("button");
-    action.type = "button";
-    action.textContent = "Согласовать размер кадров";
-    action.className = "severity-info";
-    action.title = "Открыть анализ силуэтов и предложенный масштаб";
-    action.addEventListener("click", () => {
-      const panel = $("#consistencyPanel");
-      if (panel) panel.open = true;
-      panel?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      $("#analyzeFrameSizes").click();
-    });
-    item.append(action); list.append(item);
   }
-  $("#warningCount").textContent = String(state.warnings.length);
+  if (!$("#pixelPerfect").checked && groups.some(group => ["silhouette-width-spread", "silhouette-height-spread"].includes(group.code))) {
+    const item = document.createElement("li"); const button = document.createElement("button");
+    button.textContent = "Проверить размер кадров"; button.className = "severity-info";
+    button.onclick = () => { const panel = $("#consistencyPanel"); if (panel) panel.open = true; panel?.scrollIntoView({ block: "nearest" }); $("#analyzeFrameSizes").click(); };
+    item.append(button); list.append(item);
+  }
+  $("#warningCount").textContent = `${groups.length} групп · ${frameIssues.length} проверок кадров`;
   $("#warningPosition").textContent = `1 / ${state.warnings.length}`;
   $("#warningBox").classList.remove("hidden");
 }
@@ -1862,7 +1848,7 @@ function updatePreview(result) {
   if (typeof renderAtlasStatus === "function") renderAtlasStatus(result);
   if (typeof renderAtlasInspection === "function") renderAtlasInspection(result);
   if (typeof loadPlayerFrames === "function") loadPlayerFrames(result);
-  showWarnings(result.warnings, result.frameIssues); buildFilmstrip(result);
+  showWarnings(result.warnings, result.frameIssues, result.warningGroups); buildFilmstrip(result);
   renderAttachmentList();
   $("#resultPreviewTabs").classList.remove("hidden");
   $("#depthPreviewTab").classList.toggle("hidden", !result.depthUrls?.length);

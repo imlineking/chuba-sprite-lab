@@ -21,3 +21,7 @@ header button { border:0; background:none; color:var(--muted); padding:3px 5px; 
 .scenario .group { grid-template-columns: 1fr 1fr; border: 0; padding: 10px 0 0; align-items: stretch; }
 .scenario .group button { min-height: 46px; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.4; }
 .scenario .group button:first-child { background: var(--ink); color: var(--paper); }
+.assistant-error { margin: 0; padding: 12px; border: 1px solid #be5364; border-radius: 10px; font-size: 12px; line-height: 1.5; }
+.planner-control { display:grid; gap:8px; padding:10px 0; font-size:12px; }
+.planner-control select { min-height:38px; border:1px solid var(--line); border-radius:8px; padding:8px; background:var(--paper); color:var(--ink); font:inherit; }
+.planner-control small { color:var(--muted); line-height:1.5; }

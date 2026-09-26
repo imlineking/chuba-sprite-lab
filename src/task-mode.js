@@ -252,7 +252,7 @@
       primary.textContent = "Открыть готовый атлас и JSON"; primaryAction = () => window.spriteLab.revealOutput(state.lastRevealPath);
       secondary.textContent = "Уточнить рамки вручную"; secondary.classList.remove("hidden"); secondaryAction = () => taskSet(selected, "manual");
     } else if (selected === "clipping") {
-      const edgeIssue = result?.frameIssues?.find((issue) => /касается края исходного изображения|обрезан|выходит за пределы/i.test(issue.message || ""));
+      const edgeIssue = result?.frameIssues?.find((issue) => ["source-edge-touching", "frame-outside-page", "frame-trim-box", "hitbox-outside-cell"].includes(issue.code));
       if (!source) {
         guide.textContent = "Откройте лист или серию кадров. Помощник проверит край и проведёт к исправлению. Пиксели, которых нет в исходнике, восстановить простой сменой рамки нельзя.";
         primary.textContent = "1 · Открыть спрайт-лист";
@@ -566,6 +566,7 @@
     if (action) taskQuick(action.dataset.quickTask);
   });
   window.taskRestore = name => taskSet(name, "manual");
+  window.taskCurrent = () => selected;
   window.taskChoose = (name, nextApproach = "auto") => {
     taskSet(name, nextApproach);
     if (name === "edit" && state.source?.kind === "frames" && !state.busy) {

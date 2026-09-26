@@ -8,7 +8,7 @@
   function render() {
     document.documentElement.dataset.theme = state.theme || 'dark';
     document.querySelector('#badge').textContent = state.suggestions?.length ? String(state.suggestions.length) : '';
-    message.textContent = state.loading ? 'Подождите, идёт загрузка' + '.'.repeat(dots) : state.busy ? 'Выполняю задачу' + '.'.repeat(dots) : state.greeting;
+    message.textContent = state.loading ? 'Подождите, идёт загрузка' + '.'.repeat(dots) : state.busy ? (state.workLabel || 'Выполняю задачу') + '.'.repeat(dots) : state.greeting;
     choices.replaceChildren();
     if (state.loading) return;
     const button = (title, detail, callback) => {
@@ -16,6 +16,8 @@
       if (detail) { const small=document.createElement('small'); small.textContent=detail; element.append(small); }
       element.addEventListener('click',callback); choices.append(element);
     };
+    if (state.error) { const error = document.createElement('p'); error.className = 'assistant-error'; error.textContent = state.error; choices.append(error); button('Повторить анализ', 'Операция не выполнена', () => command('refresh', 'refresh')); }
+    if (state.undoAdvice) button('Отменить совет', state.undoAdvice + ' · Ctrl+Z', () => command('undo-advice', 'undo'));
     (state.scenarios || []).slice(0,3).forEach(item => {
       const row = document.createElement('div'); row.className = 'scenario';
       const title = document.createElement('strong'); title.textContent = item.title;
@@ -29,6 +31,17 @@
     });
     (state.suggestions || []).slice(0,2).forEach(item => button(item.title,item.why,() => command('suggestion',item.id)));
     if (state.panelOpen) {
+      const models = document.createElement('label'); models.className = 'planner-control'; models.textContent = 'Планировщик · эксперимент';
+      const select = document.createElement('select'); select.setAttribute('aria-label', 'Планировщик копилота');
+      for (const [id, title] of [['rules', 'Лёгкий · без модели'], ['qwen', 'Qwen 3 VL · 4B'], ['gemma', 'Gemma 3 · 4B']]) {
+        const option = document.createElement('option'); option.value = id; option.textContent = title;
+        if (id !== 'rules' && state.plannerStatus && !state.plannerStatus.models?.find(model => model.id === id)?.installed) { option.textContent += ' · не установлена'; option.disabled = true; }
+        select.append(option);
+      }
+      select.value = state.planner || 'rules'; select.disabled = Boolean(state.busy); select.onchange = () => command('planner', select.value);
+      const info = document.createElement('small'); info.textContent = `${state.plannerInfo || ''} · Для Qwen/Gemma нужен запущенный Ollama и установленная модель; интернет не требуется.`;
+      models.append(select, info); choices.append(models);
+      button('Сравнить три плана', 'Текущие файлы · без применения правок', () => command('compare-planners', 'compare'));
       [['clipping','Исправить обрезание'],['cutout','Вырезать объект'],['atlas','Собрать атлас']].forEach(([id,title])=>button(title,'Перейти к нужному сценарию',()=>command('quick',id)));
       for (const task of state.tasks || []) {
         const row=document.createElement('div'); row.className='group'; const title=document.createElement('span'); title.textContent=task.title; row.append(title);
@@ -40,7 +53,7 @@
     } else button('Выбрать задачу','Автоматический или ручной сценарий',()=>action({action:'toggle'}));
   }
   api.onState(next=>{ state=next; render(); });
-  setInterval(()=>{ dotPhase=(dotPhase+1)%4; dots=[1,2,3,2][dotPhase]; if(state.loading || state.busy) message.textContent=(state.loading?'Подождите, идёт загрузка':'Выполняю задачу')+'.'.repeat(dots); },450);
+  setInterval(()=>{ dotPhase=(dotPhase+1)%4; dots=[1,2,3,2][dotPhase]; if(state.loading || state.busy) message.textContent=(state.loading?'Подождите, идёт загрузка':state.workLabel || 'Выполняю задачу')+'.'.repeat(dots); },450);
   document.querySelector('#close').onclick=()=>action({action:'dismiss'});
   document.querySelector('#hide').onclick=()=>action({action:'hide'});
   for(const name of ['dragstart','drop','dragover']) document.addEventListener(name,event=>{event.preventDefault();event.stopPropagation();});

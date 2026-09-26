@@ -8,19 +8,13 @@
 
 // Steps the interface knows how to apply. Anything outside this list is ignored, so a
 // future model cannot invent an action the application cannot validate.
+import { hasIssue } from "./diagnostics.mjs";
+
 export const stepOperations = [
-  "option", "check", "keyMode", "anchor", "loopMode", "tab", "rebuild", "openConsistency", "chooseOutput", "openModels",
+  "option", "check", "keyMode", "anchor", "loopMode", "tab", "rebuild", "openConsistency", "openLoopEditor", "chooseOutput", "openModels",
 ];
 
 const severityRank = { warn: 0, info: 1 };
-
-function hasFrameIssue(built, pattern) {
-  return (built?.frameIssues || []).some((issue) => pattern.test(issue?.message || ""));
-}
-
-function hasWarning(built, pattern) {
-  return (built?.warnings || []).some((warning) => pattern.test(String(warning)));
-}
 
 // The task picker uses the same measured source data as auto mode. A score orders
 // plausible workflows; it never claims to know which object the user wants removed.
@@ -31,9 +25,9 @@ export function planTaskScenarios(snapshot = {}) {
   const ui = snapshot.ui || {};
   const measured = snapshot.aiPlan?.measurements || {};
   const count = Number(source.frameCount || built.frameCount || source.estimatedFrames || 0);
-  const opaque = Number(source.opaqueImages || 0) > 0 || measured.borderOpaqueRatio > 0.72;
-  const inconsistent = Boolean(source.mixedSizes) || hasFrameIssue(built, /ширина силуэта|высота силуэта/);
-  const clipped = hasFrameIssue(built, /касается края исходного изображения|обрезан|выходит за пределы/i)
+  const opaque = !source.maskPrepared && (Number(source.opaqueImages || 0) > 0 || measured.borderOpaqueRatio > 0.72);
+  const inconsistent = Boolean(source.mixedSizes) || hasIssue(built, "silhouette-width-spread", "silhouette-height-spread");
+  const clipped = hasIssue(built, "source-edge-touching")
     || (built.atlasIssues || []).some((issue) => /frame-outside|frame-trim-box|hitbox-outside/.test(issue?.code || ""));
   const oneImage = source.kind === "frames" && count === 1;
   const photoLike = measured.gradientShare > 0.16 && measured.flatShare < 0.35;
@@ -57,7 +51,7 @@ export function planTaskScenarios(snapshot = {}) {
     if (opaque) offer("cutout", 100, "Один непрозрачный JPG, PNG или WebP: можно отделить главный объект и сохранить прозрачный PNG.");
     offer("stylize", photoLike ? 95 : 86, "Одно изображение можно перевести в пиксель-арт с подобранной палитрой и размером пикселя.");
     if (photoLike) offer("depth", 78, "Фото содержит плавные переходы; отдельная карта глубины пригодится для параллакса.");
-    if (smallDrawing) offer("upscale", 82, "Небольшой рисунок можно увеличить в 4 раза моделью Real-ESRGAN.");
+    if (smallDrawing && !snapshot.options?.pixelPerfect) offer("upscale", 82, "Небольшой рисунок можно увеличить в 4 раза моделью Real-ESRGAN.");
     if (Math.max(Number(measured.width) || 0, Number(measured.height) || 0) >= 512) {
       offer("layout", 64, "Если файл на самом деле спрайт-лист, можно найти его объекты и разнести по сетке.");
     }
@@ -73,10 +67,12 @@ export function planTaskScenarios(snapshot = {}) {
     if (opaque) offer("background", 84, "Часть изображений непрозрачна; стоит проверить удаление фона.");
   }
   if (inconsistent && source.kind !== "frames") offer("edit", 96, "Проверьте контуры и размеры выбранного изображения перед экспортом.");
-  if ((inconsistent && source.kind !== "frames") || (source.kind === "sheet" && count > 1)) offer("match", inconsistent ? 97 : 66, "Выберите опорный кадр и точку привязки; помощник предложит масштаб для похожих контуров.");
+  if (!snapshot.options?.pixelPerfect && ((inconsistent && source.kind !== "frames") || (source.kind === "sheet" && count > 1))) offer("match", inconsistent ? 97 : 66, "Выберите опорный кадр и точку привязки; помощник предложит масштаб для похожих контуров.");
   if (clipped) offer("clipping", 115, source.kind === "sheet"
     ? "На листе найден кадр у края: проверьте полный контур и пересоберите ячейки с запасом."
     : "Кадр касается края исходника: проверьте его и при необходимости исправьте вручную.");
+  const requested = candidates.find(candidate => candidate.task === ui.goal);
+  if (requested) requested.score = 1000; // Explicit intent always beats an inferred scenario.
   return candidates.sort((a, b) => b.score - a.score).slice(0, 8).map(({ task, why }, index) => ({ task, why, recommended: index === 0 }));
 }
 
@@ -117,8 +113,8 @@ export function planSuggestions(snapshot = {}) {
       severity: "warn",
       title: "Подогнать лист под лимит",
       why: `Лист ${atlas.naturalWidth}×${atlas.naturalHeight} больше лимита ${atlas.limit} px: часть видеокарт и движков такой атлас не загрузит.`,
-      effect: `Уменьшит кадры до лимита ${atlas.limit} px.`,
-      steps: [{ op: "option", control: "atlasOverflow", value: "scale" }, { op: "rebuild" }],
+      effect: options.pixelPerfect ? "Разделит атлас на страницы, сохранив исходные пиксели." : `Уменьшит кадры до лимита ${atlas.limit} px.`,
+      steps: [{ op: "option", control: "atlasOverflow", value: options.pixelPerfect ? "split" : "scale" }, { op: "rebuild" }],
     });
   }
 
@@ -143,7 +139,7 @@ export function planSuggestions(snapshot = {}) {
     });
   }
 
-  if (hasFrameIssue(built, /ширина силуэта|высота силуэта/)) {
+  if (hasIssue(built, "silhouette-width-spread", "silhouette-height-spread") && !options.pixelPerfect) {
     add({
       id: "size-spread",
       title: "Согласовать размер кадров",
@@ -153,14 +149,14 @@ export function planSuggestions(snapshot = {}) {
     });
   }
 
-  if (hasWarning(built, /скачок силуэта/)) {
+  if (hasIssue(built, "loop-seam")) {
     add({
       id: "loop-seam",
       severity: "warn",
-      title: "Сгладить стык цикла",
+      title: "Проверить стык цикла",
       why: "Соседние кадры на стыке цикла заметно отличаются — при повторе будет рывок.",
-      effect: "Переключит цикл на «туда-обратно», где стык не читается.",
-      steps: [{ op: "loopMode", value: "pingpong" }, { op: "rebuild" }],
+      effect: "Покажет тайминг и границы цикла. Для ходьбы обратное проигрывание обычно неверно; режим цикла не меняется.",
+      steps: [{ op: "openLoopEditor" }],
     });
   }
 
@@ -196,7 +192,7 @@ export function planSuggestions(snapshot = {}) {
     });
   }
 
-  if (hasWarning(built, /умная область/)) {
+  if (hasIssue(built, "mask-tracking-uncertain")) {
     add({
       id: "mask-uncertain",
       severity: "warn",
@@ -220,6 +216,7 @@ export function planSuggestions(snapshot = {}) {
   const aiControls = { upscale: "auxEsrgan", interpolate: "auxRife", depth: "auxDepth" };
   for (const step of snapshot.aiPlan?.steps || []) {
     if (!step.modelId || !["upscale", "interpolate", "depth", "inpaint"].includes(step.stage)) continue;
+    if (options.pixelPerfect && ["upscale", "interpolate"].includes(step.stage)) continue;
     const control = aiControls[step.stage];
     if (step.status === "ready" && control && !options.auxAI?.[{ upscale: "upscale", interpolate: "interpolate", depth: "depth" }[step.stage]]) {
       add({

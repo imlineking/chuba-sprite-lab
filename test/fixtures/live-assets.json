@@ -1,0 +1,28 @@
+[
+  {
+    "id": "pig-original",
+    "kind": "video",
+    "file": "new assets/video-source/pig artist-original.mp4",
+    "sha256": "c1630bffea567c9b370fe61fb6ec15cf12a8a62afba3b52afb4b27eee170f032"
+  },
+  {
+    "id": "pig-game",
+    "kind": "video",
+    "file": "public/images/video/pig artist.mp4",
+    "sha256": "717948d253d55b5f234c82f53cb5982068b049f58eeede61d5e7b2cbf50f69a3"
+  },
+  {
+    "id": "squirrel",
+    "kind": "sheet",
+    "objects": 5,
+    "file": "public/images/backgrounds/wildlife/squirrel-red-sheet-v1.png",
+    "sha256": "5dcf77b0dc4024fb8243975a3aa423a4ac438260e7046946ea385458984f6d98"
+  },
+  {
+    "id": "yarn",
+    "kind": "sheet",
+    "objects": 6,
+    "file": "public/images/monya-dream/props/yarn-ball-roll-and-guide-6-frame-review.png",
+    "sha256": "7784402ce0edca28e25d71bb568eab7aa87c624e61518273efb67682abb409f4"
+  }
+]

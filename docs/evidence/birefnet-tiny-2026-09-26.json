@@ -1,0 +1,56 @@
+[
+  {
+    "id": "bzzz",
+    "model": "birefnet-tiny",
+    "elapsedMs": 9720,
+    "ai": {
+      "provider": "cpu",
+      "model": "birefnet-tiny",
+      "modelName": "BiRefNet tiny",
+      "inputSize": 1024,
+      "quality": "fast",
+      "tiles": 1,
+      "tta": false,
+      "autoThreshold": true,
+      "threshold": 0.35,
+      "coverage": 0.472361741960707
+    },
+    "file": "bzzz-birefnet-tiny.png"
+  },
+  {
+    "id": "branch-checker",
+    "model": "birefnet-tiny",
+    "elapsedMs": 7406,
+    "ai": {
+      "provider": "cpu",
+      "model": "birefnet-tiny",
+      "modelName": "BiRefNet tiny",
+      "inputSize": 1024,
+      "quality": "fast",
+      "tiles": 1,
+      "tta": false,
+      "autoThreshold": true,
+      "threshold": 0.55,
+      "coverage": 0.295549491482172
+    },
+    "file": "branch-checker-birefnet-tiny.png"
+  },
+  {
+    "id": "white-flowers",
+    "model": "birefnet-tiny",
+    "elapsedMs": 5701,
+    "ai": {
+      "provider": "cpu",
+      "model": "birefnet-tiny",
+      "modelName": "BiRefNet tiny",
+      "inputSize": 1024,
+      "quality": "fast",
+      "tiles": 1,
+      "tta": false,
+      "autoThreshold": true,
+      "threshold": 0.55,
+      "coverage": 0.4510038842931382
+    },
+    "file": "white-flowers-birefnet-tiny.png"
+  }
+]
