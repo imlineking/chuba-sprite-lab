@@ -1,15 +1,8 @@
 // Local AI models the tool can use, and the rules for getting them.
 //
-// Two facts shape this list. First, the application ships with the game, so only weights that allow
-// commercial use are offered, and the licence is part of every entry. Second, the weights are far too
-// large to bundle: u2netp (the small matting model that is included) is 4.5 MB, while the rest are
-// between 11 MB and 1.1 GB. They are therefore downloaded on demand, verified, and validated by
-// actually running them — a file that loads and produces a mask is the only proof that counts.
-//
-// The download URLs point at the rembg "Models" release, which is where these ONNX conversions are
-// published, and every size below was read from that release's own metadata. Where the release also
-// publishes a SHA-256 digest, it is recorded; where it does not, the size is checked and the hash is
-// recorded on the machine after the first download, marked as "recorded here" rather than "published".
+// Portable builds include U²-Net small and the four auxiliary models. Other segmentation
+// models are optional downloads. Source URLs, exact sizes and available digests are recorded
+// per export; loading and running a file is checked separately from downloading its bytes.
 
 import { createHash } from "node:crypto";
 import { loadAuxSession, validateAuxSession } from "./aux-ai.mjs";
@@ -20,6 +13,7 @@ export const downloadHosts = [  "github.com",
   "huggingface.co",
   "cdn-lfs.huggingface.co",
   "cdn-lfs-us-1.huggingface.co",
+  "cdn.hf.co",
   "xethub.hf.co",
 ];
 
@@ -246,6 +240,7 @@ export const aiModelCatalog = [
   },
   {
     id: "lama",
+    bundled: true,
     name: "LaMa",
     family: "lama",
     tasks: ["inpaint"],
@@ -258,10 +253,11 @@ export const aiModelCatalog = [
     licence: { name: "Apache-2.0", commercial: true },
     speed: "medium",
     quality: "best",
-    note: "Дорисовывает область, нарисованную белым на маске. Исходный кадр сохраняется; модель загружается по запросу.",
+    note: "В комплекте, работает офлайн. Дорисовывает область, нарисованную белым на маске; исходный кадр сохраняется.",
   },
   {
     id: "rife",
+    bundled: true,
     name: "RIFE",
     family: "rife",
     tasks: ["interpolate"],
@@ -278,6 +274,7 @@ export const aiModelCatalog = [
   },
   {
     id: "real-esrgan",
+    bundled: true,
     name: "Real-ESRGAN anime 6B",
     family: "esrgan",
     tasks: ["upscale"],
@@ -294,6 +291,7 @@ export const aiModelCatalog = [
   },
   {
     id: "depth-anything-v2",
+    bundled: true,
     name: "Depth Anything V2 small",
     family: "depth",
     tasks: ["depth"],

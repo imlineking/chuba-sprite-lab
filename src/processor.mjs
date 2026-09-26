@@ -15,7 +15,7 @@ import { compositeAttachments, trackAttachmentPlacements } from "./attachment-tr
 import { inspectAtlas } from "./atlas-inspector.mjs";
 import { findWhiteRemainders } from "./white-remainders.mjs";
 import { makeTempWorkspace, finishQuickPreview } from "./temp-workspace.mjs";
-import { modelById } from "./ai-models.mjs";
+import { resolveAuxModel } from "./model-paths.mjs";
 import { loadAuxSession, inpaintLama, interpolateRife, upscaleEsrgan, estimateDepth } from "./aux-ai.mjs";
 
 export const supportedImageExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".avif"]);
@@ -54,11 +54,8 @@ async function exists(candidate) {
 }
 
 const auxiliarySessions = new Map();
-async function auxiliarySession(id, options) {
-  const model = modelById(id);
-  const candidates = (options.aiModelDirs || []).map((dir) => path.join(dir, model.file));
-  const file = (await Promise.all(candidates.map(async (candidate) => await exists(candidate) ? candidate : null))).find(Boolean);
-  if (!file) throw new Error(`Модель ${model.name} не установлена. Откройте «Модели ИИ» и скачайте её.`);
+async function auxiliarySession(id, options, appRoot) {
+  const file = await resolveAuxModel(id, { ...options, appRoot });
   if (!auxiliarySessions.has(file)) auxiliarySessions.set(file, loadAuxSession(file));
   return auxiliarySessions.get(file);
 }
@@ -1142,9 +1139,9 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
   const trackedAt = performance.now();
 
   const auxiliary = options.auxAI || {};
-  const lama = auxiliary.inpaintMaskPath ? await auxiliarySession("lama", options) : null;
-  const esrgan = auxiliary.upscale ? await auxiliarySession("real-esrgan", options) : null;
-  const rife = auxiliary.interpolate ? await auxiliarySession("rife", options) : null;
+  const lama = auxiliary.inpaintMaskPath ? await auxiliarySession("lama", options, appRoot) : null;
+  const esrgan = auxiliary.upscale ? await auxiliarySession("real-esrgan", options, appRoot) : null;
+  const rife = auxiliary.interpolate ? await auxiliarySession("rife", options, appRoot) : null;
   if (rife && Number(options.fps || 8) > 30) throw new Error("RIFE: задайте FPS не выше 30 до интерполяции (после неё частота удвоится).");
 
   const prepared = [];
@@ -1999,7 +1996,7 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
     }
     animation.depthFiles = [];
     if (animation.options.auxAI?.depth) {
-      const depth = await auxiliarySession("depth-anything-v2", animation.options);
+      const depth = await auxiliarySession("depth-anything-v2", animation.options, appRoot);
       for (let index = 0; index < animation.imagePaths.length; index += 1) {
         throwIfAborted(signal);
         const map = await estimateDepth(depth, animation.imagePaths[index]);

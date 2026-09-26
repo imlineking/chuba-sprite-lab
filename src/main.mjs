@@ -14,6 +14,7 @@ import { matchSheetFrameNames, readSheetFrameRects } from "./sheet-metadata.mjs"
 import { describePaths as describePathsFrom, describeSpriteSheet as describeSpriteSheetFrom, describeVideoBatch as describeVideoBatchFrom } from "./source-describe.mjs";
 import { assertGitHubDownloadUrl, compareVersions, parseSha256 } from "./update-utils.mjs";
 import { resolveAIModel, segmentSubject } from "./ai-segmentation.mjs";
+import { resolveAuxModel } from "./model-paths.mjs";
 import { finishSheetImport, makeTempWorkspace, pruneStaleTempWorkspaces } from "./temp-workspace.mjs";
 import { planSuggestions, planTaskScenarios } from "./copilot-rules.mjs";
 import { readProfile } from "./build-profile.mjs";
@@ -21,6 +22,12 @@ import { formatFeedbackDraft } from "./feedback.mjs";
 import * as editorSession from "./editor-session.mjs";
 import * as autoPilot from "./auto-pilot.mjs";
 import { assertDownloadUrl, canDownload, modelById, modelFiles, rejectedModels, validateModelFile, verificationOf } from "./ai-models.mjs";
+
+// A Windows GUI process can outlive the shell's output pipe. Logging must not
+// turn a completed diagnostic into an uncaught exception dialog.
+for (const stream of [process.stdout, process.stderr]) {
+  stream?.on("error", (error) => { if (error.code !== "EPIPE") throw error; });
+}
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, "..");
@@ -33,6 +40,14 @@ const startupProbePath = process.env.CHUBA_SPRITE_STARTUP_PROBE || "";
 function argumentValue(name) {
   const index = process.argv.indexOf(name);
   return index >= 0 && process.argv[index + 1] ? process.argv[index + 1] : "";
+}
+
+// An isolated diagnostic profile proves the portable build does not rely on models
+// previously downloaded by the developer. Normal launches keep their existing profile.
+if (selfTestMode && argumentValue("--self-test-user-data")) {
+  const diagnosticProfile = path.resolve(argumentValue("--self-test-user-data"));
+  fsSync.mkdirSync(diagnosticProfile, { recursive: true });
+  app.setPath("userData", diagnosticProfile);
 }
 
 // Screenshot mode renders the window offscreen and writes a PNG, so the interface can be
@@ -1232,6 +1247,18 @@ async function runSelfTest() {
       console.log(`ИИ-модель: ${report.model || "u2netp"}, вход ${report.modelInput || "—"}, ускоритель ${report.provider}`);
     } finally {
       await fs.rm(probeDir, { recursive: true, force: true });
+    }
+    if (process.argv.includes("--self-test-all-models")) {
+      const status = await modelsStatus();
+      for (const id of ["lama", "rife", "real-esrgan", "depth-anything-v2"]) {
+        const model = modelById(id);
+        const filePath = await resolveAuxModel(id, { appRoot, aiModelDirs: [modelsDirectory()] });
+        const validation = await validateModelFile(filePath, { family: model.family });
+        const installed = status.entries.find((entry) => entry.id === id);
+        report.checks.push({ name: id, path: filePath, bundled: installed.bundledOnDisk, ...validation });
+        console.log(`${model.name}: inference OK (${validation.ms} ms)`);
+      }
+      report.userData = app.getPath("userData");
     }
     report.ok = true;
     report.finishedAt = new Date().toISOString();

@@ -26,6 +26,8 @@
       "src/**/*",
       "assets/**/*",
       "package.json",
+      "THIRD_PARTY_NOTICES.md",
+      "LICENSE",
       "!node_modules/onnxruntime-node/bin/napi-v6/darwin/**/*",
       "!node_modules/onnxruntime-node/bin/napi-v6/linux/**/*",
       "!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**/*"
@@ -36,8 +38,9 @@
         "to": "vendor/ffmpeg.exe"
       },
       {
-        "from": "models/u2netp.onnx",
-        "to": "models/u2netp.onnx"
+        "from": "models",
+        "to": "models",
+        "filter": ["u2netp.onnx", "lama_fp32.onnx", "RIFE_fp32_timestep.onnx", "realesrgan-x4plus.onnx", "depth-anything-v2-small.onnx", "bundled-models.json"]
       }
     ],
     "win": {
@@ -62,6 +65,7 @@
     "start": "electron .",
     "prepare:vendor": "node scripts/prepare-vendor.mjs",
     "prepare:ai": "node scripts/prepare-ai-model.mjs",
+    "prepare:portable-models": "node scripts/prepare-portable-models.mjs",
     "test": "node --test --test-concurrency=1 test/*.test.mjs",
     "lint": "eslint .",
     "cli": "node scripts/cli.mjs",

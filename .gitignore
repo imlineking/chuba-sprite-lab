@@ -4,6 +4,7 @@ release/
 vendor/*.exe
 models/*.onnx
 models/*.download
+models/bundled-models.json
 *.log
 *.tmp
 .DS_Store
