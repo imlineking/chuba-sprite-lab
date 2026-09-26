@@ -10,7 +10,7 @@ import { test } from "node:test";
 const root = path.resolve(import.meta.dirname, "..");
 const read = (file) => readFileSync(path.join(root, file), "utf8");
 
-const rendererFiles = ["i18n.js", "renderer.js", "studio.js", "sheet-editor.js", "frame-consistency.js", "copilot.js", "sprite-editor.js", "auto-pilot.js", "task-mode.js", "feedback.js"];
+const rendererFiles = ["i18n.js", "renderer.js", "studio.js", "sheet-editor.js", "frame-consistency.js", "copilot.js", "sprite-editor.js", "auto-pilot.js", "task-mode.js", "feedback.js", "mask-region-ui.js", "image-workspace.js"];
 const rendererSource = rendererFiles.map((file) => read(path.join("src", file))).join("\n");
 const preloadSource = read("src/preload.cjs");
 const htmlSource = read("src/index.html");

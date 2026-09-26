@@ -1097,7 +1097,8 @@ ipcMain.handle("sprites:image-batch", async (event, request = {}) => {
   if (activeJob) throw new Error("Обработка уже выполняется.");
   activeJob = { controller: new AbortController(), stopAfterCurrent: false };
   try {
-    const result = await processImageBatch({ ...request, appRoot, options: { ...(request.options || {}), aiModelDirs: [modelsDirectory()] }, signal: activeJob.controller.signal, shouldStop: () => Boolean(activeJob?.stopAfterCurrent), onProgress: progress => { mainWindow?.setProgressBar(progress.value); mainWindow?.webContents.send("sprites:progress", progress); } });
+    const installed = request.automatic ? installedModelIds(await modelsStatus()) : [];
+    const result = await processImageBatch({ ...request, installed, appRoot, options: { ...(request.options || {}), aiModelDirs: [modelsDirectory()] }, signal: activeJob.controller.signal, shouldStop: () => Boolean(activeJob?.stopAfterCurrent), onProgress: progress => { mainWindow?.setProgressBar(progress.value); mainWindow?.webContents.send("sprites:progress", progress); } });
     notifyFinished(result); return result;
   } finally { activeJob = null; mainWindow?.setProgressBar(-1); }
 });
@@ -1276,6 +1277,10 @@ async function runDesktopProbe() {
     await new Promise(resolve => setTimeout(resolve, 150));
     if (await mainWindow.webContents.executeJavaScript("document.body.dataset.task") !== "clipping") throw new Error("Команда помощника не открыла нужный сценарий.");
     report.checks.push({ name: "guided-task-command", ok: true });
+    mainWindow.focus();
+    companion.raise();
+    if (!companion.pet.isAlwaysOnTop() || !companion.bubble.isAlwaysOnTop()) throw new Error("Окна помощника потеряли режим поверх окон.");
+    report.checks.push({ name: "topmost-after-main-focus", ok: true });
     companion.state.loading = true; companion.send();
     const loadingA = await companion.bubble.webContents.executeJavaScript("document.querySelector('#message').textContent");
     await new Promise(resolve => setTimeout(resolve, 550));
@@ -1283,6 +1288,13 @@ async function runDesktopProbe() {
     if (!loadingB.startsWith("Подождите, идёт загрузка") || loadingA === loadingB) throw new Error("Облако загрузки не анимируется.");
     report.checks.push({ name: "animated-loading", ok: true });
     companion.state.loading = false;
+    const probeSource = { kind: "frames", paths: [path.join(appRoot, "assets", "mascot.png"), path.join(appRoot, "assets", "hanuman-media-logo.png")] };
+    await mainWindow.webContents.executeJavaScript(`(async()=>{setSource(await window.spriteLab.restoreProject({source:${JSON.stringify(probeSource)}}));await refreshCopilot();})()`);
+    await new Promise(resolve => setTimeout(resolve, 250));
+    const scenarios = await companion.bubble.webContents.executeJavaScript("[...document.querySelectorAll('.scenario')].map(row=>({title:row.querySelector('strong').textContent,actions:row.querySelectorAll('button').length}))");
+    if (scenarios.length !== 3 || scenarios.some(item => !item.title || item.actions !== 2) || !scenarios[0].title.includes("изображения")) throw new Error("Облако не показывает три сценария с авто и ручным действием.");
+    report.checks.push({ name: "image-scenarios-in-desktop-bubble", ok: true, scenarios });
+    if (!companion.bubble.isVisible()) throw new Error("Облако не появилось после загрузки файлов.");
     companion.show(true);
     await new Promise(resolve => setTimeout(resolve, 600));
     const image = await companion.bubble.webContents.capturePage();

@@ -8,7 +8,7 @@
   function render() {
     document.documentElement.dataset.theme = state.theme || 'dark';
     document.querySelector('#badge').textContent = state.suggestions?.length ? String(state.suggestions.length) : '';
-    message.textContent = state.loading ? 'Подождите, идёт загрузка' + '.'.repeat(dots) : state.busy ? 'Обрабатываю кадры' + '.'.repeat(dots) : state.greeting;
+    message.textContent = state.loading ? 'Подождите, идёт загрузка' + '.'.repeat(dots) : state.busy ? 'Выполняю задачу' + '.'.repeat(dots) : state.greeting;
     choices.replaceChildren();
     if (state.loading) return;
     const button = (title, detail, callback) => {
@@ -16,7 +16,17 @@
       if (detail) { const small=document.createElement('small'); small.textContent=detail; element.append(small); }
       element.addEventListener('click',callback); choices.append(element);
     };
-    (state.scenarios || []).slice(0,2).forEach(item => button(item.title, item.why || item.reason, () => command('task',item.task,'manual')));
+    (state.scenarios || []).slice(0,3).forEach(item => {
+      const row = document.createElement('div'); row.className = 'scenario';
+      const title = document.createElement('strong'); title.textContent = item.title;
+      const why = document.createElement('small'); why.textContent = item.why || item.reason; row.append(title, why);
+      const actions = document.createElement('div'); actions.className = 'group';
+      for (const approach of ['auto', 'manual']) {
+        const control = document.createElement('button'); control.textContent = approach === 'auto' ? 'Сделать автоматически' : 'Открыть инструмент';
+        control.disabled = Boolean(state.busy); control.onclick = () => command('task', item.task, approach); actions.append(control);
+      }
+      row.append(actions); choices.append(row);
+    });
     (state.suggestions || []).slice(0,2).forEach(item => button(item.title,item.why,() => command('suggestion',item.id)));
     if (state.panelOpen) {
       [['clipping','Исправить обрезание'],['cutout','Вырезать объект'],['atlas','Собрать атлас']].forEach(([id,title])=>button(title,'Перейти к нужному сценарию',()=>command('quick',id)));
@@ -30,7 +40,7 @@
     } else button('Выбрать задачу','Автоматический или ручной сценарий',()=>action({action:'toggle'}));
   }
   api.onState(next=>{ state=next; render(); });
-  setInterval(()=>{ dotPhase=(dotPhase+1)%4; dots=[1,2,3,2][dotPhase]; if(state.loading || state.busy) message.textContent=(state.loading?'Подождите, идёт загрузка':'Обрабатываю кадры')+'.'.repeat(dots); },450);
+  setInterval(()=>{ dotPhase=(dotPhase+1)%4; dots=[1,2,3,2][dotPhase]; if(state.loading || state.busy) message.textContent=(state.loading?'Подождите, идёт загрузка':'Выполняю задачу')+'.'.repeat(dots); },450);
   document.querySelector('#close').onclick=()=>action({action:'dismiss'});
   document.querySelector('#hide').onclick=()=>action({action:'hide'});
   for(const name of ['dragstart','drop','dragover']) document.addEventListener(name,event=>{event.preventDefault();event.stopPropagation();});

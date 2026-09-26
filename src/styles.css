@@ -964,3 +964,40 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .task-guide-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .task-guide-actions .button { min-height: 36px; padding: 0 10px; }
 @media (max-width: 1100px) { .task-welcome { flex-wrap: wrap; } .task-welcome-actions { width: 100%; } .task-welcome-actions .button { flex: 1; } }
+
+/* Independent images preserve the source canvas and expose their own output actions. */
+.image-scenario-card { padding: 18px; margin-bottom: 18px; border: 1px solid var(--line, #343b44); border-radius: 12px; background: var(--panel, #161b21); }
+.image-scenario-card p { margin: 8px 0 12px; font-size: 12px; line-height: 1.6; color: var(--muted, #a4adb8); }
+.image-scenario-card .button { width: 100%; margin-top: 8px; white-space: normal; }
+.image-only { display: none; }
+body[data-intent="images"] #previewFreshness { display: none; }
+body[data-intent="images"] .filmstrip-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+body[data-intent="images"] #filmstripNote { grid-column: 1 / -1; }
+body[data-intent="images"] .filmstrip-action { min-width: 0; padding-inline: 8px; }
+.filmstrip-action, .image-scenario-card .button, .region-color-tools .button, .mask-editor-footer .button, #removeCheckerboard { display: inline-flex; align-items: center; justify-content: center; text-align: center; line-height: 1.35; }
+.task-guide-actions { display: grid; grid-template-columns: minmax(0, 1fr); }
+.task-guide-actions .button { width: 100%; min-width: 0; padding-block: 9px; text-align: center; white-space: normal; }
+body[data-intent="images"] .image-only { display: inline-flex; }
+body[data-intent="images"] :is(.frame-duration, #duplicateFrame, #excludeFrame, #playerBar, #loopPanel, #animationBar, #imageSheetControls, #recommendationCard, #warningBox, #consistencyPanel) { display: none !important; }
+body[data-intent="images"] #resultPreviewTabs { display: none !important; }
+.region-color-tools { display: grid; gap: 10px; margin: 12px 0; padding: 12px; border: 1px solid var(--line, #343b44); border-radius: 9px; }
+.region-color-tools label { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; }
+.region-color-tools input[type="color"] { width: 48px; height: 32px; padding: 2px; }
+.region-color-tools input[type="range"] { width: 100%; }
+.mask-tools .button { white-space: normal; line-height: 1.4; min-height: 36px; }
+.mask-history-actions { flex-wrap: wrap; gap: 6px; }
+.workspace-actions { position: static; transform: none; margin-left: auto; }
+.workspace-actions button { padding: 0 8px; }
+@media (max-width: 1120px) { .workspace-actions button:not(#undoAction):not(#redoAction) { display: none; } }
+.window-actions #copilotRestore { width: 40px; height: 40px; padding: 10px; border: 0; background: transparent; box-shadow: none; }
+.window-actions #copilotRestore .ui-icon { width: 20px; height: 20px; }
+.mask-editor-layout { grid-template-columns: minmax(0, 1fr) 320px; }
+.mask-mode button { min-height: 70px; justify-content: flex-start; gap: 6px; }
+.mask-mode button[data-mode="smart"] { min-height: 60px; }
+.mask-mode button[data-mode="select"] i { border: 2px solid #00b8bb; border-radius: 2px; background: transparent; box-shadow: none; }
+.mask-mode button[data-mode="lasso"] i { border: 2px dashed #00b8bb; background: transparent; box-shadow: none; }
+.mask-editor-footer { flex-wrap: wrap; gap: 8px 16px; }
+.mask-editor-footer .mask-history-actions { display: flex; gap: 6px; }
+.mask-editor-footer .mask-history-actions .button { min-width: 0; padding-inline: 12px; }
+#removeCheckerboard { width: 100%; margin-bottom: 16px; }
+@media(max-width: 1000px) { .mask-editor-layout { grid-template-columns: minmax(0, 1fr) 288px; } .mask-tools { padding: 16px; } .mask-editor-footer > span { display: none; } }

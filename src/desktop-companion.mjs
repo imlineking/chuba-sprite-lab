@@ -25,6 +25,9 @@ export class DesktopCompanion {
     this.preferencesPath = path.join(app.getPath("userData"), "desktop-companion.json");
     this.handlers();
   }
+  raise() {
+    for (const window of [this.pet, this.bubble]) if (window && !window.isDestroyed()) window.setAlwaysOnTop(true, "screen-saver");
+  }
   areas() { return this.screen.getAllDisplays().map((display) => display.workArea); }
   send() {
     for (const window of [this.pet, this.bubble]) if (window && !window.isDestroyed()) window.webContents.send("companion:state", { ...this.state, panelOpen: this.panelOpen });
@@ -38,7 +41,8 @@ export class DesktopCompanion {
     const options = { frame: false, thickFrame: false, transparent: true, resizable: false, maximizable: false, minimizable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false, show: false, webPreferences: { preload: path.join(this.appRoot, "src", "companion-preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true } };
     this.pet = new this.BrowserWindow({ ...options, ...position, ...petSize });
     this.bubble = new this.BrowserWindow({ ...options, width: 360, height: 180, focusable: true });
-    this.pet.setAlwaysOnTop(true, "floating"); this.bubble.setAlwaysOnTop(true, "floating");
+    this.raise();
+    this.topmostTimer = setInterval(() => this.raise(), 3000); this.topmostTimer.unref();
     this.pet.on("move", () => this.positionBubble());
     for (const window of [this.pet, this.bubble]) {
       window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -68,13 +72,14 @@ export class DesktopCompanion {
   }
   update(state) {
     const wasLoading = this.state.loading;
+    const newSource = state.sourceKey && state.sourceKey !== this.state.sourceKey;
     this.state = { ...this.state, ...state, loading: false };
-    if (wasLoading) { this.speechVisible = true; if (!this.hidden) this.bubble?.showInactive(); }
+    if (wasLoading || newSource) { this.speechVisible = true; this.panelOpen = false; this.raise(); if (!this.hidden) this.bubble?.showInactive(); }
     this.send();
   }
   show(open = true) {
     this.hidden = false; this.panelOpen = Boolean(open); this.speechVisible = true;
-    this.pet?.showInactive(); this.positionBubble(); this.send(); this.bubble?.showInactive();
+    this.raise(); this.pet?.showInactive(); this.positionBubble(); this.send(); this.bubble?.showInactive();
   }
   command(command) {
     const window = this.mainWindow();
@@ -105,6 +110,7 @@ export class DesktopCompanion {
     });
   }
   destroy() {
+    clearInterval(this.topmostTimer);
     if (this.displayListener) { this.screen.removeListener("display-removed", this.displayListener); this.screen.removeListener("display-metrics-changed", this.displayListener); }
     this.pet?.destroy(); this.bubble?.destroy(); this.pet = null; this.bubble = null;
   }

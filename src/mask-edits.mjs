@@ -1,3 +1,5 @@
+import { removeRegionColor, removeChecker } from "./region-color.mjs";
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -131,7 +133,10 @@ function applyBrushEdit(data, original, width, height, channels, edit) {
         ? 1
         : clamp(1 - (distance - hardRadius) / Math.max(1, radius - hardRadius), 0, 1);
       const originalAlpha = original[offset + 3];
-      if (edit.mode === "keep") data[offset + 3] = Math.max(data[offset + 3], Math.round(originalAlpha * strength));
+      if (edit.mode === "keep") {
+        data[offset + 3] = Math.max(data[offset + 3], Math.round(originalAlpha * strength));
+        for (let channel = 0; channel < 3; channel++) data[offset + channel] = Math.round(data[offset + channel] * (1 - strength) + original[offset + channel] * strength);
+      }
       else data[offset + 3] = Math.min(data[offset + 3], Math.round(data[offset + 3] * (1 - strength)));
     }
   }
@@ -170,7 +175,9 @@ export function applyMaskEdits(data, original, info, edits = [], frameIndex = 0)
   const { width, height, channels } = info;
   for (const edit of edits) {
     if (!editApplies(edit, frameIndex)) continue;
-    if (edit.type === "tracked-region") tracked.push({ strokeId: edit.strokeId, ...applyTrackedEdit(data, original, width, height, channels, edit, frameIndex) });
+    if (edit.type === "region-color") removeRegionColor(data, original, info, edit);
+    else if (edit.type === "checker") removeChecker(data, original, info, edit.selection);
+    else if (edit.type === "tracked-region") tracked.push({ strokeId: edit.strokeId, ...applyTrackedEdit(data, original, width, height, channels, edit, frameIndex) });
     else applyBrushEdit(data, original, width, height, channels, edit);
   }
   return { data, tracked };

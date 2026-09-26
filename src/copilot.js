@@ -76,7 +76,7 @@ function buildCopilotSnapshot() {
       excludedFrames: state.excludedFrames.size,
       maskEdits: state.maskEdits.length,
       attachments: state.attachments.length,
-      tab: document.querySelector(".tab.active")?.dataset.tab || "source",
+      tab: document.querySelector(".tab.active")?.dataset.tab || "source", intent: state.intent,
     },
   };
 }
@@ -124,7 +124,7 @@ function copilotCard(suggestion) {
 function renderCopilot() {
   document.querySelector('#copilotRestore').classList.remove('hidden');
   const tasks = [...document.querySelectorAll('.copilot-tasks article')].map(card => ({ id: card.dataset.task, title: card.querySelector('strong').textContent }));
-  void window.spriteLab.updateCompanion({ busy: Boolean(state.busy), theme: document.documentElement.dataset.theme || 'dark', scenarios: copilotState.scenarios, suggestions: visibleCopilotSuggestions(), tasks }).catch(() => {});
+  void window.spriteLab.updateCompanion({ busy: Boolean(state.busy), sourceKey: state.source?.sheetPath || (state.source?.paths || []).join("|"), theme: document.documentElement.dataset.theme || 'dark', scenarios: copilotState.scenarios, suggestions: visibleCopilotSuggestions(), tasks }).catch(() => {});
 }
 
 async function refreshCopilot() {
@@ -148,7 +148,7 @@ async function refreshCopilot() {
       window.spriteLab.suggest(snapshot),
     ]);
     window.taskRenderSuggestions?.(taskScenarios);
-    copilotState.scenarios = Array.isArray(taskScenarios) ? taskScenarios : [];
+    copilotState.scenarios = Array.isArray(taskScenarios) ? taskScenarios.map(item => ({ ...item, title: document.querySelector('.copilot-tasks article[data-task="' + item.task + '"] strong')?.textContent || item.task })) : [];
     suggestions = hints;
   } catch {
     suggestions = [];

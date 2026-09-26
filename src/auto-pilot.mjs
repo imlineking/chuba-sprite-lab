@@ -11,6 +11,7 @@
 
 import sharp from "sharp";
 import { aiModelCatalog, modelById, modelTotalBytes } from "./ai-models.mjs";
+import { checkerMask } from "./region-color.mjs";
 
 export const SOFT_ALPHA_LOW = 6;
 export const SOFT_ALPHA_HIGH = 249;
@@ -174,6 +175,10 @@ export async function measureSource(paths, { limit = 3, sampleSize = 192 } = {})
         .raw()
         .toBuffer({ resolveWithObject: true });
       analyses.push(analyseFrame(data, info));
+      if (metadata.width * metadata.height <= 16000000) {
+        const raw = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        analyses.at(-1).checkerPixels = checkerMask(raw.data, raw.info).count;
+      }
     } catch (error) {
       failures.push({ file, message: error?.message || "не удалось прочитать кадр" });
     }
@@ -293,6 +298,8 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
 
   /* 1. Preserve an existing alpha channel before considering background removal. */
   const alreadyTransparent = measurements.transparentShare > 0.15 && measurements.borderOpaqueRatio < 0.2;
+  const independent = target.intent === "images" || (source.kind === "images" && !target.cellWidth);
+  const checker = Number(measurements.checkerPixels) >= 64;
   const solid = measurements.borderOpaqueRatio > SOLID_BORDER_RATIO && measurements.borderColourCount <= SOLID_BORDER_COLOURS;
   if (alreadyTransparent) {
     steps.push({
@@ -304,6 +311,8 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
       confidence: "high",
       status: "ready",
     });
+  } else if (checker) {
+    steps.push({ stage: "key", kind: "builtin", tool: "alpha", title: "Сохранить детали изображения", why: "Обнаружена запечённая шахматная подложка: одно удаление белого заденет светлые детали.", confidence: "medium", status: "ready" });
   } else if (solid) {
     steps.push({
       stage: "key",
@@ -318,14 +327,21 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
     const hairy = measurements.thinStructure > HAIRY_STRUCTURE
       || measurements.softShare > HAIRY_SOFT_SHARE
       || measurements.detailDensity > HAIRY_DETAIL_DENSITY;
-    const order = hairy ? mattingPreference.fine : measurements.flatShare > ART_FLAT_SHARE ? mattingPreference.art : mattingPreference.general;
+    const order = independent
+      ? ["birefnet-tiny", "isnet-general", "isnet-anime", "u2net", "silueta", "u2netp"]
+      : hairy ? mattingPreference.fine : measurements.flatShare > ART_FLAT_SHARE ? mattingPreference.art : mattingPreference.general;
     const chosen = pickTool(order, installed);
-    const why = hairy
+    const why = independent
+      ? "Фон неоднородный. Для очистки отдельных изображений выбираем компактную установленную модель: она сохраняет исходный холст и не требует загрузки тяжёлой модели для всей очереди."
+      : hairy
       ? `Край сложный: длина границы ${measurements.thinStructure.toFixed(2)} от площади, ${Math.round(measurements.softShare * 100)}% полупрозрачных пикселей и плотность мелких деталей ${Math.round(measurements.detailDensity * 100)}% — это мех, волосы или тонкие детали. Нужна модель, обученная на матировании.`
       : `Фон не однотонный (${measurements.borderColourCount} цветов у края) — нужна модель выделения.`;
     steps.push(modelStep(chosen, { installed, why, confidence: hairy ? "high" : "medium" }));
     for (const id of order.slice(0, 3)) see(modelById(id), hairy ? "Лучше держит мех и волосы" : "Ровнее контур, чем у модели в комплекте");
   }
+
+  if (checker && (target.cleanupRequested || independent)) steps.push({ stage: "checker", kind: "builtin", tool: "checker", title: "Убрать псевдопрозрачность", why: "Найдена повторяющаяся светлая клетка в двух направлениях. Удаляем подтверждённый узор; сложные остатки можно ограничить выделением и поправить маску.", confidence: "medium", status: "ready" });
+  if (alreadyTransparent) notes.push("Наличие альфа-канала не гарантирует чистый фон: проверьте внутренние просветы на чёрной и зелёной подложке.");
 
   /* 2. The edge that the model leaves behind. */
   if (measurements.fringeScore > FRINGE_SHARE) {
@@ -343,7 +359,7 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
   /* 3. A source smaller than its own cell is stretched into mush without an upscaler. */
   const cellWidth = Number(target.cellWidth) || 0;
   const smaller = cellWidth > 0 && Math.max(measurements.width, measurements.height) < cellWidth * 1.25;
-  if (smaller) {
+  if (smaller && !independent) {
     steps.push({
       stage: "upscale",
       kind: "model",
@@ -359,7 +375,7 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
 
   /* 4. A short video reads as a slideshow. */
   const frameCount = Number(source.frameCount ?? measurements.frameCount ?? 0);
-  if (source.kind === "video" && frameCount > 0 && frameCount < 8) {
+  if (!independent && source.kind === "video" && frameCount > 0 && frameCount < 8) {
     steps.push({
       stage: "interpolate",
       kind: "model",
@@ -423,7 +439,7 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
 
   /* 7. Pages, not one impossible sheet. */
   const estimated = cellWidth > 0 ? cellWidth * Math.max(1, frameCount || measurements.frameCount || 1) : 0;
-  if (estimated > Number(target.atlasMaxSize || 0) && Number(target.atlasMaxSize || 0) > 0) {
+  if (!independent && estimated > Number(target.atlasMaxSize || 0) && Number(target.atlasMaxSize || 0) > 0) {
     steps.push({
       stage: "atlas",
       kind: "builtin",
@@ -440,8 +456,8 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
     stage: "inspect",
     kind: "builtin",
     tool: "atlas-inspector",
-    title: "Проверить готовый набор",
-    why: "Координаты, хитбоксы, опора, теги и страницы сверяются с атласом перед записью.",
+    title: independent ? "Проверить размеры отдельных PNG" : "Проверить готовый набор",
+    why: independent ? "Сохраняем исходные размеры холста и отдельный PNG для каждого файла. Просветы и светлые детали проверьте на контрастной подложке." : "Координаты, хитбоксы, опора, теги и страницы сверяются с атласом перед записью.",
     confidence: "high",
     status: "ready",
   });
@@ -458,7 +474,9 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
     needed,
     notes,
     settings: { provider: "auto", quality, modelId: mattingStep?.modelId || "u2netp" },
-    summary: alreadyTransparent
+    summary: checker && (target.cleanupRequested || independent)
+      ? "Найдена запечённая клетка: удалим подтверждённый узор, затем проверьте просветы и светлые детали."
+      : alreadyTransparent
       ? "Прозрачность уже есть: сохраним исходный контур без повторного выделения моделью."
       : solid
       ? "Фон однотонный: обойдёмся без модели, остальное — очистка края и проверка."

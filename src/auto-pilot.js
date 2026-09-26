@@ -41,7 +41,8 @@ function autoPilotSourcePaths() {
 
 function autoPilotTarget() {
   return {
-    cellWidth: Number($("#cellWidth").value) || 0,
+    intent: state.intent, cleanupRequested: state.intent === "images",
+    cellWidth: state.intent === "images" ? 0 : Number($("#cellWidth").value) || 0,
     cellHeight: Number($("#cellHeight").value) || 0,
     atlasMaxSize: Number($("#atlasMaxSize").value) || 0,
     pixelArt: $("#pixelateEnabled").checked,
@@ -176,6 +177,7 @@ function autoPilotApply() {
   const plan = autoPilotState.plan;
   if (!plan) return;
   const applied = [];
+  for (const id of ["auxRife", "auxEsrgan", "auxDepth"]) $("#" + id).checked = false;
   for (const step of plan.steps || []) {
     if (step.stage === "key") {
       setKeyMode(step.tool === "alpha" ? "alpha" : "auto");
@@ -187,6 +189,9 @@ function autoPilotApply() {
       if (plan.settings?.provider) $("#aiProvider").value = plan.settings.provider;
       if (step.modelId && $(`#aiModel option[value="${step.modelId}"]`)) $("#aiModel").value = step.modelId;
       applied.push(`выделение моделью ${modelLabel(step.modelId)}`);
+    } else if (step.stage === "checker") {
+      state.maskEdits.push({ type: "checker", frameIndex: state.selectedFrameIndex, applyAll: false, strokeId: ++state.maskStrokeId });
+      applied.push("удаление запечённых шахмат");
     } else if (step.stage === "fringe") {
       $("#edgeDecontaminate").checked = true;
       $("#edgeDecontaminate").dispatchEvent(new Event("change"));

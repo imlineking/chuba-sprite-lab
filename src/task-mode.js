@@ -12,7 +12,7 @@
     extract: "Вырезать один объект из листа",
     objectEdit: "Изменить объект и вернуть в лист",
     match: "Выровнять размеры объекта",
-    edit: "Править кадры",
+    edit: "Редактировать изображения",
     cutout: "Вырезать объект",
     stylize: "Стилизовать в пиксель-арт",
     depth: "Построить карту глубины",
@@ -101,6 +101,9 @@
   function taskSet(name, nextApproach = "auto") {
     if (!taskNames[name]) return;
     selected = name;
+    state.intent = name === "edit" ? "images" : name === "combine" ? "combine" : name === "animation" ? "animation" : ""; document.body.dataset.intent = state.intent;
+    if (name === "edit") window.startImageEditing?.();
+    else if (state.result?.imageWorkspace) { state.result = null; state.timeline = null; $("#filmstripBar").classList.add("hidden"); }
     resumeCollapsed = false;
     approach = nextApproach === "manual" ? "manual" : "auto";
     localStorage.setItem("spriteLab.task", name);
@@ -480,12 +483,14 @@
         : "Выберите тип фона и настройте силу удаления во вкладке обработки. Предпросмотр покажет результат без изменения исходника.";
       primary.textContent = approach === "auto" ? "2 · Подобрать ИИ и показать результат" : "2 · Открыть настройки фона";
       primaryAction = approach === "auto"
-        ? async () => { setTab("process"); if (await taskApplyAutoPlan()) await runBuild(true); }
+        ? async () => { setTab("process"); if (source.kind === "frames") { window.startImageEditing(); await window.saveIndependentImages({ all: true, automatic: true }); } else if (await taskApplyAutoPlan()) await runBuild(true); }
         : () => { setTab("process"); $("#keyMode").scrollIntoView({ block: "center", behavior: "smooth" }); };
     } else if (selected === "edit") {
-      guide.textContent = result ? "Откройте анализ размеров или выберите кадр для ручной правки контура." : "Сначала соберите превью кадров, затем помощник укажет расхождения размеров и контура.";
-      primary.textContent = result ? "3 · Сравнить размеры кадров" : "2 · Собрать превью";
-      primaryAction = result ? () => { setTab("process"); $("#consistencyPanel").open = true; $("#analyzeFrameSizes").click(); } : () => { void runBuild(true); };
+      guide.textContent = "Выберите изображение в ленте. Обведите область, удалите её цвет пипеткой или уберите запечённые шахматы. Сохраняются отдельные PNG исходного размера. Автоочистка анализирует каждый файл и сама выбирает модель; исходники остаются на месте.";
+      primary.textContent = "Выделить область и очистить фон";
+      primaryAction = () => openMaskEditor({ tool: "select" }).catch(error => showError(error.message));
+      secondary.textContent = approach === "auto" ? "Автоочистка всех · отдельные PNG" : "Сохранить все PNG"; secondary.classList.remove("hidden");
+      secondaryAction = () => window.saveIndependentImages({ all: true, automatic: approach === "auto" });
     } else if (["cutout", "stylize", "depth", "upscale"].includes(selected)) {
       if (result && !state.resultDirty) {
         guide.textContent = selected === "depth"
@@ -537,7 +542,8 @@
   $("#taskAdvanced").addEventListener("click", () => {
     if (selected === "layout") { setTab("source"); $("#sheetControls").scrollIntoView({ block: "start", behavior: "smooth" }); }
     else if (selected === "objectEdit") { selectFrame(Number($("#taskObjectSelect").value) || 0); setTab("process"); setTransformPanel(true); }
-    else { setTab("process"); $(selected === "remove" ? "#openMaskEditor" : selected === "background" ? "#keyMode" : selected === "edit" ? "#consistencyPanel" : "#fps").scrollIntoView({ block: "center", behavior: "smooth" }); }
+    else if (selected === "edit") void openMaskEditor({ tool: "select" }).catch(error => showError(error.message));
+    else { setTab("process"); $(selected === "remove" ? "#openMaskEditor" : selected === "background" ? "#keyMode" : "#fps").scrollIntoView({ block: "center", behavior: "smooth" }); }
   });
   $("#taskObjectSelect").addEventListener("change", () => {
     const index = Number($("#taskObjectSelect").value);
@@ -559,8 +565,14 @@
     const action = event.target.closest("button[data-quick-task]");
     if (action) taskQuick(action.dataset.quickTask);
   });
+  window.taskRestore = name => taskSet(name, "manual");
   window.taskChoose = (name, nextApproach = "auto") => {
     taskSet(name, nextApproach);
+    if (name === "edit" && state.source?.kind === "frames" && !state.busy) {
+      if (nextApproach === "auto") void window.saveIndependentImages({ all: true, automatic: true });
+      else void openMaskEditor({ tool: "select" }).catch(error => showError(error.message));
+      return;
+    }
     if (nextApproach !== "auto" || !state.source || state.busy) return;
     if (["layout", "clipping"].includes(name) && state.source.sheetPath) void taskLayoutPreview();
     else if ((name === "combine" && state.source.kind === "frames" && state.source.paths.length > 1)
@@ -584,6 +596,8 @@
     if (selected === "remove") setTimeout(() => { taskRender(); setTab("source"); }, 0);
   });
   window.taskOnSource = (source) => {
+    $("#imageScenarioChoices").classList.toggle("hidden", source?.kind !== "frames");
+    if (source?.kind === "frames") { selected = "edit"; state.intent = "images"; window.startImageEditing?.(); }
     batchReport = null; $("#batchImageResults").replaceChildren();
     if (!source?.sheetPath) objectEditOpened = false;
     if (source?.kind === "sheet" && (!selected || selected === "animation")) taskSet("layout");

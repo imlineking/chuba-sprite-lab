@@ -2,7 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
 const state = {
-  source: null, outputFolder: null, result: null, previewMode: "after", keyMode: "auto", anchor: "ground", auxMaskPath: null,
+  intent: "", source: null, outputFolder: null, result: null, previewMode: "after", keyMode: "auto", anchor: "ground", auxMaskPath: null,
   busy: false, lastExportDir: null, lastRevealPath: null, framePreview: null, selectedFrameIndex: 0,
   excludedFrames: new Set(), quickTimer: null, quickToken: 0,
   zoom: 1, guides: false, backdrop: "checker", backdropBeforeGame: "checker", timelineValid: true, sourceRevision: 0, resultDirty: false,
@@ -74,10 +74,12 @@ function captureStudioControls() {
     packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
     atlasMaxSize: $("#atlasMaxSize").value, atlasOverflow: $("#atlasOverflow").value, atlasPowerOfTwo: $("#atlasPowerOfTwo").checked,
     imageAlign: state.imageAlign,
+    intent: state.intent,
   };
 }
 
 function applyStudioControls(studio = {}) {
+  if (studio.intent && state.source?.kind === "frames") window.taskRestore?.(studio.intent === "images" ? "edit" : studio.intent);
   if (studio.imageAlign && typeof setImageAlign === "function") setImageAlign(studio.imageAlign, { silent: true });
   if (studio.packing) $("#atlasPacking").value = studio.packing;
   if (studio.exportFormat) $("#exportFormat").value = studio.exportFormat;
@@ -256,11 +258,15 @@ function applyHistorySnapshot(snapshot) {
 }
 
 function undoWorkspace() {
+  if (state.busy) return;
+  clearTimeout(state.historyTimer); pushHistory("Изменение настроек");
   if (state.historyIndex <= 0) return;
   state.historyIndex -= 1; applyHistorySnapshot(state.history[state.historyIndex]);
 }
 
 function redoWorkspace() {
+  if (state.busy) return;
+  clearTimeout(state.historyTimer);
   if (state.historyIndex >= state.history.length - 1) return;
   state.historyIndex += 1; applyHistorySnapshot(state.history[state.historyIndex]);
 }
@@ -622,6 +628,8 @@ function collectExports() {
 
 function updateActionState() {
   const hasSource = Boolean(state.source);
+  const imageLabels = state.intent === "images";
+  for (const [id, normal, images] of [["metaFrames", "КАДРЫ", "ФАЙЛЫ"], ["metaCell", "ЯЧЕЙКА", "РАЗМЕР"], ["metaAnchor", "ЯКОРЬ", "ПОЛОЖЕНИЕ"], ["metaAtlas", "ЛИСТ", "ФАЙЛ"]]) $(`#${id}`).previousElementSibling.textContent = imageLabels ? images : normal;
   const batchCount = state.source?.kind === "video-batch" ? state.source.paths.length : 0;
   const selectedNames = Object.entries(collectExports()).filter(([, selected]) => selected).map(([name]) => exportNames[name]);
   $("#appShell").setAttribute("aria-busy", String(state.busy));
@@ -651,6 +659,7 @@ function updateActionState() {
     : state.result?.frameCount && !state.resultDirty ? `ЭКСПОРТИРОВАТЬ ${state.result.frameCount} КАДРОВ` : "ЭКСПОРТИРОВАТЬ";
   $("#openMaskEditor").disabled = !hasSource || state.busy;
   $("#addAttachment").disabled = !hasSource || state.busy || state.source?.kind === "video-batch";
+  $$("#regionEditImage, #saveImagePng, #saveAllImagePng, #imageAutoCleanup").forEach(button => { button.disabled = !hasSource || state.busy; });
   $("#editFrame").disabled = !state.result?.allSourceFramePaths?.length || state.busy || state.source?.kind === "video-batch";
   $("#copyFrame").disabled = !state.result?.copyableFrameIndexes?.includes(state.selectedFrameIndex) || state.resultDirty || state.busy || state.source?.kind === "video-batch";
   $("#transformTool").disabled = (!state.framePreview && !state.result) || state.busy || state.source?.kind === "video-batch";
@@ -662,6 +671,13 @@ function updateActionState() {
   $("#processActionHint").closest(".process-action-dock")?.classList.toggle("blocked", $("#buildPreview").disabled && !state.busy);
   $("#exportSprites").closest(".export-action-dock")?.classList.toggle("blocked", $("#exportSprites").disabled && !state.busy);
   if (typeof updateAnimationExportNote === "function") updateAnimationExportNote();
+  $("#buildPreview").firstChild.textContent = state.intent === "images" ? "Проверить изображение " : "Собрать анимацию ";
+  if (state.intent === "images") {
+    $("#buildPreview").title = "Обновить выбранное изображение (Ctrl+Enter)";
+    $("#processActionHint").textContent = state.busy ? "Обработка изображений…" : "Правка отдельных PNG · исходный размер";
+    $("#exportButtonTitle").textContent = "СОХРАНИТЬ ОТДЕЛЬНЫЕ PNG";
+    $("#exportComposition").textContent = "Каждый файл — отдельный PNG без изменения размера и положения.";
+  }
   updateStepStates();
 }
 
@@ -669,7 +685,7 @@ function currentFramePath() {
   if (state.frameOverrides[state.selectedFrameIndex]) return state.frameOverrides[state.selectedFrameIndex];
   if (state.result?.allSourceFramePaths?.[state.selectedFrameIndex]) return state.result.allSourceFramePaths[state.selectedFrameIndex];
   if (state.source?.samplePaths?.[state.selectedFrameIndex]) return state.source.samplePaths[state.selectedFrameIndex];
-  return state.source?.previewPath || state.source?.paths?.[0] || null;
+  return state.source?.kind === "frames" ? state.source.paths[state.selectedFrameIndex] || state.source.paths[0] : state.source?.previewPath || state.source?.paths?.[0] || null;
 }
 
 function setSource(source) {
@@ -681,6 +697,8 @@ function setSource(source) {
   state.sourceRevision += 1;
   state.quickToken += 1;
   state.source = source;
+  state.intent = ""; document.body.dataset.intent = "";
+  if (source?.kind === "frames") for (const id of ["pixelateEnabled", "toningEnabled", "auxRife", "auxEsrgan", "auxDepth"]) $("#" + id).checked = false;
   state.result = null;
   state.framePreview = null;
   state.excludedFrames.clear();
@@ -1245,7 +1263,7 @@ function buildFilmstrip(result) {
     button.classList.toggle("excluded", state.excludedFrames.has(sourceIndex));
     const isDuplicate = result.skipped?.duplicateIndexes?.includes(sourceIndex);
     const isEmpty = result.skipped?.emptyIndexes?.includes(sourceIndex);
-    button.classList.toggle("skipped", isDuplicate || isEmpty);
+    button.classList.toggle("skipped", Boolean(isDuplicate || isEmpty));
     button.classList.toggle("edited", Boolean(state.frameOverrides[sourceIndex]));
     button.classList.toggle("warning", state.warnings.some((warning) => warningSourceIndex(warning) === sourceIndex));
     button.classList.toggle("has-attachment", state.attachments.some((attachment) => attachment.enabled !== false));
@@ -1311,7 +1329,7 @@ function selectFrame(sourceIndex, activateFrameView = true, entryId = null) {
 }
 
 function activeMaskFrameIndex() {
-  return state.result?.allSourceFramePaths?.length ? state.selectedFrameIndex : 0;
+  return state.result?.allSourceFramePaths?.length || state.source?.kind === "frames" ? state.selectedFrameIndex : 0;
 }
 
 function maskEditApplies(edit, frameIndex = activeMaskFrameIndex()) {
@@ -1362,10 +1380,12 @@ function redrawMaskCanvas() {
   if (!state.maskEditorImage || !canvas.width || !canvas.height) return;
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.drawImage(state.maskEditorImage, 0, 0, canvas.width, canvas.height);
+  window.drawRegionMask?.(context, canvas);
   if (state.maskProposalOverlay) context.drawImage(state.maskProposalOverlay, 0, 0);
   if (typeof drawMaskOnion === "function") drawMaskOnion(context, canvas);
   for (const edit of state.maskEdits) {
     if (!maskEditApplies(edit)) continue;
+    if (["region-color", "checker"].includes(edit.type)) continue;
     if (edit.type === "tracked-region") {
       const left = (Number(edit.selectionLeft) || Math.max(0, (Number(edit.centroidX) || 0) - (Number(edit.selectionWidth) || 0.04) / 2)) * canvas.width;
       const top = (Number(edit.selectionTop) || Math.max(0, (Number(edit.centroidY) || 0) - (Number(edit.selectionHeight) || 0.04) / 2)) * canvas.height;
@@ -1394,15 +1414,18 @@ function redrawMaskCanvas() {
     context.stroke();
   }
   updateMaskEditorStatus();
+  window.drawRegionSelection?.(context, canvas);
 }
 
-async function openMaskEditor({ review = false } = {}) {
+async function openMaskEditor({ review = false, tool = null } = {}) {
   if (!state.source || state.busy) return;
-  $("#aiMaskTitle").textContent = review ? "Проверьте предложенный контур" : "Уберите лишнее один раз";
+  $("#aiMaskTitle").textContent = review ? "Проверьте предложенный контур" : "Правка фона и выделения";
   $("#maskModalIntro").textContent = review
     ? "Бирюзовая линия показывает будущую вырезку. Защитите белые буквы, молнии и цветы; удалите оставшийся фон кистью. Затем примените и проверьте результат."
-    : "Выберите область — программа найдёт её в серии. Кисти оставлены для точной доводки.";
-  setMaskTool(review ? "keep" : "smart");
+    : "Выделите область прямоугольником или лассо, выберите её цвет пипеткой. Другие цвета и пиксели вне выделения сохранятся. Примените результат или отмените правку.";
+  setMaskTool(tool || (review ? "keep" : state.intent === "images" ? "select" : "smart"));
+  $("#maskApplyAll").checked = false;
+  clearTimeout(state.historyTimer); pushHistory("Настройки перед правкой маски");
   setStatus("Готовлю выбранный кадр…", "busy", 0.12);
   clearTimeout(state.quickTimer);
   let proposal = await requestFramePreview(currentFramePath());
@@ -1413,7 +1436,7 @@ async function openMaskEditor({ review = false } = {}) {
     setStatus("Не удалось открыть кадр для редактора", "error", 0);
     return;
   }
-  state.maskEditorSnapshot = state.maskEdits.map((edit) => ({ ...edit }));
+  state.maskEditorSnapshot = structuredClone(state.maskEdits);
   const image = new Image();
   await new Promise((resolve, reject) => {
     image.onload = resolve;
@@ -1421,6 +1444,7 @@ async function openMaskEditor({ review = false } = {}) {
     image.src = imageUrl;
   });
   state.maskEditorImage = image;
+  await window.initializeMaskRegion?.(image);
   const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
   const canvas = $("#maskCanvas");
   canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
@@ -1460,7 +1484,7 @@ async function openMaskEditor({ review = false } = {}) {
 }
 
 function closeMaskEditor({ discard = false } = {}) {
-  if (discard) state.maskEdits = state.maskEditorSnapshot.map((edit) => ({ ...edit }));
+  if (discard) state.maskEdits = structuredClone(state.maskEditorSnapshot);
   state.maskDrawing = false;
   state.maskEditorImage = null;
   state.maskEditorPixels = null;
@@ -1549,13 +1573,17 @@ function selectTrackedRegion(event) {
 
 function setMaskTool(mode) {
   state.maskBrushMode = mode;
+  maskRegion.picking = mode === "pick";
+  maskRegion.start = null;
   $$("#maskBrushMode button").forEach((item) => item.classList.toggle("selected", item.dataset.mode === mode));
   $("#smartRegionRow").classList.toggle("hidden", mode !== "smart");
-  $("#maskBrushSizeRow").classList.toggle("hidden", mode === "smart");
+  $("#maskBrushSizeRow").classList.toggle("hidden", !["erase", "keep"].includes(mode));
+  $("#regionColorTools").classList.toggle("hidden", !["select", "lasso", "pick"].includes(mode));
   $("#maskApplyTitle").textContent = mode === "smart" ? "Искать во всей серии" : "Повторить во всех кадрах";
   $("#maskApplyHint").textContent = mode === "smart" ? "слежение за цветом, размером и формой" : "кисть останется в тех же координатах";
   $("#maskToolTip").textContent = mode === "smart"
     ? "Щёлкните по стене, пятну или просвету. Область будет найдена заново в каждом кадре."
+    : ["select", "lasso", "pick"].includes(mode) ? "Обведите область мышью. Выберите цвет пипеткой и нажмите «Удалить цвет в выделении». Правка затронет только выбранное изображение; Ctrl+Z отменяет действие."
     : "Кисть исправляет маску вручную. Поиск движения для неё не применяется.";
 }
 
@@ -1788,6 +1816,7 @@ async function replaceExternalEditFromDrop(file) {
 }
 
 function undoMaskStroke() {
+  if (window.undoMaskOperation) { window.undoMaskOperation(); return; }
   const relevant = state.maskEdits.filter((edit) => maskEditApplies(edit));
   const strokeId = relevant.at(-1)?.strokeId;
   if (strokeId == null) return;
@@ -1797,7 +1826,7 @@ function undoMaskStroke() {
 
 function clearCurrentMaskStrokes() {
   state.maskEdits = state.maskEdits.filter((edit) => !maskEditApplies(edit));
-  redrawMaskCanvas();
+  rememberMaskOperation(); redrawMaskCanvas();
 }
 
 function toggleSelectedFrame() {
@@ -2061,6 +2090,10 @@ async function requestFramePreview(inputPath) {
     const result = await window.spriteLab.previewFrame({ inputPath, options: collectOptions() });
     if (token !== state.quickToken || revision !== state.sourceRevision) return;
     state.framePreview = result;
+    if (state.intent === "images") {
+      $("#metaCell").textContent = result.imageSize ? result.imageSize.width + " × " + result.imageSize.height : "Исходный размер";
+      $("#metaAtlas").textContent = baseName(state.source.paths[state.selectedFrameIndex]);
+    }
     const remainderHint = $("#whiteRemainderHint");
     const count = result.whiteRemainders?.count || 0;
     remainderHint.classList.toggle("hidden", !count);
@@ -2098,6 +2131,7 @@ async function chooseSource(method) {
 }
 
 async function runBuild(previewOnly, automatic = false) {
+  if (state.intent === "images") return previewOnly ? requestFramePreview(currentFramePath()) : window.saveIndependentImages({ all: true, automatic: false });
   if (!state.source || state.busy || (!previewOnly && !state.outputFolder)) return;
   state.busy = true; updateActionState();
   const batchExport = state.source.kind === "video-batch" && !previewOnly;
@@ -2398,8 +2432,9 @@ $("#maskBrushSize").addEventListener("input", (event) => { $("#maskBrushSizeValu
 $("#smartRegionTolerance").addEventListener("input", (event) => { $("#smartRegionToleranceValue").textContent = event.target.value; });
 $("#maskCanvas").addEventListener("pointerdown", (event) => {
   event.preventDefault();
+  if (["select", "lasso", "pick"].includes(state.maskBrushMode)) return;
   if (state.maskBrushMode === "smart") {
-    selectTrackedRegion(event);
+    selectTrackedRegion(event); rememberMaskOperation();
     return;
   }
   state.maskDrawing = true;
@@ -2733,10 +2768,17 @@ document.addEventListener("keydown", (event) => {
   if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "o") { event.preventDefault(); openProjectFile(); return; }
   if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "o") { event.preventDefault(); chooseSource("chooseSource"); return; }
   if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "s") { event.preventDefault(); saveProjectFile(false); return; }
-  const editingText = ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName) || event.target.isContentEditable;
+  const editingText = ["INPUT", "TEXTAREA"].includes(event.target.tagName) && !["range", "color", "checkbox", "number"].includes(event.target.type) || event.target.isContentEditable;
+  const historyKey = event.code === "KeyZ" || ["z", "я"].includes(event.key.toLowerCase());
+  const redoKey = event.code === "KeyY" || ["y", "н"].includes(event.key.toLowerCase());
+  if (openModal && !$("#aiMaskModal").classList.contains("hidden")) {
+    if (!editingText && event.ctrlKey && (historyKey || redoKey)) { event.preventDefault(); window.undoMaskOperation?.(redoKey || event.shiftKey); }
+    return;
+  }
+  if (openModal) return;
   if (!openModal && !editingText && event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "c" && state.result?.copyableFrameIndexes?.includes(state.selectedFrameIndex) && !state.resultDirty && !state.busy) { event.preventDefault(); void copySelectedFrame(); return; }
-  if (!editingText && event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "z") { event.preventDefault(); undoWorkspace(); return; }
-  if (!editingText && event.ctrlKey && (event.key.toLowerCase() === "y" || (event.shiftKey && event.key.toLowerCase() === "z"))) { event.preventDefault(); redoWorkspace(); return; }
+  if (!editingText && event.ctrlKey && !event.shiftKey && historyKey) { event.preventDefault(); undoWorkspace(); return; }
+  if (!editingText && event.ctrlKey && (redoKey || (event.shiftKey && historyKey))) { event.preventDefault(); redoWorkspace(); return; }
   if (event.ctrlKey && ["1", "2", "3"].includes(event.key)) { event.preventDefault(); setTab(({ 1: "source", 2: "process", 3: "export" })[event.key]); }
 });
 

@@ -305,3 +305,6 @@ html[data-theme="light"] :is(#handTool.active, #transformTool.active) { backgrou
 .color-picker-dialog canvas { display: block; max-width: 100%; height: auto; margin: 16px auto; cursor: crosshair; background: repeating-conic-gradient(#ccd2d6 0% 25%, #f1f3f4 0% 50%) 0 0 / 16px 16px; }
 html[data-theme=light] .color-picker-dialog { color: #20272d; background: #fff; border-color: #c6cdd3; }
 html[data-theme=light] .task-batch-options { background: #f7f8f9; border-color: #d4d9de; }
+
+html[data-theme="light"] .image-scenario-card { background: #fff; color: #292929; border-color: #d9d9d9; }
+html[data-theme="light"] .region-color-tools { background: #f7f7f7; border-color: #d9d9d9; }

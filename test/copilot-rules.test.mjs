@@ -25,10 +25,10 @@ test("a frame touching the source edge offers the clipping repair route first", 
   assert.ok(scenarios.some((item) => item.task === "layout"));
 });
 
-test("mixed frame sizes surface alignment as a task", () => {
+test("unrelated mixed images offer image cleanup, atlas and animation without imposing alignment", () => {
   const scenarios = planTaskScenarios({ source: { kind: "frames", frameCount: 8, mixedSizes: true } });
-  assert.equal(scenarios[0].task, "match");
-  assert.ok(scenarios.some((item) => item.task === "edit"));
+  assert.deepEqual(scenarios.slice(0, 3).map(item => item.task), ["edit", "combine", "animation"]);
+  assert.equal(scenarios.some(item => item.task === "match"), false);
 });
 
 test("a single image suggests more frames or objects, while a sheet offers extraction", () => {

@@ -2451,6 +2451,7 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
   return {
     beforePath: inputPath,
     afterPath,
+    imageSize: { width: keyed.info.width, height: keyed.info.height },
     bounds: keyed.bounds,
     keyColor: keyed.keyColor,
     whiteRemainders,

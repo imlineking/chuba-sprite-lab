@@ -18,7 +18,7 @@
         <span class="brand-name">CHUBA SPRITE LAB</span>
         <span id="versionBadge" class="version">1.8.0</span>
       </div>
-      <div class="workspace-actions hidden" aria-label="Проект">
+      <div class="workspace-actions" aria-label="Проект">
         <button id="newProject" type="button">Новый</button>
         <button id="openProject" type="button">Открыть проект</button>
         <button id="saveProject" type="button" disabled>Сохранить</button>
@@ -43,6 +43,12 @@
           <button id="exportTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="exportPanel" data-tab="export" data-help="Сохраните спрайт-лист, кадры и данные для игры"><span>03</span>Экспорт</button>
         </nav>
         <div id="sourcePanel" class="panel active" role="tabpanel" aria-labelledby="sourceTab" data-panel="source">
+          <article id="imageScenarioChoices" class="image-scenario-card hidden">
+            <strong>Что сделать с изображениями?</strong><p>Выберите результат: отдельные файлы, общий атлас или последовательность движения.</p>
+            <button type="button" class="button secondary" data-image-task="edit">Править обрезку и фон · PNG</button>
+            <button type="button" class="button secondary" data-image-task="combine">Атлас объектов · PNG + JSON</button>
+            <button type="button" class="button secondary" data-image-task="animation">Сделать анимацию</button>
+          </article>
           <section id="taskWelcome" class="task-welcome">
             <div><span class="ai-chip">ПОМОЩНИК</span><strong id="taskWelcomeTitle">Что хотите сделать?</strong><small id="taskWelcomeHint">Выберите задачу — покажем только нужные шаги.</small></div>
             <div class="task-welcome-actions"><button id="resumeTask" class="button primary hidden" type="button">Продолжить</button><button id="openTaskPicker" class="button secondary" type="button">Выбрать задачу</button></div>
@@ -67,8 +73,8 @@
           </section>
           <div class="panel-heading">
             <p class="eyebrow">ИМПОРТ</p>
-            <h1>Добавьте движение</h1>
-            <p>Видео или последовательность кадров. Всё обрабатывается только на этом компьютере.</p>
+            <h1>Добавьте исходники</h1>
+            <p>Изображения, готовый лист или видео. Выберите задачу — копилот предложит следующий шаг.</p>
           </div>
 
           <article id="sessionRestore" class="session-restore hidden">
@@ -687,6 +693,10 @@
           <div class="filmstrip-actions">
             <label class="frame-duration" title="Длительность выбранного кадра; пусто — по FPS"><span>Длительность</span><input id="frameDuration" type="number" min="10" max="10000" step="10" placeholder="по FPS" /><small>мс</small></label>
             <div id="filmstripNote" class="filmstrip-note hidden"></div>
+            <button id="regionEditImage" class="filmstrip-action" type="button" title="Выделите прямоугольник или лассо, выберите цвет пипеткой и удалите только его внутри выделения">Выделение и фон</button>
+            <button id="saveImagePng" class="filmstrip-action image-only" type="button">Сохранить PNG</button>
+            <button id="saveAllImagePng" class="filmstrip-action image-only" type="button">Сохранить все PNG</button>
+            <button id="imageAutoCleanup" class="filmstrip-action image-only" type="button" title="Оркестратор анализирует каждый файл и выбирает обработку; результат сохраняется в отдельную папку">Автоочистка всех</button>
             <button id="duplicateFrame" class="filmstrip-action" type="button" title="Повторить кадр в таймлайне (Ctrl+D)">Дублировать</button>
             <button id="excludeFrame" class="filmstrip-action" type="button">Исключить кадр</button>
             <button id="editFrame" class="filmstrip-action edit" type="button">Редактировать кадр</button>
@@ -800,10 +810,20 @@
           <aside class="mask-tools">
             <div class="section-label"><span>ИНСТРУМЕНТ</span><small>выберите действие</small></div>
             <div id="maskBrushMode" class="mask-mode" role="group" aria-label="Режим кисти">
+              <button type="button" data-mode="select"><i></i><span><strong>Прямоугольник</strong><small>удалить цвет только в области</small></span></button>
+              <button type="button" data-mode="lasso"><i></i><span><strong>Лассо</strong><small>обвести сложную область</small></span></button>
               <button type="button" data-mode="smart" class="selected"><i></i><span><strong>Умная область</strong><small>найти во всех кадрах</small></span></button>
               <button type="button" data-mode="erase"><i></i><span><strong>Удалить кистью</strong><small>ручная доводка</small></span></button>
               <button type="button" data-mode="keep"><i></i><span><strong>Защитить</strong><small>букву, цветок или блик</small></span></button>
             </div>
+            <div id="regionColorTools" class="region-color-tools hidden">
+              <label>Удаляемый цвет <input id="regionKeyColor" type="color" value="#ffffff" /></label>
+              <button id="regionPickColor" class="button secondary" type="button">Пипетка с изображения</button>
+              <label>Допуск цвета <input id="regionTolerance" type="range" min="0" max="150" value="24" /></label>
+              <button id="removeSelectedColor" class="button primary" type="button" disabled>Удалить цвет в выделении</button>
+              <button id="clearRegionSelection" class="button ghost" type="button">Снять выделение</button>
+            </div>
+            <button id="removeCheckerboard" class="button secondary" type="button" title="Находит повторяющийся запечённый узор в двух направлениях; выделение ограничивает поиск">Убрать шахматы · псевдопрозрачность</button>
             <label id="smartRegionRow" class="range-field mask-size">
               <span>Чувствительность области <output id="smartRegionToleranceValue">42</output></span>
               <input id="smartRegionTolerance" type="range" min="8" max="110" value="42" />
@@ -818,10 +838,10 @@
               <input id="maskOnionOpacity" type="range" min="10" max="80" value="35" />
             </label>
             <p class="mask-tip"><kbd>[</kbd> <kbd>]</kbd> — размер кисти или чувствительность области.</p>
-            <label class="toggle-row mask-apply-row"><span><strong id="maskApplyTitle">Искать во всей серии</strong><small id="maskApplyHint">слежение за цветом, размером и формой</small></span><input id="maskApplyAll" type="checkbox" checked /><i></i></label>
+            <label class="toggle-row mask-apply-row"><span><strong id="maskApplyTitle">Искать во всей серии</strong><small id="maskApplyHint">слежение за цветом, размером и формой</small></span><input id="maskApplyAll" type="checkbox" /><i></i></label>
             <p id="maskToolTip" class="mask-tip">Щёлкните по стене, пятну или просвету. Область будет найдена заново в каждом кадре.</p>
             <div class="mask-history-actions">
-              <button id="undoMaskStroke" class="button ghost" type="button">Отменить мазок</button>
+              <button id="undoMaskStroke" class="button ghost" type="button" title="Ctrl+Z · работает и в русской раскладке">Отменить</button><button id="redoMaskStroke" class="button ghost" type="button" disabled title="Ctrl+Shift+Z или Ctrl+Y">Повторить</button>
               <button id="resetMaskStrokes" class="button ghost" type="button">Очистить кадр</button>
             </div>
           </aside>
@@ -909,7 +929,7 @@
             </div>
             <div class="pixel-tool-group">
               <button id="pixelUndo" class="pixel-tool-button" type="button" title="Отменить (Ctrl+Z)">↶ Отменить</button>
-              <button id="pixelRedo" class="pixel-tool-button" type="button" title="Вернуть (Ctrl+Shift+Z)">↷ Вернуть</button>
+              <button id="pixelRedo" class="pixel-tool-button" type="button" title="Повторить (Ctrl+Shift+Z)">↷ Повторить</button>
             </div>
             <label class="pixel-tool-group">
               <input id="pixelGrid" type="checkbox" checked /> Сетка
@@ -1050,7 +1070,7 @@
       <span id="copilotBadge" class="copilot-badge hidden">0</span>
     </button>
     <button id="copilotRestore" class="copilot-restore hidden" type="button" title="Вернуть помощника" aria-label="Вернуть помощника">
-      <img class="copilot-pet-art" src="../assets/mascot.png" alt="" />
+      <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M9 3h6M5 10a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4Z"/><path d="M8 11h.01M16 11h.01M9 16h6M2 12v3M22 12v3"/></svg>
     </button>
 
     <div id="copilotBubble" class="copilot-bubble hidden" role="group" aria-label="Предложения помощника"><div id="copilotBubbleActions"></div><button id="copilotBubbleClose" type="button" aria-label="Скрыть предложения">×</button></div>
@@ -1080,7 +1100,7 @@
         <article data-task="extract"><strong>Вырезать один объект из листа</strong><small>PNG/JPG/WebP с объектами → отдельный PNG</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="objectEdit"><strong>Изменить объект и вернуть в лист</strong><small>Лист → выбранный объект → редактор → новый лист + JSON</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="match"><strong>Выровнять размеры объекта</strong><small>Лист или кадры → опорный кадр → единый габарит</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
-        <article data-task="edit"><strong>Править кадры</strong><small>Размер, контур, ручные исправления</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="edit"><strong>Редактировать изображения</strong><small>Очистка фона и контура · отдельные PNG в исходном размере</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="cutout"><strong>Вырезать объект</strong><small>JPG · PNG · WebP → прозрачный PNG</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="stylize"><strong>Стилизовать в пиксель-арт</strong><small>Фото или кадр → пиксельный PNG</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="depth"><strong>Построить карту глубины</strong><small>Фото или кадры → PNG глубины</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
@@ -1097,6 +1117,8 @@
     <script src="./copilot.js"></script>
     <script src="./sprite-editor.js"></script>
     <script src="./auto-pilot.js"></script>
+    <script src="./mask-region-ui.js"></script>
+    <script src="./image-workspace.js"></script>
     <script src="./task-mode.js"></script>
     <script src="./feedback.js"></script>
   </body>

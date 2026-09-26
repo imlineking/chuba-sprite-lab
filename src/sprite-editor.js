@@ -428,7 +428,7 @@ $("#pixelCanvasWrap").addEventListener("wheel", pixelEditorWheel, { passive: fal
 document.addEventListener("keydown", (event) => {
   if (!pixelEditorIsOpen()) return;
   const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement;
-  const key = event.key.toLowerCase();
+  const key = event.code?.startsWith("Key") ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
   if ((event.ctrlKey || event.metaKey) && key === "s") { event.preventDefault(); void pixelEditorSave().catch((error) => pixelEditorStatus(error?.message || "Не удалось сохранить кадр", "error")); return; }
   if ((event.ctrlKey || event.metaKey) && key === "z") { event.preventDefault(); pixelEditorSend({ op: event.shiftKey ? "redo" : "undo" }); return; }
   if ((event.ctrlKey || event.metaKey) && key === "y") { event.preventDefault(); pixelEditorSend({ op: "redo" }); return; }

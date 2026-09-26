@@ -16,3 +16,8 @@ header button { border:0; background:none; color:var(--muted); padding:3px 5px; 
 .choice:disabled { opacity:.45; cursor:wait; } .group { display:grid; grid-template-columns:1fr auto auto; gap:6px; align-items:center; padding:9px 0; border-top:1px solid var(--line); font-size:12px; }
 .group button { border:1px solid var(--line); border-radius:7px; background:transparent; color:var(--ink); padding:6px 8px; }
 @media(prefers-reduced-motion:reduce) { * { animation:none!important; } }
+.scenario { padding: 12px; border: 1px solid var(--line); border-radius: 12px; font-size: 13px; }
+.scenario > small { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.scenario .group { grid-template-columns: 1fr 1fr; border: 0; padding: 10px 0 0; align-items: stretch; }
+.scenario .group button { min-height: 46px; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.4; }
+.scenario .group button:first-child { background: var(--ink); color: var(--paper); }
