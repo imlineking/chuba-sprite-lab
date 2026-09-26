@@ -72,7 +72,7 @@ function unionBounds(items, width, height, padding) {
   return { left, top, width: right - left + 1, height: bottom - top + 1 };
 }
 
-async function detectObjectCells(sheetPath, tolerance = 34, padding = 0) {
+async function detectObjectCells(sheetPath, tolerance = 34, padding = 0, alphaOnly = false, attachFragments = false) {
   const { data, info } = await sharp(sheetPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const { width, height, channels } = info;
   const corner = averageCornerColor(data, width, height, channels);
@@ -85,12 +85,30 @@ async function detectObjectCells(sheetPath, tolerance = 34, padding = 0) {
       const dr = data[offset] - background[0];
       const dg = data[offset + 1] - background[1];
       const db = data[offset + 2] - background[2];
-      const foreground = data[offset + 3] >= 16 && (corner.transparent || dr * dr + dg * dg + db * db > thresholdSquared);
+      const foreground = data[offset + 3] >= 16 && (alphaOnly || corner.transparent || dr * dr + dg * dg + db * db > thresholdSquared);
       if (!foreground) continue;
       mask[y * width + x] = 1;
     }
   }
   const { components, labels } = connectedComponents(mask, width, height);
+  if (attachFragments && components.length) {
+    const largest = Math.max(...components.map(item => item.area));
+    const major = components.filter(item => item.area >= Math.max(64, largest * 0.02));
+    const maxGap = Math.max(12, Math.min(width, height) * 0.04);
+    for (const fragment of components) {
+      if (major.includes(fragment)) continue;
+      let nearest = null; let best = Infinity;
+      for (const object of major) {
+        const dx = Math.max(object.left - fragment.right, fragment.left - object.right, 0);
+        const dy = Math.max(object.top - fragment.bottom, fragment.top - object.bottom, 0);
+        const distance = Math.hypot(dx, dy);
+        const score = distance * 10000 + Math.hypot(fragment.centerX - object.centerX, fragment.centerY - object.centerY);
+        if (distance <= maxGap && score < best) { nearest = object; best = score; }
+      }
+      // Keep every pixel and component label, but order nearby loose leaves with their tree.
+      if (nearest) { fragment.centerX = nearest.centerX; fragment.centerY = nearest.centerY; }
+    }
+  }
   const rows = clusterByCenter(components, "centerY", Math.max(52, height * 0.115));
   const cells = [];
   for (const row of rows) {
@@ -142,7 +160,7 @@ export async function sliceSpriteSheet(sheetPath, outputDir, options = {}) {
   } else if (mode === "grid") {
     cells = uniformCells(width, height, clamp(Math.round(Number(options.rows) || 1), 1, 64), clamp(Math.round(Number(options.columns) || 1), 1, 64));
   } else {
-    const detected = await detectObjectCells(sheetPath, options.tolerance, options.padding);
+    const detected = await detectObjectCells(sheetPath, options.tolerance, options.padding, options.alphaOnly, options.attachFragments);
     cells = detected.cells;
     background = detected.background;
     labels = detected.labels;

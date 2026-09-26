@@ -56,12 +56,22 @@ await fs.writeFile(path.join(staging, "START-HERE.txt"), `Chuba Sprite Lab ${pac
 assertNoRunningBuild();
 await fs.mkdir(await checked(".build-archive"), { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+async function renameWithRetry(source, destination) {
+  for (let attempt = 0; ; attempt += 1) {
+    try { await fs.rename(source, destination); return; }
+    catch (error) {
+      if (process.platform !== "win32" || !["EPERM", "EACCES", "EBUSY"].includes(error.code) || attempt >= 5) throw error;
+      // Defender/indexing can briefly hold a freshly built Electron binary open.
+      await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 500));
+    }
+  }
+}
 const archiveFolder = async (relative, label) => {
   const source = await checked(relative);
   try { await fs.access(source); } catch { return; }
-  await fs.rename(source, await checked(`.build-archive/${stamp}-${label}`));
+  await renameWithRetry(source, await checked(`.build-archive/${stamp}-${label}`));
 };
 await archiveFolder("portable", "previous-portable");
-await fs.rename(staging, await checked("portable"));
+await renameWithRetry(staging, await checked("portable"));
 for (const relative of ["dist", "release"]) await archiveFolder(relative, `legacy-${relative}`);
 console.log(`Offline portable folder created:\n${path.join(appRoot, "portable")}\nIncluded models: ${models.length}`);

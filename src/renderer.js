@@ -824,7 +824,7 @@ function renderRecommendations(source) {
     : confidenceLabel(recommendation.confidence);
   const sizeText = recommendation.cellWidth && recommendation.cellHeight ? `ячейка около ${recommendation.cellWidth} × ${recommendation.cellHeight}` : "размер ячейки автоматически";
   const frameText = recommendation.estimatedFrames ? ` · примерно ${recommendation.estimatedFrames} кадров` : "";
-  const anchorText = ({ ground: "ноги на месте", center: "центр на месте", body: "тело на месте", motion: "сохранить движение" })[recommendation.anchor] || "ноги на месте";
+  const anchorText = ({ ground: "ноги на месте", center: "центр на месте", body: "объект на месте", motion: "сохранить движение" })[recommendation.anchor] || "ноги на месте";
   const batchText = source.kind === "video-batch" ? " · по первому видео" : "";
   $("#recommendationSummary").textContent = `Фон: ${modeLabel(recommendation.keyMode)} · ${recommendation.fps} FPS · ${anchorText} · ${sizeText}${frameText}${batchText}${recommendation.keyMode === "ai" ? ". Края кадра неоднородны: проверьте результат локального ИИ в превью." : ""}`;
   $("#detectedBackground").textContent = `обнаружен: ${modeLabel(recommendation.keyMode)}`;
@@ -2097,7 +2097,7 @@ async function chooseSource(method) {
   } catch (error) { setStatus(error.message || "Не удалось открыть источник", "error", 0); showError(error.message); }
 }
 
-async function runBuild(previewOnly) {
+async function runBuild(previewOnly, automatic = false) {
   if (!state.source || state.busy || (!previewOnly && !state.outputFolder)) return;
   state.busy = true; updateActionState();
   const batchExport = state.source.kind === "video-batch" && !previewOnly;
@@ -2113,7 +2113,7 @@ async function runBuild(previewOnly) {
   try {
     const request = {
       source: state.source, outputDir: previewOnly ? null : state.outputFolder,
-      name: state.source.kind === "video-batch" ? null : $("#spriteName").value, options: collectOptions(), previewOnly,
+      name: state.source.kind === "video-batch" ? null : $("#spriteName").value, options: collectOptions(), previewOnly, automatic,
     };
     if (!previewOnly && state.source.kind !== "video-batch" && typeof animationSetRequest === "function") {
       const animations = animationSetRequest(request.options);
@@ -2136,7 +2136,7 @@ async function runBuild(previewOnly) {
       $("#completionActions").classList.remove("hidden");
       if ($("#openAfterExport").checked && result.revealPath) window.spriteLab.revealOutput(result.revealPath);
       hideError();
-      return;
+      return result;
     }
     if (result.multi && !previewOnly) {
       // The set export returns the atlas of all animations; keep the active preview intact.
@@ -2162,6 +2162,7 @@ async function runBuild(previewOnly) {
       $("#completionActions").classList.remove("hidden");
       if ($("#openAfterExport").checked && result.revealPath) window.spriteLab.revealOutput(result.revealPath);
     }
+    return result;
   } catch (error) {
     const cancelled = /отмен|abort/i.test(error.message || "");
     setStatus(cancelled ? "Обработка остановлена" : error.message || "Ошибка обработки", cancelled ? "idle" : "error", 0);
@@ -2287,6 +2288,47 @@ $("#solidKeyColor").addEventListener("click", (event) => {
   state.solidKeyMode = button.dataset.keyColor; setKeyMode(state.solidKeyMode); scheduleFramePreview(); pushHistory("Цвет фона изменён");
 });
 // Any colour can be the key, not only the four common ones.
+async function pickSourceColor(onPick) {
+  if (!state.source || state.busy) { setStatus("Сначала откройте изображение или видео", "idle", 0); return; }
+  const source = state.source;
+  const file = source.sheetPath || currentFramePath();
+  const fileUrl = path => `file:///${path.replaceAll("\\", "/").split("/").map((part, index) => index === 0 ? part : encodeURIComponent(part)).join("/")}`;
+  const url = source.sheetPath ? fileUrl(source.sheetPath)
+    : state.framePreview?.beforeUrl || source.previewUrl;
+  if (!url && !file) { showError("Сначала дождитесь загрузки первого кадра."); return; }
+  const dialog = document.createElement("dialog");
+  dialog.className = "color-picker-dialog";
+  const heading = document.createElement("h2"); heading.textContent = "Выберите цвет на исходнике";
+  const hint = document.createElement("p"); hint.textContent = "Щёлкните по фону или пятну. Прозрачные пиксели не выбираются. Esc — отмена.";
+  const canvas = document.createElement("canvas"); canvas.tabIndex = 0; canvas.setAttribute("aria-label", "Изображение для пипетки");
+  const cancel = document.createElement("button"); cancel.className = "button secondary"; cancel.textContent = "Отмена"; cancel.onclick = () => dialog.close();
+  dialog.append(heading, hint, canvas, cancel); document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error("Не удалось открыть исходник для пипетки.")); image.src = url || fileUrl(file); });
+    const scale = Math.min(1, 1280 / image.naturalWidth, 720 / image.naturalHeight);
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d"); context.imageSmoothingEnabled = false; context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const pixel = document.createElement("canvas"); pixel.width = pixel.height = 1;
+    const sampler = pixel.getContext("2d", { willReadFrequently: true });
+    canvas.addEventListener("click", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.min(image.naturalWidth - 1, Math.max(0, Math.floor((event.clientX - rect.left) / rect.width * image.naturalWidth)));
+      const y = Math.min(image.naturalHeight - 1, Math.max(0, Math.floor((event.clientY - rect.top) / rect.height * image.naturalHeight)));
+      sampler.clearRect(0, 0, 1, 1); sampler.drawImage(image, x, y, 1, 1, 0, 0, 1, 1);
+      const rgba = sampler.getImageData(0, 0, 1, 1).data;
+      if (!rgba[3]) { hint.textContent = "Это прозрачный пиксель. Выберите видимый цвет."; return; }
+      onPick(`#${[...rgba.slice(0, 3)].map(value => value.toString(16).padStart(2, "0")).join("")}`);
+      dialog.close();
+    });
+    dialog.showModal(); canvas.focus();
+  } catch (error) { dialog.remove(); showError(error.message); }
+}
+$("#pickKeyColor").addEventListener("click", () => pickSourceColor(value => {
+  $("#customKeyColor").value = value; state.solidKeyMode = value; setKeyMode("custom");
+  savePreferences(); scheduleFramePreview(0); pushHistory("Цвет выбран пипеткой");
+}));
 $("#customKeyColor").addEventListener("input", (event) => {
   const value = String(event.target.value || "").toLowerCase();
   if (!hexToRgb(value)) return;

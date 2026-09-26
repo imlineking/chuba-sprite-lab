@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 // because the second declaration silently replaces the first at load time.
 const DECLARATION = /^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)|^(?:const|let|var)\s+([A-Za-z_$][\w$]*)/gm;
 
-export const rendererFiles = ["src/i18n.js", "src/renderer.js", "src/studio.js", "src/sheet-editor.js", "src/frame-consistency.js", "src/copilot.js", "src/sprite-editor.js", "src/auto-pilot.js"];
+export const rendererFiles = ["src/i18n.js", "src/renderer.js", "src/studio.js", "src/sheet-editor.js", "src/frame-consistency.js", "src/copilot.js", "src/sprite-editor.js", "src/auto-pilot.js", "src/task-mode.js", "src/feedback.js"];
 
 // Name -> files that declare it, in file order.
 export function collectRendererDeclarations(files = rendererFiles) {

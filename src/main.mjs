@@ -16,6 +16,7 @@ import { assertGitHubDownloadUrl, compareVersions, parseSha256 } from "./update-
 import { resolveAIModel, segmentSubject } from "./ai-segmentation.mjs";
 import { resolveAuxModel } from "./model-paths.mjs";
 import { DesktopCompanion } from "./desktop-companion.mjs";
+import { processImageBatch } from "./image-batch.mjs";
 import { finishSheetImport, makeTempWorkspace, pruneStaleTempWorkspaces } from "./temp-workspace.mjs";
 import { planSuggestions, planTaskScenarios } from "./copilot-rules.mjs";
 import { readProfile } from "./build-profile.mjs";
@@ -67,7 +68,7 @@ function notifyFinished(result) {
   if (screenshotPath || !mainWindow || mainWindow.isFocused() || !Notification.isSupported()) return;
   try {
     const body = result.batch
-      ? `Обработано видео: ${result.completed}/${result.total}.`
+      ? `Обработано ${result.kind === "images" ? "изображений" : "видео"}: ${result.completed}/${result.total}.`
       : `Готово кадров: ${result.frameCount}. Проверьте результат в программе.`;
     new Notification({ title: "Chuba Sprite Lab · обработка завершена", body }).show();
   } catch { /* Системные уведомления могут быть отключены. */ }
@@ -340,6 +341,11 @@ async function resolveExportConflict(request) {
   const baseName = safeOutputName(request.name);
   const target = path.join(request.outputDir, baseName);
   if (!await pathExists(target) || (await fs.readdir(target)).length === 0) return request;
+  if (request.automatic) {
+    let version = 2;
+    while (await pathExists(path.join(request.outputDir, `${baseName}-${version}`))) version += 1;
+    return { ...request, name: `${baseName}-${version}` };
+  }
   const choice = await dialog.showMessageBox(mainWindow, {
     type: "question",
     title: "Папка набора уже существует",
@@ -1036,9 +1042,7 @@ ipcMain.handle("sprites:build", async (_event, request) => {
     } else {
       result = await processSprites(withModels({ ...request, ...common }));
     }
-    copyableFrames = request.previewOnly
-      ? new Map((result.sourceFrameIndexes || []).map((sourceIndex, index) => [sourceIndex, result.imagePaths?.[index]]).filter(([, filePath]) => Boolean(filePath)))
-      : new Map((result.sequence || []).map((entry, index) => [entry.sourceIndex, result.framePaths?.[index]]).filter(([, filePath]) => Boolean(filePath)));
+    copyableFrames = new Map((result.sourceFrameIndexes || []).map((sourceIndex, index) => [sourceIndex, result.imagePaths?.[index]]).filter(([, filePath]) => Boolean(filePath)));
     notifyFinished(result);
     const toUrl = (item) => pathToFileURL(item).href;
     return {
@@ -1047,7 +1051,7 @@ ipcMain.handle("sprites:build", async (_event, request) => {
       sheetUrl: toUrl(result.sheetPath),
       sheetUrls: (result.sheetPaths || [result.sheetPath]).map(toUrl),
       previewUrl: result.previewPath ? toUrl(result.previewPath) : null,
-      frameUrls: (request.previewOnly ? result.imagePaths : result.framePaths || []).slice(0, 256).map(toUrl),
+      frameUrls: (result.imagePaths || []).slice(0, 256).map(toUrl),
       depthUrls: (result.depthPaths || []).slice(0, 256).map(toUrl),
       sourceFrameUrls: result.sourceFramePaths.slice(0, 256).map((item) => item ? pathToFileURL(item).href : null),
       allSourceFrameUrls: result.allSourceFramePaths.slice(0, 256).map((item) => pathToFileURL(item).href),
@@ -1076,6 +1080,26 @@ ipcMain.handle("sprites:cancel", () => {
   if (!activeJob) return false;
   activeJob.controller.abort();
   return true;
+});
+
+ipcMain.handle("output:automatic", async (event, filePath) => {
+  if (event.sender !== mainWindow?.webContents || typeof filePath !== "string") throw new Error("Недопустимый источник.");
+  const sourcePath = path.resolve(filePath);
+  if (!(await fs.stat(sourcePath)).isFile()) throw new Error("Исходный файл не найден.");
+  let directory = path.join(path.dirname(sourcePath), "Sprite Lab");
+  try { await fs.mkdir(directory, { recursive: true }); await fs.access(directory, fsSync.constants.W_OK); }
+  catch { directory = path.join(app.getPath("documents"), "Chuba Sprite Lab", "Exports"); await fs.mkdir(directory, { recursive: true }); }
+  return directory;
+});
+
+ipcMain.handle("sprites:image-batch", async (event, request = {}) => {
+  if (event.sender !== mainWindow?.webContents) throw new Error("Недопустимый отправитель.");
+  if (activeJob) throw new Error("Обработка уже выполняется.");
+  activeJob = { controller: new AbortController(), stopAfterCurrent: false };
+  try {
+    const result = await processImageBatch({ ...request, appRoot, options: { ...(request.options || {}), aiModelDirs: [modelsDirectory()] }, signal: activeJob.controller.signal, shouldStop: () => Boolean(activeJob?.stopAfterCurrent), onProgress: progress => { mainWindow?.setProgressBar(progress.value); mainWindow?.webContents.send("sprites:progress", progress); } });
+    notifyFinished(result); return result;
+  } finally { activeJob = null; mainWindow?.setProgressBar(-1); }
 });
 
 ipcMain.handle("sprites:stop-after-current", () => {

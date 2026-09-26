@@ -2,6 +2,7 @@
 // the first screen and one clear next action. No source files are modified here.
 (() => {
   const taskNames = {
+    batch: "Пакетно подготовить изображения",
     layout: "Разнести объекты по сетке",
     clipping: "Исправить обрезание",
     remove: "Убрать объект из кадров",
@@ -27,6 +28,67 @@
   let arranged = "";
   let extractedPath = null;
   let objectEditOpened = false;
+  let preparedLayout = "";
+  let batchReport = null;
+  let preparingLayout = false;
+
+  async function taskOutput(source = state.source) {
+    if (!state.outputFolder) {
+      const original = source?.sheetPath || source?.paths?.[0] || source?.previewPath;
+      state.outputFolder = await window.spriteLab.automaticOutput(original);
+      $("#outputFolder").textContent = state.outputFolder; $("#outputFolder").title = state.outputFolder;
+      savePreferences();
+    }
+    return state.outputFolder;
+  }
+
+  async function taskBuildAtlas() {
+    await taskOutput();
+    $("#exportSheet").checked = true; $("#exportMetadata").checked = true;
+    $("#exportFrames").checked = false; $("#exportPreview").checked = false;
+    syncExportDependencies("");
+    return runBuild(false, true);
+  }
+
+  function batchInputPaths() {
+    return state.source?.sheetPath ? [state.source.sheetPath] : state.source?.kind === "frames" ? state.source.paths : [];
+  }
+
+  async function taskBatchAdd() {
+    if (state.busy) return;
+    try { const source = await window.spriteLab.addImages(batchInputPaths()); if (source) setSource(source); }
+    catch (error) { showError(error.message); }
+  }
+
+  async function taskBatchRun() {
+    const paths = batchInputPaths(); if (!paths.length || state.busy) return;
+    state.busy = true; updateActionState(); taskRender();
+    try {
+      await taskOutput();
+      const profile = $("#batchImageProfile").value;
+      if (profile === "ai") await taskEnsureModel($("#aiModel").value || "u2netp");
+      const options = collectOptions();
+      if (profile === "color") Object.assign(options, { keyMode: "custom", keyColor: hexToRgb($("#batchKeyColor").value), keyScope: $("#batchKeyScope").value, tolerance: Number($("#batchTolerance").value) });
+      if (profile === "ai") options.keyMode = "ai";
+      Object.assign(options, { autoSize: true, autoColumns: true, anchor: "body", padding: Math.max(24, options.padding || 0), fitEachFrame: false, frameOverrides: {}, frameTransforms: {}, aiEdits: [], attachments: [], attachmentPlacements: null, excludedFrames: [], timeline: null, auxAI: { ...options.auxAI, interpolate: false, inpaintMaskPath: null } });
+      $("#stopAfterCurrent").disabled = false; $("#stopAfterCurrent").textContent = "Остановить после текущего"; $("#stopAfterCurrent").classList.remove("hidden");
+      setStatus(`Подготавливаю ${paths.length} изображений…`, "busy", 0.02);
+      batchReport = await window.spriteLab.imageBatch({ paths, outputDir: state.outputFolder, options, splitObjects: $("#batchSplitObjects").checked });
+      state.lastExportDir = batchReport.outputDir; state.lastRevealPath = batchReport.revealPath;
+      $("#exportSummary").textContent = `Готово: ${batchReport.completed}/${batchReport.total} файлов · PNG + JSON${batchReport.failed ? ` · ошибок: ${batchReport.failed}` : ""}${batchReport.stopped ? " · очередь остановлена" : ""}`;
+      $("#exportSummary").classList.remove("hidden"); $("#completionActions").classList.remove("hidden");
+      setStatus($("#exportSummary").textContent, batchReport.failed ? "error" : "done", 1);
+      const rows = batchReport.results.map(item => {
+        const button = document.createElement("button"); button.type = "button"; button.className = "button secondary";
+        button.textContent = `${item.name} · ${item.frameCount} объектов · PNG + JSON`; button.title = item.sheetPath;
+        button.addEventListener("click", () => window.spriteLab.revealOutput(item.sheetPath)); return button;
+      });
+      for (const failure of batchReport.failures) { const row = document.createElement("p"); row.textContent = `${failure.name}: ${failure.message}`; rows.push(row); }
+      $("#batchImageResults").replaceChildren(...rows);
+      if (!batchReport.failed) hideError();
+    } catch (error) { setStatus(error.message || "Обработка остановлена", /отмен|abort/i.test(error.message) ? "idle" : "error", 0); if (!/отмен|abort/i.test(error.message)) showError(error.message); }
+    finally { state.busy = false; updateActionState(); $("#stopAfterCurrent").classList.add("hidden"); $("#cancelJob").classList.add("hidden"); taskRender(); }
+  }
 
   async function taskAddImages() {
     if (state.busy || (state.source && state.source.kind !== "frames")) return;
@@ -50,7 +112,7 @@
   }
 
   function taskQuick(name) {
-    if (name === "atlas") taskSet(state.source?.kind === "sheet" ? "layout" : state.source?.kind?.startsWith("video") ? "animation" : "combine");
+    if (name === "atlas") taskSet(state.source?.sheetPath ? "layout" : state.source?.kind?.startsWith("video") ? "animation" : "combine");
     else if (name === "cutout") taskSet(state.source?.kind === "sheet" ? "extract" : "cutout");
     else if (name === "clipping") taskSet("clipping");
   }
@@ -72,7 +134,8 @@
   }
 
   async function taskLayoutPreview() {
-    if (!state.source?.sheetPath || state.busy) return;
+    if (!state.source?.sheetPath || state.busy || preparingLayout) return;
+    preparingLayout = true; taskRender();
     const mode = $("#sheetSliceMode button.selected")?.dataset.sheetMode || "objects";
     try {
       setStatus("Уточняю рамки объектов…", "busy", 0.1);
@@ -86,11 +149,15 @@
       $("#autoColumns").checked = false;
       $("#columns").value = String(Math.max(1, Math.ceil(Math.sqrt(source.paths.length))));
       $("#padding").value = String(Math.max(24, Number($("#padding").value) || 0));
+      $("#atlasPacking").value = "grid";
       setAnchor("body");
       savePreferences();
-      await runBuild(true);
+      const built = approach === "auto" ? await taskBuildAtlas() : await runBuild(true);
+      if (built && approach === "auto") preparedLayout = source.sheetPath;
       setTab("source");
+      taskRender();
     } catch (error) { setStatus(error?.message || "Не удалось разнести объекты", "error", 0); showError(error?.message); }
+    finally { preparingLayout = false; taskRender(); }
   }
 
   async function taskApplyAutoPlan() {
@@ -163,14 +230,25 @@
     const guide = $("#taskGuideText");
     const primary = $("#taskPrimary");
     const secondary = $("#taskSecondary");
-    primary.disabled = Boolean(state.busy);
-    secondary.classList.add("hidden");
+    primary.disabled = Boolean(state.busy || preparingLayout);
+    secondary.disabled = Boolean(state.busy || preparingLayout); secondary.classList.add("hidden");
     primaryAction = null;
     secondaryAction = null;
     const objectField = $("#taskObjectField");
     objectField.classList.add("hidden");
+    $("#taskBatchOptions").classList.toggle("hidden", selected !== "batch");
 
-    if (selected === "clipping") {
+    if (selected === "batch") {
+      const paths = batchInputPaths();
+      guide.textContent = paths.length ? `Файлов: ${paths.length}. Применим один профиль ко всем. Выберите цвет пипеткой, область удаления и допуск либо используйте ИИ. Каждый файл получит отдельный прозрачный PNG и JSON.` : "Добавьте изображения деревьев, кустов или других объектов. Для всей серии выберите один профиль: удаление цвета, текущие настройки или локальный ИИ.";
+      primary.textContent = paths.length ? batchReport ? "Обработать ещё раз" : "Подготовить все · PNG + JSON" : "Добавить изображения";
+      primaryAction = paths.length ? taskBatchRun : taskBatchAdd;
+      secondary.textContent = "Добавить ещё файлы"; secondary.classList.toggle("hidden", !paths.length); secondaryAction = taskBatchAdd;
+    } else if (["layout", "clipping"].includes(selected) && source?.sheetPath === preparedLayout && result && !state.resultDirty) {
+      guide.textContent = `Готово: ${result.frameCount} кадров. Новый атлас и JSON уже сохранены в ${state.lastExportDir}. Плотная часть объекта закреплена, выступы помещаются в ячейки.`;
+      primary.textContent = "Открыть готовый атлас и JSON"; primaryAction = () => window.spriteLab.revealOutput(state.lastRevealPath);
+      secondary.textContent = "Уточнить рамки вручную"; secondary.classList.remove("hidden"); secondaryAction = () => taskSet(selected, "manual");
+    } else if (selected === "clipping") {
       const edgeIssue = result?.frameIssues?.find((issue) => /касается края исходного изображения|обрезан|выходит за пределы/i.test(issue.message || ""));
       if (!source) {
         guide.textContent = "Откройте лист или серию кадров. Помощник проверит край и проведёт к исправлению. Пиксели, которых нет в исходнике, восстановить простой сменой рамки нельзя.";
@@ -313,8 +391,8 @@
                 $("#autoColumns").checked = true;
                 $("#padding").value = String(Math.max(4, Number($("#padding").value) || 0));
                 setAnchor("center");
-                await runBuild(true);
-              } else if (await taskApplyAutoPlan()) await runBuild(true);
+                await taskBuildAtlas();
+              } else if (await taskApplyAutoPlan()) await taskBuildAtlas();
             }
           : () => { setTab("process"); $(selected === "combine" ? "#autoColumns" : "#fps").scrollIntoView({ block: "center", behavior: "smooth" }); };
         if (source.kind === "frames") {
@@ -324,10 +402,10 @@
         }
       } else {
         guide.textContent = selected === "combine"
-          ? `Готово: ${result.frameCount} объектов в общем атласе. Проверьте поля и сохраните лист с JSON координатами.`
-          : `Готово: ${result.frameCount} кадров. Проверьте движение и сохраните лист с JSON анимации.`;
-        primary.textContent = state.outputFolder ? "3 · Сохранить лист и JSON" : "3 · Выбрать папку для результата";
-        primaryAction = taskExport;
+          ? `Готово: ${result.frameCount} объектов в общем атласе.${state.lastExportDir ? " PNG и JSON уже сохранены." : " Проверьте поля и сохраните лист с JSON координатами."}`
+          : `Готово: ${result.frameCount} кадров.${state.lastExportDir ? " PNG и JSON анимации уже сохранены." : " Проверьте движение и сохраните лист с JSON анимации."}`;
+        primary.textContent = state.lastExportDir ? "Открыть PNG и JSON" : state.outputFolder ? "3 · Сохранить лист и JSON" : "3 · Выбрать папку для результата";
+        primaryAction = state.lastExportDir ? () => window.spriteLab.revealOutput(state.lastRevealPath) : taskExport;
         if (source.kind === "frames") {
           secondary.textContent = "Добавить ещё файлы";
           secondary.classList.remove("hidden");
@@ -342,17 +420,17 @@
           : "Откройте готовый спрайт-лист (PNG, JPG или WebP). Помощник найдёт отдельные объекты и покажет их рамки.";
         primary.textContent = oneImage ? "1 · Проверить этот файл как лист" : "1 · Открыть спрайт-лист";
         primaryAction = oneImage
-          ? async () => { try { const found = await window.spriteLab.resliceSheet({ sheetPath: source.paths[0], options: { mode: "objects" } }); setSource(found); } catch (error) { showError(error?.message); } }
+          ? async () => { try { const found = await window.spriteLab.resliceSheet({ sheetPath: source.paths[0], options: { mode: "objects" } }); setSource(found); if (approach === "auto") await taskLayoutPreview(); } catch (error) { showError(error?.message); } }
           : () => chooseSource("chooseSheet");
       } else if (!result || state.resultDirty) {
         guide.textContent = approach === "auto"
-          ? `Найдено ${source.paths.length} объектов. Оркестратор уточнит их рамки, добавит безопасные поля, выровняет по центру и соберёт новый лист без изменения оригинала.`
+          ? `Найдено ${source.paths.length} объектов. Программа отделит их, выровняет плотную часть каждого объекта и добавит поля для нити, хвоста и других выступов. Нить не смещает центр. Масштаб остаётся общим для всех кадров.`
           : `Найдено ${source.paths.length} объектов. Выберите «Свои рамки» ниже: рамки можно рисовать мышью или вводить координаты. Затем соберите новый лист.`;
         if (approach === "manual" && $("#sheetSliceMode button.selected")?.dataset.sheetMode !== "manual") {
           primary.textContent = "2 · Открыть ручные рамки";
           primaryAction = () => { $("#sheetSliceMode button[data-sheet-mode=manual]").click(); $("#sheetControls").scrollIntoView({ block: "start", behavior: "smooth" }); taskRender(); };
         } else {
-          primary.textContent = approach === "auto" ? "2 · Разнести автоматически" : "3 · Собрать по моим рамкам";
+          primary.textContent = approach === "auto" ? "2 · Разнести и сохранить PNG + JSON" : "3 · Собрать по моим рамкам";
           primaryAction = taskLayoutPreview;
         }
       } else {
@@ -468,16 +546,26 @@
       requestFramePreview(state.source.paths[index]);
     }
   });
+  $("#batchPickColor").addEventListener("click", () => pickSourceColor(value => { $("#batchKeyColor").value = value; }));
+  $("#batchImageProfile").addEventListener("change", () => $("#batchColorControls").classList.toggle("hidden", $("#batchImageProfile").value !== "color"));
+  $("#batchTolerance").addEventListener("input", () => { $("#batchToleranceValue").value = $("#batchTolerance").value; });
+  $("#batchKeyScope").addEventListener("change", () => { $("#batchScopeHint").textContent = $("#batchKeyScope").value === "all" ? "Будут удалены и детали объекта такого же цвета, например цветы или блики. Для них используйте режим фона или исправьте маску вручную." : "Внутренние детали сохраняются. Открытый контур может пропускать удаление внутрь объекта."; });
   $(".copilot-tasks").addEventListener("click", (event) => {
     const action = event.target.closest("button[data-approach]");
     const choice = action?.closest("article[data-task]");
-    if (choice) taskSet(choice.dataset.task, action.dataset.approach);
+    if (choice) window.taskChoose(choice.dataset.task, action.dataset.approach);
   });
   $(".copilot-quick").addEventListener("click", (event) => {
     const action = event.target.closest("button[data-quick-task]");
     if (action) taskQuick(action.dataset.quickTask);
   });
-  window.taskChoose = taskSet;
+  window.taskChoose = (name, nextApproach = "auto") => {
+    taskSet(name, nextApproach);
+    if (nextApproach !== "auto" || !state.source || state.busy) return;
+    if (["layout", "clipping"].includes(name) && state.source.sheetPath) void taskLayoutPreview();
+    else if ((name === "combine" && state.source.kind === "frames" && state.source.paths.length > 1)
+      || (name === "animation" && (state.source.kind.startsWith("video") || state.source.paths.length > 1))) primaryAction?.();
+  };
   window.taskRenderSuggestions = (scenarios = []) => {
     const container = $(".copilot-tasks");
     const cards = [...container.querySelectorAll("article[data-task]")];
@@ -496,6 +584,7 @@
     if (selected === "remove") setTimeout(() => { taskRender(); setTab("source"); }, 0);
   });
   window.taskOnSource = (source) => {
+    batchReport = null; $("#batchImageResults").replaceChildren();
     if (!source?.sheetPath) objectEditOpened = false;
     if (source?.kind === "sheet" && (!selected || selected === "animation")) taskSet("layout");
     taskRender();

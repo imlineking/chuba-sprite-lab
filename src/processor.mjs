@@ -11,6 +11,7 @@ import { pixelate } from "./pixelate.mjs";
 import { toneRgba } from "./toning.mjs";
 import { decontaminateEdges } from "./edge-decontaminate.mjs";
 import { refineEdgeRgba } from "./edge-refine.mjs";
+import { findBodyAnchor } from "./body-anchor.mjs";
 import { compositeAttachments, trackAttachmentPlacements } from "./attachment-tracker.mjs";
 import { inspectAtlas } from "./atlas-inspector.mjs";
 import { findWhiteRemainders } from "./white-remainders.mjs";
@@ -604,6 +605,11 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
     };
     for (let x = 0; x < width; x += 1) { enqueue(x, 0); enqueue(x, height - 1); }
     for (let y = 0; y < height; y += 1) { enqueue(0, y); enqueue(width - 1, y); }
+    // Existing transparency is background too, including disconnected cut-outs.
+    // Seed it before flooding the selected colour; enclosed opaque details stay protected.
+    for (let index = 0; index < width * height; index += 1) {
+      if (data[index * channels + 3] === 0) enqueue(index % width, Math.floor(index / width));
+    }
     while (head < tail) {
       const index = queue[head++];
       const x = index % width;
@@ -761,7 +767,7 @@ function makeReport(frames, skipped, keyMode) {
     if (Math.abs(frame.bounds.height - averageHeight) / Math.max(1, averageHeight) > 0.2) warn(`Кадр ${number}: высота силуэта отличается более чем на 20%.`, frame.sourceIndex);
     const { bounds, info } = frame;
     if (bounds.left <= 1 || bounds.top <= 1 || bounds.left + bounds.width >= info.width - 1 || bounds.top + bounds.height >= info.height - 1) {
-      warn(`Кадр ${number}: персонаж касается края исходного изображения.`, frame.sourceIndex);
+      warn(`Кадр ${number}: объект касается края исходного изображения.`, frame.sourceIndex);
     }
   });
   const unique = new Map();
@@ -906,28 +912,11 @@ async function renderFrames(frames, options) {
   const maxHeight = Math.ceil(Math.max(...frames.map((frame) => frame.bounds.height * (resolveFrameTransform(options, frame.sourceIndex)?.scaleY || 1))));
   const anchor = ["ground", "center", "motion", "body"].includes(options.anchor) ? options.anchor : "ground";
   // A long, thin appendage may extend the full bounds without moving the body.
-  // The alpha-mass median is robust to such tails; the full bounds still determine
-  // the cell size, so no pixel of the thread is discarded.
+  // Locate the dense core independently of thin tails. Full bounds still determine
+  // the cell size, so no pixel of a thread is discarded.
   const bodyPoints = anchor === "body" ? await Promise.all(frames.map(async (frame) => {
     const { data, info } = await sharp(frame.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    const columns = new Float64Array(info.width);
-    const rows = new Float64Array(info.height);
-    let total = 0;
-    for (let y = 0; y < info.height; y += 1) for (let x = 0; x < info.width; x += 1) {
-      const alpha = data[(y * info.width + x) * info.channels + 3];
-      if (alpha <= 12) continue;
-      columns[x] += alpha; rows[y] += alpha; total += alpha;
-    }
-    const median = (weights, fallback) => {
-      if (!total) return fallback;
-      let sum = 0;
-      for (let index = 0; index < weights.length; index += 1) {
-        sum += weights[index];
-        if (sum >= total / 2) return index;
-      }
-      return fallback;
-    };
-    return { x: median(columns, frame.bounds.left + frame.bounds.width / 2), y: median(rows, frame.bounds.top + frame.bounds.height / 2) };
+    return findBodyAnchor(data, info);
   })) : [];
   const bodyExtents = anchor === "body" ? frames.reduce((extent, frame, index) => {
     const transform = resolveFrameTransform(options, frame.sourceIndex);
@@ -944,7 +933,7 @@ async function renderFrames(frames, options) {
   // The pixel grid has to divide the cell exactly: otherwise the blocks along the far edge come out
   // one pixel wider than the rest and the sprite looks uneven.
   const pixelSize = Math.max(1, Math.round(Number(options.pixelate?.size) || 1));
-  const snapToGrid = (value) => (pixelSize > 1 ? Math.ceil(value / pixelSize) * pixelSize : value);
+  const snapToGrid = (value) => (pixelSize > 1 ? Math.ceil(value / pixelSize) * pixelSize : Math.ceil(value));
   const cellWidth = options.autoSize
     ? clamp(snapToGrid((bodyExtents ? Math.max(maxWidth, 2 * Math.max(bodyExtents.left, bodyExtents.right)) : maxWidth) + requestedPadding * 2), 64, 4096)
     : clamp(snapToGrid(Math.round(Number(options.cellWidth) || 600)), 64, 4096);
@@ -956,6 +945,7 @@ async function renderFrames(frames, options) {
     ? { r: 255, g: 255, b: 255, alpha: 1 }
     : { r: 0, g: 0, b: 0, alpha: 0 };
   const scale = Math.min(
+    options.autoSize ? 1 : Infinity,
     (cellWidth - padding * 2) / Math.max(1, maxWidth),
     (cellHeight - padding * 2) / Math.max(1, maxHeight),
     bodyExtents ? (cellWidth / 2 - padding) / Math.max(1, bodyExtents.left, bodyExtents.right) : Infinity,
@@ -1014,7 +1004,8 @@ async function renderFrames(frames, options) {
 
   // Placing frames is pure sharp work with no shared state.
   const rendered = await runPooled(frames, parallelismFor(options), renderOne);
-  return { rendered, cellWidth, cellHeight, padding, anchor };
+  const bodyAlignment = anchor === "body" ? { method: "dense-core", x: cellWidth / 2, y: cellHeight / 2, referenceDiameter: Math.max(...bodyPoints.map(point => point.radius * 2)) * scale, frames: bodyPoints } : null;
+  return { rendered, cellWidth, cellHeight, padding, anchor, bodyAlignment };
 }
 
 async function makeAnimatedPreview(framePattern, outputPath, fps, appRoot, signal) {
@@ -1257,6 +1248,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
   if (source.kind === "sheet") {
     const drop = /ширина силуэта|высота силуэта|касается края исходного изображения/;
     for (let index = warnings.length - 1; index >= 0; index -= 1) if (drop.test(warnings[index])) warnings.splice(index, 1);
+    for (let index = frameIssues.length - 1; index >= 0; index -= 1) if (drop.test(frameIssues[index].message)) frameIssues.splice(index, 1);
   }
   for (const frame of prepared) {
     if ((frame.maskTracking || []).some((tracking) => !tracking.matched || tracking.confidence < 0.18)) {
@@ -2138,6 +2130,7 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
     frameDurationMs: primary.baseDurationMs,
     anchor: primary.anchor,
     pivot: primary.pivot,
+    ...(primary.normalized.bodyAlignment ? { bodyAlignment: { ...primary.normalized.bodyAlignment, x: primaryGroup.cellWidth / 2, y: primaryGroup.cellHeight / 2, referenceDiameter: primary.normalized.bodyAlignment.referenceDiameter * atlas.scale } } : {}),
     transparent: options.outputBackground !== "white",
     formatVersion: 2,
     packing,

@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld("spriteLab", {
   analyzeFrames: (request) => ipcRenderer.invoke("source:analyze-frames", request),
   chooseFolder: () => ipcRenderer.invoke("source:folder"),
   chooseOutput: () => ipcRenderer.invoke("output:folder"),
+  automaticOutput: (filePath) => ipcRenderer.invoke("output:automatic", filePath),
+  imageBatch: (request) => ipcRenderer.invoke("sprites:image-batch", request),
   chooseOverlay: () => ipcRenderer.invoke("overlay:choose"),
   chooseAIMask: () => ipcRenderer.invoke("ai:choose-mask"),
   prepareFrameEdit: (request) => ipcRenderer.invoke("frame-edit:prepare", request),

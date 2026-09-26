@@ -53,6 +53,17 @@
             <p id="taskGuideText"></p>
             <label id="taskObjectField" class="field hidden"><span>Объект из листа</span><select id="taskObjectSelect" aria-label="Выбрать объект из листа"></select></label>
             <div class="task-guide-actions"><button id="taskPrimary" class="button primary" type="button"></button><button id="taskSecondary" class="button secondary hidden" type="button"></button><button id="taskAdvanced" class="button ghost" type="button">Все настройки</button></div>
+            <section id="taskBatchOptions" class="task-batch-options hidden">
+              <label class="field"><span>Один профиль для всех файлов</span><select id="batchImageProfile"><option value="color">Удалить выбранный цвет</option><option value="current">Текущие настройки обработки</option><option value="ai">Локальный ИИ · выделение объектов</option></select></label>
+              <div id="batchColorControls">
+                <div class="task-color-row"><label class="field"><span>Цвет для удаления</span><input id="batchKeyColor" type="color" value="#ffffff" /></label><button id="batchPickColor" class="button secondary" type="button">Пипетка</button></div>
+                <label class="field"><span>Область удаления</span><select id="batchKeyScope"><option value="exterior">Фон, связанный с краем или прозрачностью</option><option value="all">Весь цвет, включая внутренние пятна</option></select><small id="batchScopeHint">Внутренние детали сохраняются. Открытый контур может пропускать удаление внутрь объекта.</small></label>
+                <label class="range-field"><span>Допуск цвета <output id="batchToleranceValue">18</output></span><input id="batchTolerance" type="range" min="0" max="100" value="18" /></label>
+              </div>
+              <label class="check-row"><input id="batchSplitObjects" type="checkbox" checked /><span>Разделить объекты и собрать атлас для каждого файла</span></label>
+              <small>PNG + JSON для каждого файла. Исходники сохраняются; повторный запуск создаёт новые папки.</small>
+              <div id="batchImageResults" class="task-batch-results" aria-live="polite"></div>
+            </section>
           </section>
           <div class="panel-heading">
             <p class="eyebrow">ИМПОРТ</p>
@@ -239,7 +250,7 @@
                 <button type="button" data-key-color="green">Зелёный</button>
                 <button type="button" data-key-color="blue">Синий</button>
               </div>
-              <label class="field"><span>Свой цвет фона</span><input id="customKeyColor" type="color" value="#ffffff" /></label>
+              <div class="task-color-row"><label class="field"><span>Свой цвет фона</span><input id="customKeyColor" type="color" value="#ffffff" /></label><button id="pickKeyColor" class="button secondary" type="button">Пипетка</button></div>
             </div>
             <label id="keyScopeRow" class="field"><span>Где удалять цвет</span><select id="keyScope"><option value="exterior">Только фон от края кадра</option><option value="all">Весь похожий цвет</option></select><small>«От края» бережёт замкнутые белые детали. Если контур открыт, защитите текст или блики кистью маски.</small></label>
             <button id="inspectContour" class="button secondary" type="button">Проверить и исправить контур</button>
@@ -339,7 +350,7 @@
             <div class="anchor-grid" id="anchorMode">
               <button type="button" data-value="ground" class="anchor-card selected"><i class="anchor-ground"></i><strong>Ноги на месте</strong><small>ходьба · атака</small></button>
               <button type="button" data-value="center" class="anchor-card"><i class="anchor-center"></i><strong>Центр на месте</strong><small>эмоции · эффекты</small></button>
-              <button type="button" data-value="body" class="anchor-card"><i class="anchor-center"></i><strong>Тело на месте</strong><small>длинная нить · хвост</small></button>
+              <button type="button" data-value="body" class="anchor-card"><i class="anchor-center"></i><strong>Объект на месте</strong><small>плотная часть · нить не смещает центр</small></button>
               <button type="button" data-value="motion" class="anchor-card"><i class="anchor-motion"></i><strong>Сохранить движение</strong><small>прыжок · падение</small></button>
             </div>
           </div>
@@ -1059,6 +1070,7 @@
       </nav>
       <section class="copilot-tasks" aria-label="Выбор задачи">
         <strong>Что поручить помощнику</strong>
+        <article data-task="batch"><strong>Пакетно подготовить изображения</strong><small>Деревья, кусты и другие файлы → один профиль очистки → PNG + JSON для каждого</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="clipping"><strong>Исправить обрезание</strong><small>Проверить край кадра → уточнить рамки или открыть редактор</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="layout"><strong>Разнести объекты по сетке</strong><small>Готовый лист → отдельные кадры → новый лист и JSON</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="remove"><strong>Убрать объект из кадров</strong><small>Лист или видео → выделить лишнее → новый лист</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
