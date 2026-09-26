@@ -7,11 +7,12 @@ let pixelAdjustDraft=null;
 const pixelAdjustDefaults={brightness:0,saturation:0,contrast:0,shadows:0,highlights:0,tintStrength:0,tint:'#ffffff'};
 
 function pixelEditorCancelPreview() {
+  const hadPreview = Boolean(pixelEditor.preview);
   cancelAnimationFrame(pixelColorPreviewTask);
   pixelColorDraft=null;pixelAdjustDraft=null;pixelEditor.preview=null;
   $('#pixelColorForm').classList.add('hidden');$('#pixelAdjustDetails').open=false;
   pixelEditorRenderCanvas();
-  if (pixelEditor.sessionId) pixelEditorStatus(t('Предпросмотр отменён · правки кадра сохранены'), 'ready');
+  if (pixelEditor.sessionId && hadPreview) pixelEditorStatus(t('Предпросмотр отменён · применённые изменения остаются'), 'ready');
 }
 function pixelEditorChooseFrameColor(color) {
   if(pixelColorBusy)return;
@@ -46,10 +47,10 @@ function pixelColorSetBusy(busy) {
   for(const id of ['pixelColorApply','pixelColorDelete','pixelAdjustApply','pixelSaveFrame'])$('#'+id).disabled=busy;
 }
 async function pixelColorCommit(erase=false) {
-  if(!pixelColorDraft||pixelColorBusy)return;
+  if(!pixelColorDraft||pixelColorBusy||!$('#pixelColorHex').checkValidity()||['R','G','B'].some(name=>$('#pixelColor'+name).value===''||!$('#pixelColor'+name).checkValidity()))return null;
   const draft=pixelColorDraft;pixelColorBusy=true;pixelColorSetBusy(true);
-  await pixelEditorSend({op:'frameColor',source:draft.source,replacement:draft.replacement,tolerance:draft.tolerance,erase});
-  pixelColorBusy=false;pixelColorSetBusy(false);
+  try { return await pixelEditorSend({op:'frameColor',source:draft.source,replacement:draft.replacement,tolerance:draft.tolerance,erase}); }
+  finally { pixelColorBusy=false;pixelColorSetBusy(false); }
 }
 function pixelPaletteRender() {
   const viewport=$('#pixelPalette');
@@ -176,7 +177,10 @@ pixelTintField.addEventListener('keydown',event=>{
   hsv[axis]=Math.max(0,Math.min(1,hsv[axis]+step));pixelTintSet(hsv);
 });
 $('#pixelAdjustCancel').addEventListener('click',pixelEditorCancelPreview);
-$('#pixelAdjustApply').addEventListener('click',async()=>{
-  if(!pixelAdjustDraft||pixelColorBusy)return;
-  pixelColorBusy=true;pixelColorSetBusy(true);await pixelEditorSend({op:'frameAdjust',adjustments:{...pixelAdjustDraft}});pixelColorBusy=false;pixelColorSetBusy(false);
-});
+async function pixelAdjustmentCommit() {
+  if(!pixelAdjustDraft||pixelColorBusy||!$('#pixelAdjustTint').checkValidity())return null;
+  pixelColorBusy=true;pixelColorSetBusy(true);
+  try { return await pixelEditorSend({op:'frameAdjust',adjustments:{...pixelAdjustDraft}}); }
+  finally { pixelColorBusy=false;pixelColorSetBusy(false); }
+}
+$('#pixelAdjustApply').addEventListener('click',()=>{void pixelAdjustmentCommit();});

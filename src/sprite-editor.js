@@ -28,9 +28,14 @@ const pixelEditor = {
   lastPoint: null,
   palette: [],
   preview: null,
+  savedPixels: null,
+  savedLayers: "",
+  fitActive: false,
 };
 
 let pixelEditorQueue = Promise.resolve();
+let pixelEditorCloseDecision = null;
+let pixelEditorApplying = false;
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -241,6 +246,7 @@ async function pixelEditorOpen() {
   const answer = await window.spriteLab.openPixelEditor({ path: sourcePath, frameIndex, name: "frame" });
   pixelEditorCancelPreview();
   pixelEditorApplyState(answer);
+  pixelEditorMarkApplied();
   pixelEditor.palette = pixelEditorPaletteFromComposite(pixelEditor.composite);
   pixelEditor.zoom = 1;
   pixelEditorRenderCanvas();
@@ -248,15 +254,48 @@ async function pixelEditorOpen() {
   pixelEditorRenderPalette();
   pixelEditorSetTool("pencil");
   pixelEditorSetColor(pixelEditor.color);
-  pixelEditorStatus("Кадр открыт. Рисуйте и сохраните — он встанет в спрайт-лист.", "ready");
+  pixelEditorStatus(t(state.intent === "images" ? "Правки применяются к проекту. PNG сохраняется в главном окне." : "Примените правки к проекту, затем пересоберите лист перед экспортом."), "ready");
   setModalOpen($("#pixelEditorModal"), true, $("#pixelToolPencil"), $("#openPixelEditor"));
   // Measure after the dialog is laid out; hidden elements have no viewport.
   await new Promise(resolve => requestAnimationFrame(resolve));
-  if (pixelEditorIsOpen()) pixelEditorSetZoom(pixelEditorFitZoom());
+  if (pixelEditorIsOpen()) pixelEditorSetZoom(pixelEditorFitZoom(), true);
+}
+
+function pixelEditorMarkApplied() {
+  pixelEditor.savedPixels = pixelEditor.composite.slice();
+  pixelEditor.savedLayers = JSON.stringify(pixelEditor.layers);
+}
+
+function pixelEditorHasPendingEdits() {
+  if (!pixelEditor.sessionId || !pixelEditor.savedPixels) return false;
+  if (JSON.stringify(pixelEditor.layers) !== pixelEditor.savedLayers) return true;
+  const pixels = pixelEditor.composite, preview = pixelEditor.preview;
+  return pixels.some((n, i) => n !== pixelEditor.savedPixels[i] || (preview && preview[i] !== n));
+}
+
+function pixelEditorAnswerClose(choice) {
+  const answer = pixelEditorCloseDecision;
+  pixelEditorCloseDecision = null;
+  $("#pixelClosePrompt").classList.add("hidden");
+  answer?.(choice);
 }
 
 async function pixelEditorClose() {
-  if (!pixelEditorIsOpen()) return;
+  if (!pixelEditorIsOpen()) return true;
+  if (pixelEditorCloseDecision || pixelColorBusy || pixelEditorApplying) return false;
+  await pixelEditorFlush();
+  if (pixelEditorHasPendingEdits()) {
+    const choice = await new Promise(resolve => {
+      pixelEditorCloseDecision = resolve;
+      $("#pixelClosePrompt").classList.remove("hidden");
+      $("#pixelCloseKeep").focus();
+    });
+    if (choice === "keep") return false;
+    if (choice === "apply") {
+      try { if (!await pixelEditorSave()) return false; }
+      catch (error) { pixelEditorStatus(error?.message || "Не удалось применить правки", "error"); return false; }
+    }
+  }
   pixelEditorCancelPreview();
   const sessionId = pixelEditor.sessionId;
   pixelEditor.sessionId = null;
@@ -264,29 +303,45 @@ async function pixelEditorClose() {
   pixelEditor.drawing = false;
   pixelEditor.lastPoint = null;
   if (sessionId) await window.spriteLab.pixelEditorOp({ op: "close", sessionId }).catch(() => {});
+  return true;
 }
 
+window.spriteLabPrepareEditorClose = async () => pixelEditorClose();
+
 async function pixelEditorSave() {
-  if (!pixelEditor.sessionId) return;
-  if (pixelEditor.preview) {
-    pixelEditorStatus("Сначала примените или отмените предпросмотр цвета.", "warn");
-    return;
-  }
-  const frameIndex = pixelEditor.frameIndex;
-  pixelEditorStatus("Сохраняю кадр…", "busy");
-  await pixelEditorFlush();
-  const saved = await window.spriteLab.savePixelEditor({ sessionId: pixelEditor.sessionId, frameIndex, name: pixelEditor.name });
-  state.frameOverrides[frameIndex] = saved.path;
-  markPreviewDirty();
-  pixelEditorStatus("Кадр сохранён · он попадёт в следующий спрайт-лист", "done");
-  setStatus(t("Кадр {number} изменён в пиксельном редакторе · пересоберите анимацию", { number: frameIndex + 1 }), "done", 0);
-  pushHistory(t("Кадр {number} изменён в пиксельном редакторе", { number: frameIndex + 1 }));
-  if (state.result) buildFilmstrip(state.result);
+  if (!pixelEditor.sessionId || pixelColorBusy || pixelEditorApplying) return false;
+  pixelEditorApplying = true;
+  $("#pixelSaveFrame").disabled = true;
   try {
-    await requestFramePreview(saved.path);
-  } catch (error) {
-    setStatus(error?.message || "Кадр сохранён, но предпросмотр не обновился", "error", 0);
-  }
+    if (pixelEditor.preview) {
+      const answer = pixelColorDraft ? await pixelColorCommit() : pixelAdjustDraft ? await pixelAdjustmentCommit() : null;
+      if (!answer || answer.blocked) return false;
+    }
+    const frameIndex = pixelEditor.frameIndex;
+    pixelEditorStatus(t("Применяю правки к проекту…"), "busy");
+    await pixelEditorFlush();
+    const saved = await window.spriteLab.savePixelEditor({ sessionId: pixelEditor.sessionId, frameIndex, name: pixelEditor.name });
+    state.frameOverrides[frameIndex] = saved.path;
+    pixelEditorMarkApplied();
+    if (state.intent === "images") {
+      state.resultDirty = false;
+      updateActionState();
+      pixelEditorStatus(t("Правки в проекте · сохраните PNG в главном окне"), "done");
+      setStatus(t("Изображение {number} изменено · сохраните PNG", { number: frameIndex + 1 }), "done", 0);
+    } else {
+      markPreviewDirty();
+      pixelEditorStatus(t("Правки в проекте · пересоберите лист перед экспортом"), "done");
+      setStatus(t("Кадр {number} изменён в пиксельном редакторе · пересоберите анимацию", { number: frameIndex + 1 }), "done", 0);
+    }
+    pushHistory(t("Кадр {number} изменён в пиксельном редакторе", { number: frameIndex + 1 }));
+    if (state.result) buildFilmstrip(state.result);
+    try {
+      await requestFramePreview(saved.path);
+    } catch (error) {
+      setStatus(error?.message || "Правки применены, но предпросмотр не обновился", "error", 0);
+    }
+    return true;
+  } finally { pixelEditorApplying = false; $("#pixelSaveFrame").disabled = pixelColorBusy; }
 }
 
 /* ------------------------------------------------------------------ pointer */
@@ -356,10 +411,18 @@ function pixelEditorWheel(event) {
   pixelEditorSetZoom(pixelEditor.zoom * (event.deltaY < 0 ? 1.25 : 0.8));
 }
 
-function pixelEditorSetZoom(value) {
+function pixelEditorSetZoom(value, fit = false) {
+  pixelEditor.fitActive = fit;
   pixelEditor.zoom = Math.max(0.01, Math.min(24, value));
   pixelEditorRenderCanvas();
 }
+
+new ResizeObserver(() => {
+  if (pixelEditorIsOpen() && pixelEditor.fitActive) {
+    const zoom = pixelEditorFitZoom();
+    if (Math.abs(zoom - pixelEditor.zoom) > 0.0001) pixelEditorSetZoom(zoom, true);
+  }
+}).observe($("#pixelCanvasWrap"));
 
 /* ------------------------------------------------------------------ wiring */
 
@@ -382,6 +445,9 @@ $("#openPixelEditor").addEventListener("click", async () => {
   }
 });
 
+$("#pixelCloseKeep").addEventListener("click", () => pixelEditorAnswerClose("keep"));
+$("#pixelCloseDiscard").addEventListener("click", () => pixelEditorAnswerClose("discard"));
+$("#pixelCloseApply").addEventListener("click", () => pixelEditorAnswerClose("apply"));
 $("#closePixelEditor").addEventListener("click", () => { void pixelEditorClose(); });
 $("#pixelEditorModal").addEventListener("click", (event) => { if (event.target === $("#pixelEditorModal")) void pixelEditorClose(); });
 $("#pixelToolPencil").addEventListener("click", () => pixelEditorSetTool("pencil"));
@@ -426,6 +492,7 @@ document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && key === "s") { event.preventDefault(); void pixelEditorSave().catch((error) => pixelEditorStatus(error?.message || "Не удалось сохранить кадр", "error")); return; }
   if ((event.ctrlKey || event.metaKey) && key === "z") { event.preventDefault(); if (pixelEditor.preview) pixelEditorCancelPreview(); else pixelEditorSend({ op: event.shiftKey ? "redo" : "undo" }); return; }
   if ((event.ctrlKey || event.metaKey) && key === "y") { event.preventDefault(); pixelEditorSend({ op: "redo" }); return; }
+  if (key === "escape" && pixelEditorCloseDecision) { event.preventDefault(); pixelEditorAnswerClose("keep"); return; }
   if (typing || event.ctrlKey || event.metaKey) return;
   if (key === "escape") { event.preventDefault(); void pixelEditorClose(); return; }
   if (key === "p" || key === "b") pixelEditorSetTool("pencil");

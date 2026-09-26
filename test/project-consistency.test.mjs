@@ -15,11 +15,13 @@ const rendererFiles = [...htmlSource.matchAll(/<script src="\.\/([^"]+)"/g)].map
 const rendererSource = rendererFiles.map((file) => read(path.join("src", file))).join("\n");
 const preloadSource = read("src/preload.cjs");
 
-test("the version is the same in the package, the report and the window", () => {
+test("the version is the same in the package, the lockfile and the window", () => {
   const packageVersion = JSON.parse(read("package.json")).version;
-  const processorVersion = /const APP_VERSION = "([^"]+)"/.exec(read("src/processor.mjs"));
-  assert.ok(processorVersion, "APP_VERSION не найден в processor.mjs");
-  assert.equal(processorVersion[1], packageVersion, "версия в отчёте отличается от версии пакета");
+  const lock = JSON.parse(read("package-lock.json"));
+  assert.equal(lock.version, packageVersion, "версия lockfile отличается от версии пакета");
+  assert.equal(lock.packages[""].version, packageVersion, "версия корня lockfile отличается от версии пакета");
+  // Engine metadata is checked through real exports in version-export.test.mjs.
+  // The processor now reads package.json instead of duplicating a version literal.
   // The placeholders in the markup are replaced at start-up, but a stale number there would show for a
   // moment and would mislead anyone reading the file.
   const placeholders = [...htmlSource.matchAll(/>(\d+\.\d+\.\d+)</g)].map((match) => match[1]);

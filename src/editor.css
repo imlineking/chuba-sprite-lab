@@ -485,3 +485,12 @@ html[data-theme] .pixel-color-actions .button { min-height: 40px; padding: 8px 6
 .pixel-editor-info { display: grid; gap: 6px; min-width: 0; }
 .pixel-editor-info > span { min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
 .pixel-editor-foot .pixel-editor-save { margin: 0; align-self: center; min-width: 140px; }
+
+.pixel-close-prompt { grid-column: 1 / -1; grid-row: 2; padding: 12px; border: 1px solid var(--line-bright); border-radius: 9px; background: var(--panel); }
+.pixel-close-prompt.hidden { display: none; }
+.pixel-close-prompt p { margin: 0 0 10px; font-size: 12px; line-height: 1.5; }
+.pixel-close-prompt > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.pixel-close-prompt .button { min-height: 40px; font-size: 12px; }
+
+.pixel-editor-info { grid-column: 1; grid-row: 1; }
+.pixel-editor-foot .pixel-editor-save { grid-column: 2; grid-row: 1; }

@@ -1247,8 +1247,10 @@ function buildFilmstrip(result) {
     const button = document.createElement("button");
     button.type = "button"; button.title = `Позиция ${position + 1} · исходный кадр ${sourceIndex + 1}`;
     button.dataset.sourceIndex = String(sourceIndex); button.dataset.entryId = entry.id; button.dataset.frameLabel = String(sourceIndex + 1);
-    button.draggable = true;
-    const img = document.createElement("img"); img.src = processedBySource.get(sourceIndex) || sourceUrl; img.alt = `Кадр ${sourceIndex + 1}`; img.draggable = false;
+    button.draggable = !result.imageWorkspace;
+    const override = state.frameOverrides[sourceIndex];
+    const imageUrl = result.imageWorkspace && override ? "file:///" + override.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/") : processedBySource.get(sourceIndex) || sourceUrl;
+    const img = document.createElement("img"); img.src = imageUrl; img.alt = `Кадр ${sourceIndex + 1}`; img.draggable = false;
     button.classList.toggle("excluded", state.excludedFrames.has(sourceIndex));
     const isDuplicate = result.skipped?.duplicateIndexes?.includes(sourceIndex);
     const isEmpty = result.skipped?.emptyIndexes?.includes(sourceIndex);
@@ -1260,10 +1262,11 @@ function buildFilmstrip(result) {
     if (isDuplicate) button.title += " · точный дубль";
     if (isEmpty) button.title += " · пустой после очистки";
     button.append(img);
-    if (Number(entry.d) > 0) {
+    if (!result.imageWorkspace && Number(entry.d) > 0) {
       const badge = document.createElement("span"); badge.className = "duration-badge"; badge.textContent = `${entry.d}мс`;
       button.title += ` · ${entry.d} мс`; button.append(badge);
-    } else button.title += ` · ${baseMs} мс (по FPS)`;
+    } else if (!result.imageWorkspace) button.title += ` · ${baseMs} мс (по FPS)`;
+    if (result.imageWorkspace) button.title = baseName(result.allSourceFramePaths[sourceIndex]);
     button.addEventListener("click", () => selectFrame(sourceIndex, true, entry.id));
     strip.append(button);
   });
@@ -1272,7 +1275,9 @@ function buildFilmstrip(result) {
   const truncated = result.allSourceFramePaths.length - result.allSourceFrameUrls.length;
   const repeats = entries.length - new Set(entries.map((entry) => entry.src)).size;
   const custom = entries.filter((entry) => Number(entry.d) > 0).length;
-  $("#filmstripNote").textContent = truncated > 0
+  $("#filmstripNote").textContent = result.imageWorkspace
+    ? t("{count} отдельных изображений · выберите файл для правки", { count: result.allSourceFramePaths.length })
+    : truncated > 0
     ? `Показаны первые ${result.allSourceFrameUrls.length} кадров. Ещё кадров: ${truncated}.`
     : `${result.allSourceFramePaths.length} исходных кадров · исключено: ${state.excludedFrames.size}${repeats ? ` · повторов: ${repeats}` : ""}${custom ? ` · своя длительность: ${custom}` : ""} · перетаскивайте кадры, чтобы поменять порядок`;
   $("#filmstripNote").title = $("#filmstripNote").textContent;
@@ -2747,6 +2752,14 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !$("#aiMaskModal").classList.contains("hidden")) { closeMaskEditor({ discard: true }); return; }
   if (event.key === "Escape" && !$("#aboutModal").classList.contains("hidden")) { closeAbout(); return; }
   if (event.key === "Escape" && state.busy) window.spriteLab.cancelBuild();
+  const editingText = ["INPUT", "TEXTAREA"].includes(event.target.tagName) && !["range", "color", "checkbox", "number"].includes(event.target.type) || event.target.isContentEditable;
+  const historyKey = event.code === "KeyZ" || ["z", "я"].includes(event.key.toLowerCase());
+  const redoKey = event.code === "KeyY" || ["y", "н"].includes(event.key.toLowerCase());
+  if (openModal && !$("#aiMaskModal").classList.contains("hidden")) {
+    if (!editingText && event.ctrlKey && (historyKey || redoKey)) { event.preventDefault(); window.undoMaskOperation?.(redoKey || event.shiftKey); }
+    return;
+  }
+  if (openModal) return;
   if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "k") { event.preventDefault(); openCommandPalette(); return; }
   if (event.ctrlKey && event.key === "Enter") {
     event.preventDefault();
@@ -2757,14 +2770,6 @@ document.addEventListener("keydown", (event) => {
   if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "o") { event.preventDefault(); openProjectFile(); return; }
   if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "o") { event.preventDefault(); chooseSource("chooseSource"); return; }
   if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "s") { event.preventDefault(); saveProjectFile(false); return; }
-  const editingText = ["INPUT", "TEXTAREA"].includes(event.target.tagName) && !["range", "color", "checkbox", "number"].includes(event.target.type) || event.target.isContentEditable;
-  const historyKey = event.code === "KeyZ" || ["z", "я"].includes(event.key.toLowerCase());
-  const redoKey = event.code === "KeyY" || ["y", "н"].includes(event.key.toLowerCase());
-  if (openModal && !$("#aiMaskModal").classList.contains("hidden")) {
-    if (!editingText && event.ctrlKey && (historyKey || redoKey)) { event.preventDefault(); window.undoMaskOperation?.(redoKey || event.shiftKey); }
-    return;
-  }
-  if (openModal) return;
   if (!openModal && !editingText && event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "c" && state.result?.copyableFrameIndexes?.includes(state.selectedFrameIndex) && !state.resultDirty && !state.busy) { event.preventDefault(); void copySelectedFrame(); return; }
   if (!editingText && event.ctrlKey && !event.shiftKey && historyKey) { event.preventDefault(); undoWorkspace(); return; }
   if (!editingText && event.ctrlKey && (redoKey || (event.shiftKey && historyKey))) { event.preventDefault(); redoWorkspace(); return; }

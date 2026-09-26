@@ -17,7 +17,7 @@
       <div class="brand">
         <img class="brand-logo brand-logo-compact brand-orange" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASGSURBVFhH7ZZ/TJVVGMe/773cuwsUgZXQrEg3KxGM6SC2ILjyI0FvrrZrc7ioVq4BtTBLsMGFruXFiC2WhYZlmbPQfid/uPVPrVqtbOuH5ixTUdCk/rHVH8L9tuc958jLOzQqhv/4bN+dc97LPd/P8zzn3BfgYkxSzJiLYSwB3c+nLGq2gf78CwhQvwtMyrlQABYYqAFRjg/dH01F3HHnpiso/c/t9hAlU1kFCzTmSMWJ+rk4gzxwXrZdjckHYQQeApatYiScNU/TZrNw7aKeFCIdRCYIOZTB/wnCMLxDFdj7aym+5bugrQ9A7h7N/ssm8OY0sDOccWZ2M3h5OxTEjSBusChV+U8gdVnp0X25IN8A2QvyTZCf+Mko6CvyMLx5ur0xnwf5HFiQDKa3goHmBE5r1ZXJEnkUxEQjEoHnaCH+sI3fArlrNGtuA9mjshdZXpAxkFvA09VgUex6Tl/jY04smbndl6pWyJnItojSCUD09vZ6+9LxF18DuV1nfixKbgb55+fkTpBtIJvBY49APX9Jj4/ZBgy/Oos5Gy7jgk4f0eYjMi0FIVUoR5fbc0z0LUJKfAvidqaS+UAHeXwD2f+0AhKAt7WhrAX0ZVUBdoOHQqDlAdPWeXnN+kvoaQ0QMT9xnQBY578dcsoHF4J8RZt8nUoOxMjBLrX+Io/sX6vmJutNWrLuAdkO7qtQEAIwQ8zbQERBzNNVOFfEl+FHO/OtuudS/j0a6OSz6jyIPtLmRmJuAJ5U7embryBmPnMl0QBilb6aAiDtcIfc7XgIp20zKec7+vQfDKlWmCsoz7s1pMneKKL1FDhcDe7JB4Ne0KpNI+pSiRYPsdCjKuGO3jC8h+RKSRbS0/e0mYzmNsh8h/5cIEwLZC6S6/iErkIt+HE+2HG1w6wJRKNuhTu+WgDfgUIN4IQQmX6LiQDI/EW9dgLIs0bVAtaBPwfB/SXg0kSsO2skEPPHAZCwy7pRA4iJtMJ50IyRUwZExhd0C9aAXAmOLAdPVoIhH9aPMQrixJi1CdtQ7riYCoTJXEYBMFU4lyT71er3QFrwQxE4chdY5kej22vcsEsnAJKNM3MjJ4CzBTIX4Ec1gIz3gvtvBVkNVnoRdXuNG/Yh7NAbyCgldZs5AYxa9HdWKY0sA78rBPtLwd358j6D1+01bpyqwuqj5SDrQT4MsgFkpz4XImMoIFItOe1No8Ym8+HlqvyS/VI/KO8Wt9e4EQE8O7PVFym/82bjh/RaIB7XYAIokueylrEOHKoCfyoGf3EAuH3OG2uTcNX2ORpipdrU3twAmbmYGtWCXAEeLgMPloDfi/kKZZ4JBNwe/xRWVRIy5ArFBeJuVdaRe/Rcsr4f5H2q1HxA/d2RUvBAicqeDyrzmpuQ6t58wtGQgmmv60r8FgKHbgdPLVYarAQHblM6XgEeDoJHysDfF4Pvz1HmiUCee89/HWHA35KCdgER7cgCP8sHP80Dv7kF3FugJC+erpnKWJc9w/6XdbJCDmcBkFgMBMqBZJkvAZJEsi4GErIAPzDB034xHPE3ItEVHfq9GOgAAAAASUVORK5CYII=" alt="" aria-hidden="true" />
         <span class="brand-name">CHUBA SPRITE LAB</span>
-        <span id="versionBadge" class="version">1.8.0</span>
+        <span id="versionBadge" class="version">1.8.1</span>
       </div>
       <div class="workspace-actions" aria-label="Проект">
         <button id="newProject" type="button">Новый</button>
@@ -746,7 +746,7 @@
         </div>
         <p class="eyebrow">О ПРОГРАММЕ</p>
         <h2 id="aboutTitle">Chuba Sprite Lab</h2>
-        <p class="about-version">Версия <strong id="aboutVersion">1.8.0</strong></p>
+        <p class="about-version">Версия <strong id="aboutVersion">1.8.1</strong></p>
         <label class="about-locale"><span>Язык интерфейса</span>
           <select id="locale" aria-label="Язык интерфейса">
             <option value="ru">Русский</option>
@@ -993,7 +993,7 @@
           <section class="pixel-panel">
             <header>Подсказка</header>
             <p id="pixelEditorHint" class="pixel-editor-hint">Откройте кадр из полосы кадров.</p>
-            <p class="pixel-editor-hint">Ctrl+Z — отменить, Ctrl+Shift+Z — вернуть, Ctrl+S — сохранить кадр в спрайт-лист, Esc — закрыть.</p>
+            <p class="pixel-editor-hint">Ctrl+Z — отменить, Ctrl+Shift+Z — вернуть, Ctrl+S — применить к проекту, Esc — закрыть.</p>
           </section>
         </aside>
 
@@ -1002,7 +1002,15 @@
             <span id="pixelCursorInfo">—</span>
             <span id="pixelEditorStatus" class="pixel-editor-status ready">Откройте кадр из полосы кадров.</span>
           </div>
-          <button id="pixelSaveFrame" class="button primary pixel-editor-save" type="button">Сохранить кадр</button>
+          <div id="pixelClosePrompt" class="pixel-close-prompt hidden" role="group" aria-label="Неприменённые правки">
+            <p>Применить правки перед закрытием редактора?</p>
+            <div>
+              <button id="pixelCloseKeep" class="button secondary" type="button">Продолжить правку</button>
+              <button id="pixelCloseDiscard" class="button secondary" type="button">Отбросить и закрыть</button>
+              <button id="pixelCloseApply" class="button primary" type="button">Применить и закрыть</button>
+            </div>
+          </div>
+          <button id="pixelSaveFrame" class="button primary pixel-editor-save" type="button" title="Применить правки к проекту; PNG сохраняется в главном окне">Применить к проекту</button>
         </footer>
       </article>
     </div>

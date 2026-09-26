@@ -260,6 +260,7 @@ function createWindow() {
     if (closeDecisionPending) return;
     closeDecisionPending = true;
     void (async () => {
+      if (!await mainWindow.webContents.executeJavaScript("window.spriteLabPrepareEditorClose?.() ?? true")) return;
       const dirty = await mainWindow.webContents.executeJavaScript("Boolean(window.spriteLabHasUnsavedChanges?.())");
       if (!dirty) { allowClose = true; mainWindow.close(); return; }
       const { response } = await dialog.showMessageBox(mainWindow, {
