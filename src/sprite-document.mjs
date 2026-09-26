@@ -324,8 +324,23 @@ function writeBlock(document, layerId, frameIndex, rect, block) {
   }
 }
 
+function applyHistoryPatch(document, patch, direction) {
+  if (!patch.parts) {
+    writeBlock(document, patch.layerId, patch.frameIndex, patch.rect, patch[direction]);
+    return;
+  }
+  if (patch.addedLayer) {
+    if (direction === "after" && !findLayer(document, patch.addedLayer.id)) {
+      document.layers.splice(Math.min(patch.layerIndex, document.layers.length), 0, { ...patch.addedLayer });
+    } else if (direction === "before") removeLayer(document, patch.addedLayer.id);
+  }
+  for (const part of patch.parts) {
+    if (findLayer(document, part.layerId)) writeBlock(document, part.layerId, part.frameIndex, part.rect, part[direction]);
+  }
+}
+
 export function pushPatch(history, document, patch) {
-  writeBlock(document, patch.layerId, patch.frameIndex, patch.rect, patch.after);
+  applyHistoryPatch(document, patch, "after");
   history.undoStack.push(patch);
   if (history.undoStack.length > history.limit) history.undoStack.shift();
   history.redoStack.length = 0;
@@ -335,7 +350,7 @@ export function pushPatch(history, document, patch) {
 export function undoPatch(history, document) {
   const patch = history.undoStack.pop();
   if (!patch) return null;
-  writeBlock(document, patch.layerId, patch.frameIndex, patch.rect, patch.before);
+  applyHistoryPatch(document, patch, "before");
   history.redoStack.push(patch);
   return patch;
 }
@@ -343,7 +358,7 @@ export function undoPatch(history, document) {
 export function redoPatch(history, document) {
   const patch = history.redoStack.pop();
   if (!patch) return null;
-  writeBlock(document, patch.layerId, patch.frameIndex, patch.rect, patch.after);
+  applyHistoryPatch(document, patch, "after");
   history.undoStack.push(patch);
   return patch;
 }

@@ -455,6 +455,7 @@ function runCommand(command) {
 }
 
 function setTab(name) {
+  const previousPanel = $(".panel.active");
   $$(".tab").forEach((button) => {
     const selected = button.dataset.tab === name;
     button.classList.toggle("active", selected);
@@ -467,6 +468,7 @@ function setTab(name) {
     panel.setAttribute("aria-hidden", String(!active));
     panel.inert = !active;
   });
+  if (previousPanel?.dataset.panel !== name) window.spriteLabShellMotion?.transition($(".panel.active"));
   if (name === "process") scheduleFramePreview(0);
   updateStepStates();
 }

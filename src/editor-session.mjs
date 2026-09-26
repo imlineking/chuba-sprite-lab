@@ -27,6 +27,8 @@ import {
   undoPatch,
 } from "./sprite-document.mjs";
 
+import { frameColorPatch, frameAdjustmentPatch } from "./frame-color.mjs";
+
 const sessions = new Map();
 
 export const maxEditorSessions = 4;
@@ -212,11 +214,32 @@ export function pick(sessionId, options = {}) {
   return { color: [composite[offset], composite[offset + 1], composite[offset + 2], composite[offset + 3]] };
 }
 
+function applyFramePatch(session, patch) {
+  if (!patch) return sessionState(session, { changedPixels: 0, label: "Цвета не изменились" });
+  patch.activeLayerBefore = session.activeLayerId;
+  patch.activeLayerAfter = patch.addedLayer?.id || session.activeLayerId;
+  pushPatch(session.history, session.document, patch);
+  session.activeLayerId = patch.activeLayerAfter;
+  return sessionState(session, { changedPixels: patch.changedPixels, label: patch.label });
+}
+
+export function changeFrameColor(sessionId, options = {}) {
+  const session = requireSession(sessionId);
+  return applyFramePatch(session, frameColorPatch(session.document, session.frameIndex, options.source, options.replacement, options));
+}
+
+export function adjustFrame(sessionId, options = {}) {
+  const session = requireSession(sessionId);
+  return applyFramePatch(session, frameAdjustmentPatch(session.document, session.frameIndex, options.adjustments));
+}
+
 export function stepHistory(sessionId, direction = "undo") {
   const session = requireSession(sessionId);
   const patch = direction === "redo"
     ? redoPatch(session.history, session.document)
     : undoPatch(session.history, session.document);
+  if (patch?.activeLayerBefore) session.activeLayerId = direction === "redo" ? patch.activeLayerAfter : patch.activeLayerBefore;
+  if (!findLayer(session.document, session.activeLayerId)) session.activeLayerId = session.document.layers.at(-1).id;
   return sessionState(session, { label: patch ? patch.label || null : null, empty: !patch });
 }
 

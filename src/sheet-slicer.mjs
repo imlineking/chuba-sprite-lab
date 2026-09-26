@@ -73,7 +73,7 @@ function unionBounds(items, width, height, padding) {
 }
 
 async function detectObjectCells(sheetPath, tolerance = 34, padding = 0, alphaOnly = false, attachFragments = true) {
-  const { data, info } = await sharp(sheetPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await sharp(sheetPath).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const { width, height, channels } = info;
   const corner = averageCornerColor(data, width, height, channels);
   const background = corner.color;
@@ -184,13 +184,13 @@ export async function sliceSpriteSheet(sheetPath, outputDir, options = {}) {
     const cell = cells[index];
     const rect = { left: cell.left, top: cell.top, width: cell.width, height: cell.height };
     if (mode === "objects") {
-      const { data, info } = await sharp(sheetPath).extract(rect).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      const { data, info } = await sharp(sheetPath).extract(rect).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
       const ids = new Set(cell.componentIds);
       for (let y = 0; y < rect.height; y += 1) for (let x = 0; x < rect.width; x += 1) {
         if (!ids.has(labels[(rect.top + y) * width + rect.left + x])) data[(y * rect.width + x) * info.channels + 3] = 0;
       }
       await sharp(data, { raw: info }).png().toFile(framePath);
-    } else await sharp(sheetPath).extract(rect).png().toFile(framePath);
+    } else await sharp(sheetPath).extract(rect).toColourspace("srgb").png().toFile(framePath);
     framePaths.push(framePath);
   }
   return { mode, width, height, cells: cells.map(({ componentIds, ...cell }) => cell), framePaths, background, maskPrepared: mode === "objects", issues };

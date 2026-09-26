@@ -27,6 +27,7 @@ const pixelEditor = {
   drawing: false,
   lastPoint: null,
   palette: [],
+  preview: null,
 };
 
 let pixelEditorQueue = Promise.resolve();
@@ -80,7 +81,7 @@ function pixelEditorRenderCanvas() {
     pixelEditor.imageData = context.createImageData(pixelEditor.width, pixelEditor.height);
   }
   if (pixelEditor.composite) {
-    pixelEditor.imageData.data.set(pixelEditor.composite.subarray(0, pixelEditor.imageData.data.length));
+    pixelEditor.imageData.data.set((pixelEditor.preview || pixelEditor.composite).subarray(0, pixelEditor.imageData.data.length));
     context.putImageData(pixelEditor.imageData, 0, 0);
   }
   const wrap = $("#pixelCanvasWrap");
@@ -130,25 +131,7 @@ function pixelEditorRenderLayers() {
   $("#pixelRemoveLayer").disabled = pixelEditor.layers.length <= 1;
 }
 
-function pixelEditorRenderPalette() {
-  const list = $("#pixelPalette");
-  list.replaceChildren();
-  if (!pixelEditor.palette.length) {
-    const empty = document.createElement("small");
-    empty.textContent = "Цвета появятся после открытия кадра.";
-    list.append(empty);
-    return;
-  }
-  pixelEditor.palette.forEach((color) => {
-    const swatch = document.createElement("button");
-    swatch.type = "button";
-    swatch.className = "pixel-swatch";
-    swatch.style.background = pixelEditorHex(color);
-    swatch.title = `${pixelEditorHex(color)} · взять как основной`;
-    swatch.addEventListener("click", () => pixelEditorSetColor(color));
-    list.append(swatch);
-  });
-}
+function pixelEditorRenderPalette() { window.spriteLabPixelUI.renderPalette(); }
 
 function pixelEditorSetColor(color) {
   pixelEditor.color = [color[0], color[1], color[2], 255];
@@ -184,7 +167,14 @@ function pixelEditorSend(request) {
     .then(async () => {
       if (pixelEditor.sessionId !== sessionId) return null;
       const answer = await window.spriteLab.pixelEditorOp({ ...request, sessionId });
-      if (answer && answer.sessionId && pixelEditor.sessionId === sessionId) pixelEditorApplyState(answer);
+      if (answer && answer.sessionId && pixelEditor.sessionId === sessionId) {
+        pixelEditorCancelPreview();
+        pixelEditorApplyState(answer);
+        if (["frameColor", "frameAdjust", "undo", "redo"].includes(request.op)) {
+          pixelEditor.palette = pixelEditorPaletteFromComposite(pixelEditor.composite);
+          pixelEditorRenderPalette();
+        }
+      }
       return answer;
     })
     .catch((error) => {
@@ -220,18 +210,7 @@ function pixelEditorApplyState(answer) {
   else if (answer.label) pixelEditorStatus(answer.label, "done");
 }
 
-function pixelEditorPaletteFromComposite(composite, limit = 20) {
-  const counts = new Map();
-  for (let offset = 0; offset + 3 < composite.length; offset += 4) {
-    if (composite[offset + 3] < 8) continue;
-    const key = (composite[offset] << 16) | (composite[offset + 1] << 8) | composite[offset + 2];
-    counts.set(key, (counts.get(key) || 0) + 1);
-  }
-  return [...counts.entries()]
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, limit)
-    .map(([key]) => [(key >> 16) & 255, (key >> 8) & 255, key & 255, 255]);
-}
+function pixelEditorPaletteFromComposite(composite) { return window.SpriteLabPixelColors.palette(composite); }
 
 function pixelEditorFitZoom() {
   const wrap = $("#pixelCanvasWrap");
@@ -260,10 +239,12 @@ async function pixelEditorOpen() {
   const sourcePath = state.frameOverrides[frameIndex] || state.result.allSourceFramePaths[frameIndex];
   pixelEditorStatus("Открываю кадр…", "busy");
   const answer = await window.spriteLab.openPixelEditor({ path: sourcePath, frameIndex, name: "frame" });
-  pixelEditor.palette = pixelEditorPaletteFromComposite(answer.composite);
+  pixelEditorCancelPreview();
   pixelEditorApplyState(answer);
+  pixelEditor.palette = pixelEditorPaletteFromComposite(pixelEditor.composite);
   pixelEditor.zoom = pixelEditorFitZoom();
   pixelEditorRenderCanvas();
+  $("#pixelPalette").scrollTop = 0;
   pixelEditorRenderPalette();
   pixelEditorSetTool("pencil");
   pixelEditorSetColor(pixelEditor.color);
@@ -273,6 +254,7 @@ async function pixelEditorOpen() {
 
 async function pixelEditorClose() {
   if (!pixelEditorIsOpen()) return;
+  pixelEditorCancelPreview();
   const sessionId = pixelEditor.sessionId;
   pixelEditor.sessionId = null;
   setModalOpen($("#pixelEditorModal"), false, null, $("#openPixelEditor"));
@@ -283,6 +265,10 @@ async function pixelEditorClose() {
 
 async function pixelEditorSave() {
   if (!pixelEditor.sessionId) return;
+  if (pixelEditor.preview) {
+    pixelEditorStatus("Сначала примените или отмените предпросмотр цвета.", "warn");
+    return;
+  }
   const frameIndex = pixelEditor.frameIndex;
   pixelEditorStatus("Сохраняю кадр…", "busy");
   await pixelEditorFlush();
@@ -316,6 +302,10 @@ function pixelEditorPaintTo(point) {
 
 function pixelEditorPointerDown(event) {
   if (event.button !== 0 || !pixelEditor.sessionId) return;
+  if (pixelEditor.preview) {
+    pixelEditorStatus("Примените или отмените предпросмотр перед рисованием.", "warn");
+    return;
+  }
   const point = pixelEditorPointFromEvent(event);
   if (!point.inside) return;
   if (pixelEditor.tool === "picker") {
@@ -323,6 +313,7 @@ function pixelEditorPointerDown(event) {
       .then((answer) => {
         if (answer?.color && answer.color[3] > 0) {
           pixelEditorSetColor(answer.color);
+          pixelEditorChooseFrameColor(answer.color);
           pixelEditorStatus(`Взят цвет ${pixelEditorHex(answer.color)}`, "done");
         } else {
           pixelEditorStatus("В этой точке прозрачно.", "warn");
@@ -404,7 +395,7 @@ $("#pixelGrid").addEventListener("change", () => { pixelEditor.gridOn = $("#pixe
 $("#pixelZoomIn").addEventListener("click", () => pixelEditorSetZoom(pixelEditor.zoom + 1));
 $("#pixelZoomOut").addEventListener("click", () => pixelEditorSetZoom(pixelEditor.zoom - 1));
 $("#pixelZoomFit").addEventListener("click", () => pixelEditorSetZoom(pixelEditorFitZoom()));
-$("#pixelUndo").addEventListener("click", () => pixelEditorSend({ op: "undo" }));
+$("#pixelUndo").addEventListener("click", () => { if (pixelEditor.preview) pixelEditorCancelPreview(); else pixelEditorSend({ op: "undo" }); });
 $("#pixelRedo").addEventListener("click", () => pixelEditorSend({ op: "redo" }));
 $("#pixelAddLayer").addEventListener("click", () => pixelEditorSend({ op: "addLayer" }));
 $("#pixelRemoveLayer").addEventListener("click", () => pixelEditorSend({ op: "removeLayer", layerId: pixelEditor.activeLayerId }));
@@ -430,7 +421,7 @@ document.addEventListener("keydown", (event) => {
   const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement;
   const key = event.code?.startsWith("Key") ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
   if ((event.ctrlKey || event.metaKey) && key === "s") { event.preventDefault(); void pixelEditorSave().catch((error) => pixelEditorStatus(error?.message || "Не удалось сохранить кадр", "error")); return; }
-  if ((event.ctrlKey || event.metaKey) && key === "z") { event.preventDefault(); pixelEditorSend({ op: event.shiftKey ? "redo" : "undo" }); return; }
+  if ((event.ctrlKey || event.metaKey) && key === "z") { event.preventDefault(); if (pixelEditor.preview) pixelEditorCancelPreview(); else pixelEditorSend({ op: event.shiftKey ? "redo" : "undo" }); return; }
   if ((event.ctrlKey || event.metaKey) && key === "y") { event.preventDefault(); pixelEditorSend({ op: "redo" }); return; }
   if (typing || event.ctrlKey || event.metaKey) return;
   if (key === "escape") { event.preventDefault(); void pixelEditorClose(); return; }

@@ -80,6 +80,12 @@ if ((selfTestMode || uiRegressionMode || desktopProbePath || argumentValue("--sc
 const screenshotArgument = argumentValue("--screenshot") || process.env.CHUBA_SPRITE_SCREENSHOT || "";
 const screenshotPath = screenshotArgument ? path.resolve(screenshotArgument) : "";
 const screenshotScript = argumentValue("--screenshot-js") || process.env.CHUBA_SPRITE_SCREENSHOT_JS || "";
+// Screenshot-only dimensions let visual audits exercise the minimum usable window.
+// Normal launches always use the regular window size.
+function screenshotDimension(name, fallback, minimum, maximum) {
+  const value = screenshotPath ? Number(argumentValue(name)) : NaN;
+  return Number.isInteger(value) && value >= minimum && value <= maximum ? value : fallback;
+}
 const videoExtensions = new Set([".mp4", ".webm", ".mov", ".mkv", ".avi", ".gif"]);
 const repositoryUrl = "https://github.com/imlineking/chuba-sprite-lab";
 const latestReleaseApi = "https://api.github.com/repos/imlineking/chuba-sprite-lab/releases/latest";
@@ -226,8 +232,8 @@ async function capturePageWithRetry(attempts = 6) {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 820,
+    width: screenshotDimension("--screenshot-width", 1280, 1040, 3840),
+    height: screenshotDimension("--screenshot-height", 820, 700, 2160),
     minWidth: 1040,
     minHeight: 700,
     frame: false,
@@ -511,7 +517,7 @@ async function writeFramePng({ frameIndex = 0, name = "frame", png }) {
 ipcMain.handle("editor:open", async (_event, request = {}) => {
   const filePath = path.resolve(String(request.path || ""));
   if (!filePath || !await pathExists(filePath)) throw new Error("Кадр для редактирования не найден.");
-  const { data, info } = await sharp(filePath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await sharp(filePath).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   return editorSession.openSession({
     width: info.width,
     height: info.height,
@@ -524,6 +530,8 @@ ipcMain.handle("editor:open", async (_event, request = {}) => {
 // One entry point for the editing commands: the interface sends the operation name, and every answer
 // has the same state shape so the window has a single redraw path.
 const editorOperations = {
+  frameColor: (request) => editorSession.changeFrameColor(request.sessionId, request),
+  frameAdjust: (request) => editorSession.adjustFrame(request.sessionId, request),
   paint: (request) => editorSession.paint(request.sessionId, request),
   fill: (request) => editorSession.fill(request.sessionId, request),
   eraseTransparent: (request) => editorSession.eraseTransparent(request.sessionId, request),
@@ -829,7 +837,7 @@ ipcMain.handle("project:save", async (_event, request = {}) => {
   for (const [index, sourcePath] of Object.entries(project.frameOverrides || {})) {
     if (!await pathExists(sourcePath)) continue;
     const targetPath = path.join(assetDir, `frame-${String(Number(index) + 1).padStart(4, "0")}.png`);
-    if (path.resolve(sourcePath) !== path.resolve(targetPath)) await sharp(sourcePath).ensureAlpha().png().toFile(targetPath);
+    if (path.resolve(sourcePath) !== path.resolve(targetPath)) await sharp(sourcePath).toColourspace("srgb").ensureAlpha().png().toFile(targetPath);
     frameOverrides[index] = targetPath;
   }
   const attachments = [];
@@ -854,7 +862,7 @@ ipcMain.handle("project:save", async (_event, request = {}) => {
       for (const [index, sourcePath] of Object.entries(doc.frameOverrides || {})) {
         if (!await pathExists(sourcePath)) continue;
         const targetPath = path.join(assetDir, `anim-${animIndex + 1}-frame-${String(Number(index) + 1).padStart(4, "0")}.png`);
-        if (path.resolve(sourcePath) !== path.resolve(targetPath)) await sharp(sourcePath).ensureAlpha().png().toFile(targetPath);
+        if (path.resolve(sourcePath) !== path.resolve(targetPath)) await sharp(sourcePath).toColourspace("srgb").ensureAlpha().png().toFile(targetPath);
         docOverrides[index] = targetPath;
       }
       const docAttachments = [];
@@ -933,7 +941,7 @@ ipcMain.handle("frame-edit:prepare", async (_event, request = {}) => {
   const sessionDir = path.join(externalEditRoot(), crypto.randomUUID());
   await fs.mkdir(sessionDir, { recursive: true });
   const filePath = path.join(sessionDir, `frame-${String(Number(request.frameIndex || 0) + 1).padStart(4, "0")}.png`);
-  await sharp(sourcePath).ensureAlpha().png().toFile(filePath);
+  await sharp(sourcePath).toColourspace("srgb").ensureAlpha().png().toFile(filePath);
   const stats = await fs.stat(filePath);
   return { path: filePath, url: pathToFileURL(filePath).href, modifiedAt: stats.mtimeMs };
 });
@@ -977,7 +985,7 @@ ipcMain.handle("frame-edit:replace", async (_event, request = {}) => {
   });
   if (result.canceled || !result.filePaths[0]) return null;
   const incomingPath = `${targetPath}.incoming.png`;
-  await sharp(result.filePaths[0]).ensureAlpha().png().toFile(incomingPath);
+  await sharp(result.filePaths[0]).toColourspace("srgb").ensureAlpha().png().toFile(incomingPath);
   await fs.copyFile(incomingPath, targetPath);
   await fs.unlink(incomingPath).catch(() => {});
   const stats = await fs.stat(targetPath);
@@ -989,7 +997,7 @@ async function replaceFrameEditFromPath(targetPath, sourcePath) {
   const resolvedSource = path.resolve(String(sourcePath || ""));
   if (!fsSync.existsSync(resolvedSource) || !supportedImageExtensions.has(path.extname(resolvedSource).toLowerCase())) throw new Error("Перетащите PNG, WEBP или JPG.");
   const incomingPath = `${resolvedTarget}.incoming.png`;
-  await sharp(resolvedSource).ensureAlpha().png().toFile(incomingPath);
+  await sharp(resolvedSource).toColourspace("srgb").ensureAlpha().png().toFile(incomingPath);
   await fs.copyFile(incomingPath, resolvedTarget);
   await fs.unlink(incomingPath).catch(() => {});
   const stats = await fs.stat(resolvedTarget);

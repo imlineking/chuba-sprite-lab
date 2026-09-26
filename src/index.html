@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="./copilot.css" />
     <link rel="stylesheet" href="./editor.css" />
     <link rel="stylesheet" href="./theme.css" />
+    <link rel="stylesheet" href="./shell-theme.css" />
     <script src="./theme.js"></script>
   </head>
   <body>
@@ -619,9 +620,10 @@
 
         <div class="preview-stage" id="previewStage">
           <div id="previewEmpty" class="preview-empty">
+            <canvas id="appearanceSculpture" class="shell-sculpture" width="230" height="150" aria-hidden="true"></canvas>
             <div class="frame-stack" aria-hidden="true"><i></i><i></i><i></i></div>
-            <strong>Здесь появится анимация</strong>
-            <span>Сначала добавьте видео или кадры,<br />затем соберите предпросмотр.</span>
+            <strong>Место для вашей работы</strong>
+            <span>Добавьте изображения или видео,<br />выберите задачу и проверьте результат.</span>
           </div>
           <img id="previewImage" class="preview-image hidden" alt="Предпросмотр анимации" />
           <canvas id="playerCanvas" class="player-canvas hidden" aria-label="Проигрыватель анимации"></canvas>
@@ -943,8 +945,43 @@
 
         <aside class="pixel-editor-side">
           <section class="pixel-panel">
-            <header>Цвета кадра</header>
-            <div id="pixelPalette" class="pixel-palette"></div>
+            <header>Цвета кадра <span id="pixelPaletteCount"></span>
+              <button id="pixelPaletteToggle" class="pixel-tool-button" type="button" aria-expanded="true" aria-controls="pixelPalette">4 ряда ↑</button>
+            </header>
+            <div id="pixelPalette" class="pixel-palette" tabindex="0" aria-label="Палитра sRGB текущего кадра"></div>
+            <p class="pixel-editor-hint">Нажмите цвет: заменить во всём кадре, удалить или взять для кисти.</p>
+            <section id="pixelColorForm" class="pixel-color-form hidden" aria-label="Замена цвета кадра">
+              <strong id="pixelColorSource"></strong>
+              <div id="pixelColorField" class="pixel-color-field" role="slider" tabindex="0" aria-label="Насыщенность и яркость цвета"><span id="pixelColorPoint"></span></div>
+              <label class="pixel-color-label">Оттенок <input id="pixelColorHue" type="range" min="0" max="359" value="0"></label>
+              <label class="pixel-color-label">HEX <input id="pixelColorHex" type="text" maxlength="7" spellcheck="false" value="#000000" aria-label="HEX нового цвета"></label>
+              <div class="pixel-rgb-inputs">
+                <label>R<input id="pixelColorR" type="number" min="0" max="255" value="0"></label>
+                <label>G<input id="pixelColorG" type="number" min="0" max="255" value="0"></label>
+                <label>B<input id="pixelColorB" type="number" min="0" max="255" value="0"></label>
+              </div>
+              <label class="pixel-color-label">Допуск <output id="pixelColorToleranceValue">0 · точно</output><input id="pixelColorTolerance" type="range" min="0" max="80" value="0"></label>
+              <small id="pixelColorCount" aria-live="polite"></small>
+              <div class="pixel-color-actions">
+                <button id="pixelColorApply" class="button primary" type="button">Заменить цвет</button>
+                <button id="pixelColorDelete" class="button secondary" type="button">Удалить цвет</button>
+                <button id="pixelColorCancel" class="button secondary" type="button">Отмена просмотра</button>
+                <button id="pixelColorBrush" class="button secondary" type="button">Для кисти</button>
+              </div>
+            </section>
+          </section>
+          <section class="pixel-panel pixel-adjust-panel">
+            <details id="pixelAdjustDetails"><summary>Свет и цвет</summary>
+              <p class="pixel-editor-hint">Предпросмотр всего кадра · прозрачность сохраняется.</p>
+              <div id="pixelAdjustSliders"></div>
+              <label class="pixel-color-label">Цвет фильтра <input id="pixelAdjustTint" type="text" maxlength="7" value="#ffffff" spellcheck="false" aria-label="HEX цветового фильтра"></label>
+              <div id="pixelAdjustTintField" class="pixel-color-field" role="slider" tabindex="0" aria-label="Насыщенность и яркость фильтра"><span id="pixelAdjustTintPoint"></span></div>
+              <label class="pixel-color-label">Оттенок фильтра <input id="pixelAdjustTintHue" type="range" min="0" max="359" value="0"></label>
+              <div class="pixel-color-actions">
+                <button id="pixelAdjustApply" class="button primary" type="button">Применить</button>
+                <button id="pixelAdjustCancel" class="button secondary" type="button">Отмена</button>
+              </div>
+            </details>
           </section>
           <section class="pixel-panel">
             <header>Слои <span id="pixelLayerCount">1</span>
@@ -1073,6 +1110,11 @@
         <form id="userNameForm">
           <label class="feedback-field" for="userNameInput">Ваше имя<input id="userNameInput" type="text" maxlength="80" autocomplete="given-name" placeholder="Введите имя" /></label>
           <p id="userNameAccountHint" class="user-profile-hint"></p>
+          <div class="appearance-settings">
+            <fieldset><legend>Оформление</legend><div class="appearance-choices" aria-label="Тема оформления"><button type="button" data-appearance-theme="dark" aria-pressed="false">Тёмная · Призма</button><button type="button" data-appearance-theme="light" aria-pressed="false">Светлая · Фарфор</button></div></fieldset>
+            <label class="appearance-motion"><span>Анимация меню<small id="appearanceMotionHint">Переходы разделов и раскрытие меню</small></span><input id="appearanceMotion" type="checkbox" checked /></label>
+            <small class="user-profile-hint">Выбор оформления сохраняется сразу.</small>
+          </div>
           <p id="userNameStatus" class="feedback-status" role="status" aria-live="polite"></p>
           <footer><button id="skipUserName" class="button secondary" type="button">Пропустить</button><button id="saveUserName" class="button primary" type="submit">Начать работу</button></footer>
         </form>
@@ -1129,12 +1171,16 @@
     <script src="./sheet-editor.js"></script>
     <script src="./frame-consistency.js"></script>
     <script src="./copilot.js"></script>
+    <script src="./pixel-colors.js"></script>
     <script src="./sprite-editor.js"></script>
+    <script src="./pixel-color-ui.js"></script>
     <script src="./auto-pilot.js"></script>
     <script src="./mask-region-ui.js"></script>
     <script src="./image-workspace.js"></script>
     <script src="./task-mode.js"></script>
     <script src="./feedback.js"></script>
+    <script src="./shell-motion.js"></script>
+    <script src="./shell-art.js"></script>
     <script src="./user-profile.js"></script>
   </body>
 </html>

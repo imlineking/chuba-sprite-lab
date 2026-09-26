@@ -161,12 +161,12 @@ async function makeSourceSamples(filePath, kind, duration, fps, framePaths, appR
 }
 
 async function detectSuggestedKeyMode(filePath) {
-  const { data, info } = await sharp(filePath).resize({ width: 320, height: 320, fit: "inside" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await sharp(filePath).resize({ width: 320, height: 320, fit: "inside" }).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   return backgroundKeyMode(analyseBorderBackground(data, info));
 }
 
 async function detectFastAIKeyMode(filePath) {
-  const { data, info } = await sharp(filePath).resize({ width: 320, height: 320, fit: "inside" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await sharp(filePath).resize({ width: 320, height: 320, fit: "inside" }).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const { width, height, channels } = info;
   const candidates = [
     ["white", [255, 255, 255], 55],
@@ -415,8 +415,8 @@ async function applyCorrectionsToResult(result, inputPath, context = {}) {
   const edits = context.aiEdits || [];
   if (!edits.length && !context.fringeCleanup && !context.edgeDecontaminate) return result;
   const [{ data, info }, original] = await Promise.all([
-    sharp(result.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
-    sharp(inputPath).ensureAlpha().raw().toBuffer(),
+    sharp(result.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+    sharp(inputPath).toColourspace("srgb").ensureAlpha().raw().toBuffer(),
   ]);
   const maskTracking = applyMaskEdits(data, original, info, edits, context.frameIndex).tracked;
   // A soft matte keeps a blend of the old background, which reads as a pale halo around fur
@@ -495,7 +495,7 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
     return rememberFrameKey(cacheKey, result);
   }
 
-  const { data, info } = await sharp(inputPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await sharp(inputPath).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const original = Buffer.from(data);
   if (mode === "alpha") {
     const maskTracking = applyMaskEdits(data, original, info, context.aiEdits || [], context.frameIndex).tracked;
@@ -661,7 +661,7 @@ async function extractVideoFrames(videoPath, outputDir, fps, maxFrames, appRoot,
 }
 
 async function exactFrameHash(buffer) {
-  const raw = await sharp(buffer).resize(24, 24, { fit: "fill" }).ensureAlpha().raw().toBuffer();
+  const raw = await sharp(buffer).resize(24, 24, { fit: "fill" }).toColourspace("srgb").ensureAlpha().raw().toBuffer();
   return crypto.createHash("sha1").update(raw).digest("hex");
 }
 
@@ -671,7 +671,7 @@ function mean(values) {
 
 
 async function alphaDifference(left, right) {
-  const decode = (buffer) => sharp(buffer).resize(32, 32, { fit: "fill" }).ensureAlpha().raw().toBuffer();
+  const decode = (buffer) => sharp(buffer).resize(32, 32, { fit: "fill" }).toColourspace("srgb").ensureAlpha().raw().toBuffer();
   const [a, b] = await Promise.all([decode(left), decode(right)]);
   let difference = 0;
   for (let index = 3; index < a.length; index += 4) difference += Math.abs(a[index] - b[index]);
@@ -826,7 +826,7 @@ async function runPooled(items, width, task) {
 // Redraws one prepared frame as pixel art. The silhouette is measured again, because the hitbox and
 // the layout must describe the art that is actually exported, not the art before the redraw.
 async function applyPixelation(frame, options) {
-  const { data, info } = await sharp(frame.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await sharp(frame.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const result = pixelate(data, info, options);
   return {
     ...frame,
@@ -839,13 +839,13 @@ async function applyPixelation(frame, options) {
 
 async function applyToning(frame, options) {
   if (!options || Number(options.strength) <= 0) return frame;
-  const { data, info } = await sharp(frame.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await sharp(frame.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   return { ...frame, buffer: await sharp(toneRgba(data, info, options), { raw: info }).png().toBuffer() };
 }
 
 async function applyEdgeRefine(frame, options) {
   if (!options || (options.mode === "none" && !options.removeWhiteExterior)) return frame;
-  const { data, info } = await sharp(frame.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await sharp(frame.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const refined = refineEdgeRgba(data, info, options);
   return { ...frame, buffer: await sharp(refined, { raw: info }).png().toBuffer(), info, bounds: alphaBounds(refined, info) };
 }
@@ -858,7 +858,7 @@ async function renderFrames(frames, options) {
   // Locate the dense core independently of thin tails. Full bounds still determine
   // the cell size, so no pixel of a thread is discarded.
   const bodyPoints = anchor === "body" ? await Promise.all(frames.map(async (frame) => {
-    const { data, info } = await sharp(frame.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const { data, info } = await sharp(frame.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     return findBodyAnchor(data, info);
   })) : [];
   const bodyExtents = anchor === "body" ? frames.reduce((extent, frame, index) => {
@@ -1069,7 +1069,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
     const samples = source.sheetPath ? [source.sheetPath] : [inputFrames[0], inputFrames[Math.floor(inputFrames.length / 2)], inputFrames.at(-1)];
     const borders = [];
     for (const sample of new Set(samples)) {
-      const raw = await sharp(sample).resize({ width: 512, height: 512, fit: "inside", withoutEnlargement: true }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      const raw = await sharp(sample).resize({ width: 512, height: 512, fit: "inside", withoutEnlargement: true }).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
       borders.push(analyseBorderBackground(raw.data, raw.info));
     }
     if (borders.every(border => border.solid && border.colour.every((value, channel) => Math.abs(value - borders[0].colour[channel]) < 24))) autoKeyColor = borders[0].colour;
@@ -1122,7 +1122,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
     if (esrgan) {
       throwIfAborted(signal);
       const enlarged = await upscaleEsrgan(esrgan, keyed.buffer);
-      const { data, info } = await sharp(enlarged.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      const { data, info } = await sharp(enlarged.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
       keyed = { ...keyed, buffer: enlarged.buffer, info, bounds: alphaBounds(data, info) };
     }
     // Pixel art runs after the background is gone, otherwise the palette would repaint the
@@ -1184,7 +1184,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
       const second = prepared[index + 1];
       if (!second || second.sourceIndex !== first.sourceIndex + 1) continue;
       const middle = await interpolateRife(rife, first.buffer, second.buffer);
-      const { data, info } = await sharp(middle.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      const { data, info } = await sharp(middle.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
       withIntermediate.push({ ...first, sourceIndex: first.sourceIndex + 0.5, sourcePath: null, buffer: middle.buffer, info, bounds: alphaBounds(data, info) });
       onProgress?.({ stage: "interpolate", value: 0.52, message: `RIFE · ${index + 1}/${prepared.length - 1}` });
     }
@@ -1427,7 +1427,7 @@ const ALPHA_TRIM = 0;
 // coordinates) and the trimming rectangle. Decoding a 4K cell twice for the same
 // data was the most expensive part of packing.
 async function inspectRenderedCell(buffer) {
-  const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await sharp(buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const hitboxBounds = alphaBounds(data, info, ALPHA_HITBOX);
   return {
     info,
@@ -2369,7 +2369,7 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
   });
   let whiteRemainders = { count: 0, regions: [] };
   if (options.keyScope !== "all" && options.keyMode !== "alpha" && keyed.keyColor?.every((value) => value >= 230)) {
-    const raw = await sharp(keyed.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const raw = await sharp(keyed.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     whiteRemainders = findWhiteRemainders(raw.data, raw.info, keyed.keyColor);
   }
   if (options.edgeRefine) keyed = await applyEdgeRefine(keyed, options.edgeRefine);
@@ -2388,7 +2388,7 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
       kernel: options.pixelPerfect ? sharp.kernel.nearest : sharp.kernel.lanczos3,
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     });
-    const { data, info } = await sharp(transformed.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const { data, info } = await sharp(transformed.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     keyed = { ...keyed, buffer: transformed.buffer, info, bounds: alphaBounds(data, info) };
   }
   const afterPath = path.join(previewRoot, "after.png");

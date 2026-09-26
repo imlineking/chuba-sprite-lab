@@ -203,7 +203,7 @@ async function runModel(session, rgb, size) {
 }
 
 async function readRegionRgb(inputPath, rect, fullSize, size) {
-  let pipeline = sharp(inputPath);
+  let pipeline = sharp(inputPath).toColourspace("srgb");
   if (rect.left || rect.top || rect.width !== fullSize.width || rect.height !== fullSize.height) {
     pipeline = pipeline.extract(rect);
   }
@@ -263,7 +263,7 @@ export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness
   const session = loader.session;
   const inputSize = loader.inputSize;
   const usedModel = requested && path.basename(loader.modelPath).toLowerCase() === requested.file.toLowerCase() ? requested : modelById("u2netp");
-  const { data: source, info } = await sharp(inputPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { data: source, info } = await sharp(inputPath).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const fullSize = { width: info.width, height: info.height };
   const plan = tilePlan(info.width, info.height, quality);
   const useTta = plan.quality === "max";

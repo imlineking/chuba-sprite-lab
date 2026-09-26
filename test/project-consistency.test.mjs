@@ -59,7 +59,7 @@ test("an IPC channel registered in the main process is reachable from the preloa
 
 test("the shipped stylesheets are all linked and all linked files exist", () => {
   const linked = [...htmlSource.matchAll(/<link rel="stylesheet" href="\.\/([^"]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(linked.sort(), ["copilot.css", "editor.css", "styles.css", "theme.css"]);
+  assert.deepEqual(linked.sort(), ["copilot.css", "editor.css", "shell-theme.css", "styles.css", "theme.css"]);
   const scripts = [...htmlSource.matchAll(/<script src="\.\/([^"]+)"/g)].map((match) => match[1]);
   for (const file of [...linked, ...scripts]) assert.ok(read(path.join("src", file)).length > 0, `${file} не читается`);
   // Theme applies before first paint. The remaining scripts share renderer globals.

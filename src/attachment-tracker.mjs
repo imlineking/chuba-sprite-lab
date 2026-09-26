@@ -157,7 +157,7 @@ export async function compositeAttachments(result, placements = []) {
     }
     const targetWidth = Math.max(4, Math.round(width * placement.sizeRatio * scale));
     let transformed = await sharp(placement.path)
-      .ensureAlpha()
+      .toColourspace("srgb").ensureAlpha()
       .resize({ width: targetWidth, withoutEnlargement: false, kernel: sharp.kernel.lanczos3 })
       .rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .png()
@@ -181,6 +181,6 @@ export async function compositeAttachments(result, placements = []) {
   }
   if (!overlays.length) return result;
   const buffer = await sharp(result.buffer).composite(overlays).png().toBuffer();
-  const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await sharp(buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   return { ...result, buffer, info, bounds: alphaBounds(data, info) };
 }

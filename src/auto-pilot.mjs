@@ -181,13 +181,13 @@ export async function measureSource(paths, { limit = 3, sampleSize = 192 } = {})
       if (metadata.width) fullWidth = Math.max(fullWidth, metadata.width);
       if (metadata.height) fullHeight = Math.max(fullHeight, metadata.height);
       const { data, info } = await sharp(file)
-        .ensureAlpha()
+        .toColourspace("srgb").ensureAlpha()
         .resize({ width: sampleSize, height: sampleSize, fit: "inside", withoutEnlargement: true })
         .raw()
         .toBuffer({ resolveWithObject: true });
       analyses.push(analyseFrame(data, info));
       if (metadata.width * metadata.height <= 16000000) {
-        const raw = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        const raw = await sharp(file).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
         analyses.at(-1).checkerPixels = checkerMask(raw.data, raw.info).count;
         const native = analyseFrame(raw.data, raw.info);
         // Edge decisions use native pixels. Thumbnail resampling creates artificial soft/detail edges.

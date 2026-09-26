@@ -39,7 +39,7 @@ function rgbaFromPlanes(values, width, height, { range = 1, alpha = null } = {})
 }
 
 async function readRgba(input, width, height, fit = "fill") {
-  const pipeline = sharp(input).ensureAlpha();
+  const pipeline = sharp(input).toColourspace("srgb").ensureAlpha();
   if (width && height) pipeline.resize(width, height, { fit, kernel: "lanczos3" });
   return pipeline.raw().toBuffer({ resolveWithObject: true });
 }

@@ -3,8 +3,8 @@
   const modal=$("#userNameModal"), input=$("#userNameInput"), status=$("#userNameStatus");
   function render() {
     $("#userNameEyebrow").textContent=firstRun?"ЗНАКОМСТВО":"НАСТРОЙКИ";
-    $("#userNameTitle").textContent=firstRun?"Привет, давай знакомиться!":"Как к вам обращаться?";
-    $("#userNameIntro").textContent=firstRun?"Копилот запомнит имя и будет использовать его в приветствии.":"Измените имя для приветствия копилота. Пустое поле вернёт имя учётной записи.";
+    $("#userNameTitle").textContent=firstRun?"Привет, давай знакомиться!":"Настройки";
+    $("#userNameIntro").textContent=firstRun?"Копилот запомнит имя и будет использовать его в приветствии.":"Выберите оформление и имя для приветствия. Пустое поле вернёт имя учётной записи.";
     input.value=profile?.name||"";
     input.placeholder=profile?.accountName||"Введите имя";
     $("#userNameAccountHint").textContent=profile?.accountName?`Имя учётной записи: ${profile.accountName}. ${firstRun?"При пропуске или закрытии окна используется это имя.":"Автоматическое приветствие использует только первое имя."}`:"Имя учётной записи недоступно. Без имени копилот скажет: «Привет! Давай начнём работу.»";

@@ -1,0 +1,278 @@
+/* Approved pair: Prism / Porcelain. Geometry is shared; theme blocks contain
+   colour and material tokens only. Inspection canvases keep their own colours. */
+html[data-theme] {
+  --ink: #10131e;
+  --panel: #171d2c;
+  --panel-2: #20293c;
+  --line: #354057;
+  --line-bright: #556580;
+  --text: #f2f5ff;
+  --muted: #a6b0c7;
+  --muted-2: #8b97ae;
+  --orange: #a9ddea;
+  --orange-soft: #c9eaf3;
+  --acid: #b3dace;
+  --danger: #ff8994;
+  --shell-action-ink: #142433;
+  --shell-raised: #263249;
+  --shell-field: #121827;
+  --shell-material: linear-gradient(135deg, #ffffff08, #ffffff01), #171d2c;
+  --shell-glass: #1a2233f5;
+  --shell-glow: radial-gradient(ellipse at 90% 0%, #7861cc20, transparent 60%);
+  --shell-shadow: 0 6px 18px #03071525, inset 0 1px 0 #ffffff07;
+  --shell-float-shadow: 0 20px 65px #02061380, inset 0 1px 0 #ffffff12;
+  --shell-dim: #070b1588;
+  --shell-selected: #afdaed14;
+  --shell-hairline: #ffffff0b;
+  --shell-font: "Aptos", "Segoe UI Variable Text", sans-serif;
+  --shell-ease: cubic-bezier(.22,.8,.24,1);
+  --shell-motion: 280ms;
+  color-scheme: dark;
+}
+html[data-theme="light"] {
+  --ink: #f2f3f5;
+  --panel: #ffffff;
+  --panel-2: #f7f8fa;
+  --line: #dce1e8;
+  --line-bright: #b6becb;
+  --text: #20242b;
+  --muted: #626d7d;
+  --muted-2: #6e798a;
+  --orange: #242930;
+  --orange-soft: #3c434e;
+  --acid: #46515f;
+  --danger: #b62943;
+  --shell-action-ink: #ffffff;
+  --shell-raised: #e9edf2;
+  --shell-field: #ffffff;
+  --shell-material: linear-gradient(135deg, #ffffff, #fafbfd);
+  --shell-glass: #fffffff5;
+  --shell-glow: radial-gradient(ellipse at 90% 0%, #ffffff, transparent 70%);
+  --shell-shadow: 0 6px 18px #34415209, inset 0 1px 0 #ffffff;
+  --shell-float-shadow: 0 20px 65px #25304026, inset 0 1px 0 #ffffff;
+  --shell-dim: #68738866;
+  --shell-selected: #24304308;
+  --shell-hairline: #171d2910;
+  color-scheme: light;
+}
+
+html[data-theme] body { background: var(--shell-glow), var(--ink); color: var(--text); }
+html[data-theme] :is(.titlebar, .tabs, .statusbar) {
+  background: var(--shell-glass); border-color: var(--line); color: var(--muted);
+}
+html[data-theme] .control-deck { background: var(--shell-glow), var(--ink); border-color: var(--line); }
+html[data-theme] .preview-deck { background: var(--shell-glow), var(--ink); }
+html[data-theme] .panel { scrollbar-color: var(--line-bright) transparent; transition: none; transform: none; }
+html[data-theme] .panel.active { transform: none; }
+html[data-theme] :is(.panel-heading h1, .section-label span, .preview-header strong) { color: var(--text); }
+html[data-theme] :is(.panel-heading p, .section-label small, .field > span, .range-field > span,
+  .atlas-hint, .mask-tip, .batch-note, .export-composition, .export-list, .version) { color: var(--muted); }
+html[data-theme] :is(.tab, .tab span) { color: var(--muted); }
+html[data-theme] .tab { display: flex; align-items: center; justify-content: center; gap: 9px; }
+html[data-theme] .tab span { margin: 0; }
+html[data-theme] :is(.tab.active, .tab:hover) { color: var(--text); }
+html[data-theme] .tab.active span { color: var(--orange); }
+html[data-theme] .tab.active { background: var(--shell-selected); }
+
+/* One card construction and one set of button dimensions in both themes. */
+html[data-theme] :is(.drop-zone, .project-open-card, .source-card, .sheet-controls,
+  .sheet-manual-editor, .consistency-panel, .recommendation-card, .image-sheet-controls,
+  .ai-cleanup, .finishing-card, .finishing-toggle, .anchor-card, .advanced-panel,
+  .destination-card, .atlas-settings, .animation-bar, .batch-queue, .solid-key-panel,
+  .session-restore, .attachment-item, .attachment-asset, .auto-pilot, .model-row,
+  .task-guide, .task-welcome, .image-scenario-card, .task-batch-options, .region-color-tools,
+  .pixel-editor-side section, .pixel-editor-toolbar, .pixel-layer, .pixel-tool,
+  .auto-pilot-plan li, .auto-pilot-needed, .frame-editor-status) {
+  border-color: var(--line); background: var(--shell-material); color: var(--text);
+  box-shadow: var(--shell-shadow); border-radius: 13px;
+}
+html[data-theme] :is(.sheet-controls, .image-sheet-controls, .ai-cleanup, .solid-key-panel,
+  .finishing-card, .finishing-toggle, .atlas-settings, .task-batch-options, .region-color-tools) { padding: 14px; }
+html[data-theme] :is(.finishing-card strong, .finishing-toggle strong, .toggle-row strong,
+  .field span, .destination-card strong, .animation-bar strong, .sheet-fit-row strong,
+  .anchor-card strong, .model-row strong) { color: var(--text); }
+html[data-theme] :is(.finishing-card small, .finishing-toggle small, .toggle-row small,
+  .anchor-card small, .sheet-fit-row small, .project-open-card small, .sheet-source-button small,
+  .destination-card span, .animation-bar small, .source-copy span, .image-scenario-card p,
+  .sheet-controls > p, .image-sheet-controls > p) { color: var(--muted); }
+html[data-theme] :is(.finishing-card::after) { display: none; }
+html[data-theme] :is(.finishing-icon, .project-open-icon, .source-badge, .preview-freshness,
+  .finishing-summary span, .task-guide .task-badge) { color: var(--orange-soft); border-color: var(--line); background: var(--panel-2); }
+html[data-theme] :is(.finishing-summary span.active, .anchor-card.selected) { border-color: var(--orange); background: var(--shell-selected); }
+html[data-theme] :is(.source-card:hover, .project-open-card:hover, .drop-zone:hover, .drop-zone.dragging) {
+  border-color: var(--line-bright); background: var(--panel-2);
+}
+html[data-theme] :is(.button, .next-action, .export-action, .filmstrip-action,
+  .sheet-editor-actions button, .sheet-cell-row button, .frame-size-row button,
+  .animation-add, .model-actions button, .pixel-editor-head button, .pixel-layer-actions button,
+  .atlas-warning-actions button, .animation-name-row button, .profile-name-row button) {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  border-radius: 9px; border: 1px solid var(--line); color: var(--text);
+  background: var(--panel); line-height: 1.3; text-align: center;
+  transition: background 160ms, border-color 160ms, box-shadow 160ms, transform 160ms var(--shell-ease);
+}
+html[data-theme] .button { min-height: 42px; padding: 10px 14px; }
+html[data-theme] :is(.button.secondary, .button.ghost) { background: var(--panel); color: var(--text); border-color: var(--line); }
+html[data-theme] :is(.button.primary, .next-action.accent, .export-action, .animation-name-row button:first-of-type) {
+  color: var(--shell-action-ink); background: var(--orange); border-color: transparent; box-shadow: 0 4px 12px #00000012;
+}
+html[data-theme] :is(.button.primary, .next-action.accent, .export-action):hover:not(:disabled) {
+  background: var(--orange-soft); color: var(--shell-action-ink); box-shadow: 0 7px 18px #00000020;
+}
+html[data-theme] :is(.button.secondary, .button.ghost, .next-action,
+  .filmstrip-action, .model-actions button, .animation-add):hover:not(:disabled) {
+  background: var(--shell-raised); border-color: var(--line-bright); color: var(--text);
+}
+html[data-theme] :is(.button, .filmstrip-action):active:not(:disabled) { transform: translateY(1px); }
+html[data-theme] :is(.button.primary, .next-action.accent, .export-action):disabled {
+  background: var(--panel-2); color: var(--muted); border-color: var(--line); box-shadow: none;
+}
+html[data-theme] :is(.next-action.accent span, .export-action span) { color: inherit; }
+html[data-theme] .sheet-source-button { flex-direction: column; }
+html[data-theme] .project-open-card { text-align: left; }
+html[data-theme] :is(.field input, .field select, .sheet-cell-row input, .frame-size-row input,
+  .animation-name-row input, .profile-name-row input, .feedback-field input, .feedback-field textarea,
+  .command-search input, .pixel-editor-side input, .pixel-editor-side select,
+  .frame-duration input, .grid-spacing select, .transform-offsets input) {
+  background: var(--shell-field); color: var(--text); border-color: var(--line-bright); border-radius: 8px;
+}
+html[data-theme] input::placeholder, html[data-theme] textarea::placeholder { color: var(--muted-2); }
+html[data-theme] input[type="range"] { accent-color: var(--orange); background: var(--line); }
+html[data-theme] :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--orange); }
+html[data-theme] :is(.segmented, .preview-tabs, .transform-scope, .feedback-kind,
+  .preset-bar) { background: var(--ink); border-color: var(--line); }
+html[data-theme] :is(.segmented button, .preview-tabs button, .preset-bar button,
+  .transform-scope button, .feedback-kind button) { color: var(--muted); background: transparent; }
+html[data-theme] :is(.segmented button.selected, .preview-tabs button.selected,
+  .preset-bar button.selected, .transform-scope button.selected, .feedback-kind button.selected) {
+  color: var(--text); background: var(--shell-raised); border-color: var(--line-bright); box-shadow: inset 0 0 0 1px var(--line-bright);
+}
+html[data-theme] :is(.segmented button, .preview-tabs button, .preset-bar button):hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
+html[data-theme] :is(.sheet-fit-row > i, .finishing-toggle > i, .toggle-row > i) { background: var(--line); }
+html[data-theme] :is(.sheet-fit-row input:checked + i, .finishing-toggle input:checked + i, .toggle-row input:checked + i) { background: var(--shell-raised); box-shadow: inset 0 0 0 1px var(--line-bright); }
+html[data-theme] :is(.sheet-fit-row input:checked + i::after, .finishing-toggle input:checked + i::after, .toggle-row input:checked + i::after) { background: var(--orange); }
+html[data-theme] :is(.form-section, .toggle-row, .mask-apply-row, .sheet-fit-row,
+  .tool-details[open] > summary, .mask-tools, .pixel-editor-side, .edge-refine-controls .toggle-row) { border-color: var(--line); }
+
+/* The same floating material in preview controls, menus and every editor window. */
+html[data-theme] :is(.stage-tools, .player-bar, .frame-duration, .backdrop-menu,
+  .transform-panel, .color-picker-dialog) { color: var(--text); background: var(--shell-glass); border-color: var(--line); box-shadow: var(--shell-float-shadow); }
+html[data-theme] :is(.stage-tools button, .player-bar button, .backdrop-menu button, .backdrop-menu > strong,
+  .grid-spacing, .frame-duration small, #zoomValue, #playerCounter) { color: var(--text); }
+html[data-theme] :is(.stage-tools button:hover, .stage-tools button.active,
+  .player-bar button:hover, .player-bar button.active, .backdrop-menu button.selected,
+  .transform-actions button.active, .transform-scope button.selected) { color: var(--text); background: var(--shell-raised); }
+html[data-theme] :is(.backdrop-menu > small, .transform-panel small, .transform-panel > p,
+  .transform-lock, .transform-panel label, .transform-panel > header button) { color: var(--muted); }
+html[data-theme] .stage-tool-divider { background: var(--line); }
+html[data-theme] :is(.preview-meta, .export-details, .about-hotkeys) { color: var(--text); background: var(--panel); border-color: var(--line); }
+html[data-theme] :is(.preview-meta > div, .about-meta div) { border-color: var(--line); }
+html[data-theme] .preview-meta strong { color: var(--text); }
+html[data-theme] .preview-meta span { color: var(--muted); }
+html[data-theme] :is(.process-action-dock, .export-action-dock) { background: var(--shell-glass); border-color: var(--line); box-shadow: 0 -10px 24px #0000000d; }
+html[data-theme] :is(.process-action-dock.blocked > div, .export-action-dock.blocked) { color: var(--muted); }
+html[data-theme] :is(.warning-box, .atlas-warning, .atlas-warning.resolved, .error-card) { color: var(--text); background: var(--panel); border-color: var(--line-bright); }
+html[data-theme] .warning-box header { background: var(--shell-raised); color: var(--text); }
+html[data-theme] :is(.warning-box ul, .warning-box li button, .warning-navigation button,
+  .warning-navigation strong, .atlas-warning p, .atlas-warning.resolved p) { color: var(--muted); }
+html[data-theme] .warning-box li button.severity-error { color: var(--danger); }
+html[data-theme] :is(.warning-box header span, .atlas-warning header span) { color: var(--shell-action-ink); background: var(--orange); }
+html[data-theme] .modal-backdrop { background: var(--shell-dim); backdrop-filter: blur(10px); }
+html[data-theme] :is(.about-card, .feedback-card, .mask-editor-card, .attachment-editor-card,
+  .command-card, .frame-editor-card, .pixel-editor-card, .models-card, .user-profile-card) {
+  background: var(--shell-material); color: var(--text); border-color: var(--line); border-radius: 19px; box-shadow: var(--shell-float-shadow);
+}
+html[data-theme] :is(.mask-editor-header, .mask-editor-footer, .pixel-editor-head,
+  .pixel-editor-foot, .mask-tools, .pixel-editor-side) { background: var(--panel-2); color: var(--text); border-color: var(--line); }
+html[data-theme] :is(.mask-mode button, .mask-mode button[data-mode="smart"],
+  .pixel-tool, .pixel-layer, .attachment-editor-controls, .about-meta div) { color: var(--text); background: var(--panel); border-color: var(--line); }
+html[data-theme] :is(.mask-mode button.selected, .pixel-tool.active, .pixel-layer.active) { background: var(--shell-selected); border-color: var(--line-bright); box-shadow: inset 0 0 0 1px var(--line-bright); }
+html[data-theme] .mask-mode button small { color: var(--muted); }
+html[data-theme] :is(.about-brand, .about-lead, .about-version, .about-copyright, .update-status,
+  .about-hotkeys summary, .about-meta dt, .hotkey-list, .command-section, .models-lead) { color: var(--muted); }
+html[data-theme] .about-meta { background: var(--line); border-color: var(--line); }
+html[data-theme] :is(.about-meta dd, .command-list button) { color: var(--text); }
+html[data-theme] .command-list button:hover { background: var(--shell-selected); }
+html[data-theme] :is(.about-close, .window-button, .workspace-actions button) { color: var(--muted); }
+html[data-theme] :is(.about-close:hover, .window-button:hover, .workspace-actions button:hover:not(:disabled)) { color: var(--text); background: var(--shell-raised); }
+html[data-theme] .window-button.close:hover { background: var(--danger); color: #fff; }
+html[data-theme] .animation-chip { background: var(--panel); border-color: var(--line); }
+html[data-theme] .animation-chip.active { background: var(--shell-selected); border-color: var(--orange); }
+html[data-theme] .animation-chip > button { color: var(--text); }
+html[data-theme] :is(.animation-export-note, .sheet-fit-hint) { background: var(--shell-selected); color: var(--muted); }
+html[data-theme] .ui-icon { width: 18px; height: 18px; stroke-width: 1.6; flex-shrink: 0; }
+html[data-theme] :is(button, input, select, textarea, summary):focus-visible { outline: 2px solid var(--orange); outline-offset: 3px; }
+
+.shell-curtains { position: absolute; inset: 52px 0 0; z-index: 16; display: grid; grid-template-columns: repeat(6,1fr); pointer-events: none; overflow: hidden; }
+.shell-curtains i { background: var(--panel); transform: scaleY(0); transform-origin: top; }
+.shell-curtains i:nth-child(even) { transform-origin: bottom; }
+.appearance-settings { display: grid; gap: 10px; margin: 18px 0; padding-top: 16px; border-top: 1px solid var(--line); }
+.appearance-settings legend { float: left; margin: 0 0 9px; padding: 0; color: var(--text); font-size: 12px; font-weight: 600; }
+.appearance-settings fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.appearance-choices { clear: both; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.appearance-choices button { min-height: 42px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--muted); font: 12px var(--shell-font); cursor: pointer; }
+.appearance-choices button[aria-pressed="true"] { color: var(--text); background: var(--shell-selected); border-color: var(--line-bright); box-shadow: inset 0 0 0 1px var(--line-bright); }
+.appearance-motion { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 12px; color: var(--text); cursor: pointer; }
+.appearance-motion small { display: block; color: var(--muted); margin-top: 4px; font-size: 11px; }
+.appearance-motion input { width: 18px; height: 18px; flex: none; }
+html[data-theme] .preview-empty { padding: 18px 28px 24px; max-width: min(380px,90%); border: 1px solid var(--line); border-radius: 19px; background: var(--shell-material); color: var(--text); box-shadow: var(--shell-shadow); }
+html[data-theme] .preview-empty span { color: var(--muted); }
+html[data-theme] .preview-empty strong { margin-top: 6px; font-size: 17px; }
+.shell-sculpture { display: block; width: 230px; height: 150px; max-width: 100%; pointer-events: none; }
+html[data-theme] .preview-empty .frame-stack { display: none; }
+
+/* System or user motion preference affects the workbench shell only, never the pet. */
+html[data-shell-motion="off"] :is(.panel, .tab, .button, .modal-backdrop, .modal-backdrop > article, .backdrop-menu, .transform-panel, .appearance-choices button) { transition: none !important; animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .shell-curtains { display: none; }
+  html[data-theme] :is(.panel, .tab, .button, .modal-backdrop, .modal-backdrop > article, .backdrop-menu, .transform-panel) { transition: none !important; animation: none !important; }
+}
+@media (max-height: 760px) {
+  html[data-theme] .preview-empty { padding: 12px 22px 18px; }
+  .shell-sculpture { height: 110px; width: 185px; }
+  .appearance-settings { margin: 12px 0; }
+}
+
+/* Empty-card text must follow its material, rather than the inspection backdrop. */
+html[data-theme] #previewEmpty { color: var(--text); }
+html[data-theme] #previewEmpty span { color: var(--muted); }
+
+/* Stop pseudo-element underline motion as well as the controls themselves. */
+html[data-shell-motion="off"] .tab::after { transition: none !important; }
+@media (prefers-reduced-motion: reduce) { html[data-theme] .tab::after { transition: none !important; } }
+html[data-theme] :is(.task-welcome .eyebrow, .task-guide .eyebrow) { background: var(--panel-2); color: var(--muted); border-color: var(--line); }
+html[data-theme] :is(.task-welcome .ai-chip, .task-guide .ai-chip, .auto-pilot .ai-chip) { background: var(--panel-2); color: var(--orange-soft); border-color: var(--line); }
+
+/* Secondary routes and export states use the same palette as the main panels. */
+html[data-theme] :is(.mask-editor-header p:last-child, .frame-editor-lead,
+  .editor-route > p, .editor-route header small, .online-editor-grid small,
+  .frame-editor-status small, .attachment-item small, .export-list small,
+  .preview-group > span, .process-action-dock > div, .workspace-actions kbd) { color: var(--muted); }
+html[data-theme] :is(.editor-route, .online-editor-grid button, .export-summary) {
+  background: var(--shell-material); color: var(--text); border-color: var(--line);
+}
+html[data-theme] :is(.online-editor-grid button:hover, .export-option:hover,
+  .export-option:has(input:checked)) { background: var(--shell-selected); border-color: var(--line-bright); }
+html[data-theme] :is(.frame-editor-status strong, .sheet-editor-heading,
+  .tab.complete:not(.active), .workspace-actions button, .export-details summary) { color: var(--text); }
+html[data-theme] .export-action:disabled small { color: var(--muted); opacity: 1; }
+html[data-theme] :is(.export-list, .export-option) { border-color: var(--line); }
+html[data-theme] .export-list i { background: var(--panel-2); color: var(--muted); }
+html[data-theme] .export-option b { background: var(--shell-field); border-color: var(--line-bright); color: var(--shell-action-ink); }
+html[data-theme] .export-option input:checked ~ b { background: var(--orange); border-color: var(--orange); }
+html[data-theme] .export-option input:disabled ~ b { background: var(--line); border-color: var(--line); color: var(--text); }
+html[data-theme] .export-option input:focus-visible ~ b { outline: 2px solid var(--orange); outline-offset: 3px; box-shadow: none; }
+html[data-theme] .auto-step.staged { border-color: var(--line-bright); }
+html[data-theme] :is(.live-dot, .frame-editor-status > span) { box-shadow: 0 0 9px var(--shell-selected); }
+
+html[data-theme] :is(.attachment-asset strong, .color-picker-dialog h2) { color: var(--text); }
+html[data-theme] :is(.attachment-asset small, .color-picker-dialog p) { color: var(--muted); }
+html[data-theme] .color-picker-dialog::backdrop { background: var(--shell-dim); backdrop-filter: blur(10px); }
+html[data-theme] .color-picker-dialog[open] { animation: shell-dialog-reveal 230ms var(--shell-ease); }
+@keyframes shell-dialog-reveal { from { opacity: 0; transform: translateY(9px) scale(.985); } to { opacity: 1; transform: none; } }
+html[data-shell-motion="off"] :is(#appShell, .titlebar, .modal-backdrop, .color-picker-dialog),
+html[data-shell-motion="off"] :is(#appShell, .titlebar, .modal-backdrop, .color-picker-dialog) *,
+html[data-shell-motion="off"] :is(#appShell, .titlebar, .modal-backdrop, .color-picker-dialog) *::before,
+html[data-shell-motion="off"] :is(#appShell, .titlebar, .modal-backdrop, .color-picker-dialog) *::after { transition: none !important; animation: none !important; }
+html[data-theme] .pixel-editor-badge { background: var(--shell-selected); color: var(--orange-soft); border-color: var(--line-bright); }
+html[data-theme] .pixel-layer-flag { filter: grayscale(1); }
