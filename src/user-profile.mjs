@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 export function cleanUserName(value) {
   return typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f<>]/g, "").trim().slice(0,80) : "";
@@ -20,8 +21,11 @@ export async function saveUserProfile(file, name) {
   if (typeof name !== "string") throw new Error("Имя должно быть текстом.");
   const profile={name:cleanUserName(name),onboardingCompleted:true};
   await fs.mkdir(path.dirname(file),{recursive:true});
-  const temporary=file+".tmp";
-  await fs.writeFile(temporary,JSON.stringify(profile,null,2),"utf8");
-  await fs.rename(temporary,file);
+  const temporary=file+"."+randomUUID()+".tmp";
+  try {
+    const handle=await fs.open(temporary,"wx");
+    try { await handle.writeFile(JSON.stringify(profile,null,2),"utf8"); await handle.sync(); } finally { await handle.close(); }
+    await fs.rename(temporary,file);
+  } finally { await fs.unlink(temporary).catch(()=>{}); }
   return profile;
 }

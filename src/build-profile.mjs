@@ -21,7 +21,7 @@ export const profileOptionKeys = new Set([
   "autoSize", "autoColumns", "pixelPerfect", "removeDuplicates", "outputBackground",
   "excludedFrames", "exports", "aiCutoff", "aiSoftness", "aiEdits", "previewFrameIndex",
   "fringeCleanup", "fringeStrength", "edgeDecontaminate", "keyColor", "aiProvider", "aiQuality", "aiForceModel", "pixelate", "frameParallelism", "attachments", "attachmentPlacements",
-  "frameOverrides", "frameTransforms", "fitEachFrame", "timeline", "loopMode",
+  "frameOverrides", "frameTransforms", "preparedCleanup", "fitEachFrame", "timeline", "loopMode",
   "loopRange", "packing", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo",
   "cleanOutput", "animationName", "auxAI", "keyScope", "aiModel", "edgeRefine", "toning",
 ]);
@@ -75,12 +75,14 @@ function normalizeOptions(value, problem, label, baseDir) {
     if (!isPlainObject(options.edgeRefine)) problem(`${label}.edgeRefine: ожидался объект.`);
     else {
       for (const key of Object.keys(options.edgeRefine)) {
-        if (!["mode", "width", "depth", "whiteOnly"].includes(key)) problem(`${label}.edgeRefine.${key}: неизвестная настройка.`);
+        if (!["mode", "width", "depth", "whiteOnly", "whiteThreshold", "neutralTolerance"].includes(key)) problem(`${label}.edgeRefine.${key}: неизвестная настройка.`);
       }
       if (!["none", "trim", "recolor"].includes(options.edgeRefine.mode)) problem(`${label}.edgeRefine.mode: ожидается none, trim или recolor.`);
       if (boundedInteger(options.edgeRefine.width, 1, 3) === null) problem(`${label}.edgeRefine.width: ожидалось целое 1…3.`);
       if (boundedInteger(options.edgeRefine.depth, 1, 5) === null) problem(`${label}.edgeRefine.depth: ожидалось целое 1…5.`);
       if (typeof options.edgeRefine.whiteOnly !== "boolean") problem(`${label}.edgeRefine.whiteOnly: ожидалось true или false.`);
+      if (options.edgeRefine.whiteThreshold !== undefined && boundedInteger(options.edgeRefine.whiteThreshold, 64, 255) === null) problem(`${label}.edgeRefine.whiteThreshold: ожидалось целое 64…255.`);
+      if (options.edgeRefine.neutralTolerance !== undefined && boundedInteger(options.edgeRefine.neutralTolerance, 0, 96) === null) problem(`${label}.edgeRefine.neutralTolerance: ожидалось целое 0…96.`);
     }
   }
   if (options.toning !== undefined && options.toning !== null) {
@@ -174,6 +176,27 @@ function normalizeOptions(value, problem, label, baseDir) {
         return [key, path.resolve(baseDir, item)];
       }));
     }
+  }
+  if (options.preparedCleanup !== undefined) {
+    if (!isPlainObject(options.preparedCleanup)) problem(`${label}.preparedCleanup: ожидался объект с отметками принятых правок.`);
+    else options.preparedCleanup = Object.fromEntries(Object.entries(options.preparedCleanup).map(([key, record]) => {
+      const location = `${label}.preparedCleanup.${key}`;
+      if (!/^\d+$/.test(key) || !Number.isSafeInteger(Number(key))) problem(`${location}: ожидался номер кадра.`);
+      if (!isPlainObject(record)) {
+        problem(`${location}: ожидался объект.`);
+        return [key, record];
+      }
+      for (const field of Object.keys(record)) {
+        if (!["imagePath", "signature", "edits"].includes(field)) problem(`${location}.${field}: неизвестная настройка.`);
+      }
+      const validPath = typeof record.imagePath === "string" && record.imagePath.trim();
+      if (!validPath) problem(`${location}.imagePath: ожидался путь к очищенному PNG.`);
+      let signature;
+      try { signature = JSON.parse(record.signature); } catch {}
+      if (typeof record.signature !== "string" || !Array.isArray(signature)) problem(`${location}.signature: ожидалась сохранённая подпись настроек.`);
+      if (!Array.isArray(record.edits) || record.edits.some(edit => typeof edit !== "string")) problem(`${location}.edits: ожидался список сохранённых правок.`);
+      return [key, { ...record, imagePath: validPath ? path.resolve(baseDir, record.imagePath) : record.imagePath }];
+    }));
   }
   if (options.attachments !== undefined) {
     if (!Array.isArray(options.attachments)) {

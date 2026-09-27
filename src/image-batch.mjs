@@ -1,9 +1,28 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import sharp from "sharp";
 import { keyFrame, processFramePreview, processSprites, supportedImageExtensions } from "./processor.mjs";
 import { sliceSpriteSheet } from "./sheet-slicer.mjs";
 import { measureSource, planAutoPilot } from "./auto-pilot.mjs";
+import { findWhiteRemainders } from "./white-remainders.mjs";
+
+export async function inspectCleanupQuality(preview, measurements) {
+  const issues=[];
+  let white=preview.whiteRemainders;
+  if(!white?.count && measurements?.borderColour?.every(value=>value>=230)) {
+    const raw=await sharp(preview.afterPath).toColourspace('srgb').ensureAlpha().raw().toBuffer({resolveWithObject:true});
+    white=findWhiteRemainders(raw.data,raw.info,measurements.borderColour);
+  }
+  if(white?.count) issues.push({code:'white-regions-to-review',count:white.count,message:`Светлые области: ${white.count}. Это могут быть детали рисунка или остатки фона; проверьте просветы на цветной подложке.`});
+  // ToonOut may replace the checker step entirely. Validate the result against
+  // the input measurements, rather than the name of the selected stage.
+  if(measurements?.checkerPixels>=64) {
+    const remaining=await measureSource([preview.afterPath]);
+    if(remaining?.checkerPixels>=64) issues.push({code:'residual-checker',pixels:Math.round(remaining.checkerPixels),message:`Обнаружены области, похожие на остатки клетки (${Math.round(remaining.checkerPixels)} пикселей). Проверьте их на цветной подложке; детали рисунка могут выглядеть похоже.`});
+  }
+  return issues;
+}
 
 export async function previewWithModelFallback({ inputPath, options, appRoot, automatic, installed = [], signal, preview = processFramePreview }) {
   try { return { result: await preview({ inputPath, options, appRoot }), fallback: null }; }
@@ -44,8 +63,9 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
         const inputPath = options.frameOverrides?.[sourceIndex] || file;
         let settings = { ...options, previewFrameIndex: sourceIndex, outputBackground: "transparent" };
         let plan = null;
+        let measurements=null;
         if (automatic) {
-          const measurements = await measureSource([inputPath]);
+          measurements = await measureSource([inputPath]);
           plan = planAutoPilot({ measurements, installed, source: { kind: "images", frameCount: 1 }, target: { intent: "images", cleanupRequested: true } });
           const matting = plan.steps.find(step => step.stage === "matting");
           if (matting?.status === "blocked") throw new Error(`Нужна локальная модель ${matting.modelId}. Откройте каталог моделей.`);
@@ -55,13 +75,16 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
         signal?.throwIfAborted();
         const { result: preview, fallback } = await previewWithModelFallback({ inputPath, options: settings, appRoot, automatic, installed, signal });
         signal?.throwIfAborted();
+        if (!preview.bounds?.width || !preview.bounds?.height) throw new Error("После очистки не осталось объекта. Попробуйте другой профиль или защитите детали маской.");
+        const qualityIssues=await inspectCleanupQuality(preview,measurements);
+        const qualityWarnings=qualityIssues.map(issue=>issue.message);
         let imagePath = path.join(outputDir, `${name}.png`), version = 2;
         // Exclusive copy prevents overwriting sources or previous results, even on collision.
         for (;;) {
           try { await fs.copyFile(preview.afterPath, imagePath, 1); break; }
           catch (error) { if (error.code !== "EEXIST") throw error; imagePath = path.join(outputDir, `${name}-${version++}.png`); }
         }
-        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, fallback });
+        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, fallback, qualityIssues, qualityWarnings });
         onProgress?.({ stage: "batch", value: (index + 1) / inputs.length, message: `Сохранено ${index + 1}/${inputs.length} · ${name}.png` });
         continue;
       }

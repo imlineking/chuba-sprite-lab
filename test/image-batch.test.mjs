@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import sharp from "sharp";
-import { processImageBatch } from "../src/image-batch.mjs";
+import { processImageBatch, inspectCleanupQuality } from "../src/image-batch.mjs";
 import { keyFrame } from "../src/processor.mjs";
 import { sliceSpriteSheet } from "../src/sheet-slicer.mjs";
 
@@ -93,4 +93,13 @@ test("batch continues after a bad file and can stop after one completed atlas", 
     const cancelled = await processImageBatch({ paths: [good], outputDir: path.join(root, "cancelled"), options, signal: controller.signal });
     assert.equal(cancelled.cancelled, true); assert.equal(cancelled.completed, 0);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+test("quality review catches white regions after neural matting without erasing them",async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'cslab-quality-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const file=path.join(root,'remaining.png');
+  await sharp({create:{width:80,height:60,channels:4,background:{r:0,g:0,b:0,alpha:0}}}).composite([{input:Buffer.from('<svg width="80" height="60"><rect x="20" y="15" width="20" height="20" fill="white"/></svg>')}]).png().toFile(file);
+  const before=await fs.readFile(file);
+  const issues=await inspectCleanupQuality({afterPath:file},{borderColour:[255,255,255]});
+  assert.equal(issues[0].code,'white-regions-to-review');assert.equal(issues[0].count,1);
+  assert.deepEqual(await fs.readFile(file),before);
 });

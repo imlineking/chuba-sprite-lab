@@ -25,9 +25,9 @@ window.startImageEditing = function startImageEditing() {
 
 window.saveIndependentImages = async function saveIndependentImages({ all = false, automatic = false } = {}) {
   if (state.source?.kind !== "frames" || state.busy) return null;
+  if (automatic) { window.openImageBatchPreview(); return null; }
   const sourceIndexes = all ? state.source.paths.map((_, i) => i) : [state.selectedFrameIndex];
   const paths = sourceIndexes.map(i => state.source.paths[i]);
-  if (automatic) { clearTimeout(state.historyTimer); pushHistory("Перед автоочисткой изображений"); }
   state.busy = true; updateActionState();
   try {
     const outputDir = state.outputFolder || await window.spriteLab.automaticOutput(paths[0]);
@@ -42,17 +42,6 @@ window.saveIndependentImages = async function saveIndependentImages({ all = fals
     for (const item of result.results) {
       const index = state.source.paths.indexOf(item.input);
       if (index >= 0) $("#filmstrip button[data-source-index='" + index + "'] img").src = "file:///" + item.imagePath.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/");
-      if (index >= 0 && automatic && all && !result.failed && !result.cancelled) state.frameOverrides[index] = item.imagePath;
-    }
-    if (automatic && all && result.completed && !result.failed && !result.cancelled) {
-      // The saved PNG already contains these operations. Consume them so a
-      // subsequent preview/export does not tone, transform or erode it twice.
-      state.maskEdits = []; state.frameTransforms = {}; state.attachments = [];
-      for (const id of ["pixelateEnabled", "toningEnabled", "fringeCleanup", "edgeDecontaminate"]) $("#" + id).checked = false;
-      $("#edgeRefineMode").value = "none";
-      setKeyMode("alpha"); updateMaskEditSummary(); renderAttachmentList(); pushHistory("Автоочистка изображений");
-      const models = [...new Set(result.results.map(item => item.fallback?.model || item.plan?.steps.find(step => step.stage === "matting")?.modelId).filter(Boolean))];
-      $("#filmstripNote").title = `Автоочистка: ${models.length ? models.join(", ") : "контур / альфа / проверка шахмат"}. Решения по файлам: ${result.reportPath}`;
     }
     return result;
   } catch (error) { showError(error.message); setStatus(error.message, "error", 0); return null; }
@@ -62,7 +51,7 @@ window.saveIndependentImages = async function saveIndependentImages({ all = fals
 $("#regionEditImage").addEventListener("click", () => openMaskEditor({ tool: "select" }).catch(error => showError(error.message)));
 $("#saveImagePng").addEventListener("click", () => window.saveIndependentImages());
 $("#saveAllImagePng").addEventListener("click", () => window.saveIndependentImages({ all: true }));
-$("#imageAutoCleanup").addEventListener("click", () => window.saveIndependentImages({ all: true, automatic: true }));
+$("#imageAutoCleanup").addEventListener("click", () => window.openImageBatchPreview());
 $("#imageScenarioChoices").addEventListener("click", event => {
   const button = event.target.closest("button[data-image-task]");
   if (button) window.taskChoose(button.dataset.imageTask, "manual");
@@ -72,3 +61,145 @@ const maskHistoryButtons = $(".mask-history-actions");
 $(".mask-editor-footer").insertBefore(maskHistoryButtons, $(".mask-editor-footer").firstChild);
 const checkerButton = $("#removeCheckerboard");
 $(".mask-tools").insertBefore(checkerButton, $(".mask-tools").firstChild);
+
+let imageBatchDraft = null;
+let imageBatchReturnFocus = null;
+const imageBatchUrl = file => "file:///" + file.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/");
+function persistImageBatchDraft() {
+  try { localStorage.setItem("spriteLab.pendingImageBatch", JSON.stringify(imageBatchDraft)); } catch { /* UI still keeps the preview. */ }
+}
+function imageBatchIndexes() {
+  const scope = $("#imageBatchScope").value;
+  if (scope === "current") return [Math.min(state.selectedFrameIndex, imageBatchDraft.paths.length - 1)];
+  return imageBatchDraft.paths.map((_, index) => index).filter(index => scope === "all" || imageBatchDraft.selected.includes(index));
+}
+function showImageBatchPair(index) {
+  $("#imageBatchBefore").src = imageBatchUrl(imageBatchDraft.paths[index]);
+  const item = imageBatchDraft.results[index];
+  if (item) $("#imageBatchAfter").src = imageBatchUrl(item.imagePath);
+  else $("#imageBatchAfter").removeAttribute("src");
+}
+function renderImageBatchDraft() {
+  const scope = imageBatchIndexes();
+  const list = $("#imageBatchList"); list.replaceChildren();
+  imageBatchDraft.paths.forEach((file, index) => {
+    const row = document.createElement("div"); row.className = "batch-preview-row";
+    const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.checked = scope.includes(index); checkbox.disabled = state.busy;
+    checkbox.setAttribute("aria-label", `Выбрать ${baseName(file)}`);
+    checkbox.addEventListener("change", () => {
+      imageBatchDraft.selected = scope.filter(value => value !== index);
+      if (checkbox.checked) imageBatchDraft.selected.push(index);
+      $("#imageBatchScope").value = "selected"; persistImageBatchDraft(); renderImageBatchDraft();
+    });
+    const button = document.createElement("button"); button.type = "button";
+    const title = document.createElement("span"); title.textContent = `${index + 1} · ${baseName(file)}`;
+    const detail = document.createElement("small"), item = imageBatchDraft.results[index];
+    const model = item?.fallback?.model || item?.plan?.steps?.find(step => step.stage === "matting")?.modelId;
+    detail.textContent = imageBatchDraft.exportFailures?.[index] ? `Ошибка сохранения: ${imageBatchDraft.exportFailures[index]}` : imageBatchDraft.failures[index] ? `Ошибка: ${imageBatchDraft.failures[index]}` : imageBatchDraft.exported?.[index] ? "Сохранено · PNG + JSON" : item ? `Готово · ${model || "локальная очистка"}${item.fallback ? " · CPU fallback" : ""}${item.qualityWarnings?.length ? " · " + item.qualityWarnings.join(" ") : ""}` : "Ещё не обработано";
+    button.append(title, detail); button.addEventListener("click", () => showImageBatchPair(index)); row.append(checkbox, button); list.append(row);
+  });
+  const ready = scope.filter(index => imageBatchDraft.results[index]).length;
+  $("#imageBatchSummary").textContent = `${scope.length} выбрано · ${ready} готово · ${scope.filter(index => imageBatchDraft.failures[index]).length} ошибок`;
+  $("#prepareImageBatch").disabled = state.busy || !scope.length;
+  $("#retryImageBatch").disabled = state.busy || !scope.some(index => imageBatchDraft.failures[index]);
+  $("#continueImageBatch").disabled = state.busy || !scope.some(index => !imageBatchDraft.results[index] && !imageBatchDraft.failures[index]);
+  $("#cancelImageBatchJob").disabled = !state.busy;
+  $("#applyImageBatch").disabled = state.busy || !scope.length || ready !== scope.length;
+  $("#imageBatchScope").disabled = state.busy;
+}
+window.openImageBatchPreview = function (configuration = {}) {
+  if ((!configuration.paths && state.source?.kind !== "frames") || state.busy) return;
+  imageBatchReturnFocus = document.activeElement;
+  const paths = configuration.paths || state.source.paths;
+  const exportAtlases = Boolean(configuration.exportAtlases);
+  const configurationKey = JSON.stringify({exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic});
+  let saved; try { saved = JSON.parse(localStorage.getItem("spriteLab.pendingImageBatch")); } catch { /* No prior job. */ }
+  if (!imageBatchDraft || JSON.stringify(imageBatchDraft.paths) !== JSON.stringify(paths) || imageBatchDraft.configurationKey !== configurationKey) {
+    imageBatchDraft = saved && JSON.stringify(saved.paths) === JSON.stringify(paths) && saved.configurationKey === configurationKey && saved.results && saved.failures && saved.selected ? saved : { paths: [...paths], selected: [Math.min(state.selectedFrameIndex,paths.length-1)], results: {}, failures: {}, settings: {}, directory: null, configurationKey, configuration };
+  }
+  $('#imageBatchTitle').textContent = exportAtlases ? 'Пакетная подготовка PNG + JSON' : 'Автоочистка изображений';
+  $('.batch-preview-header p').textContent = exportAtlases ? 'Проверьте очистку каждого исходника. После просмотра сохраняются отдельные PNG + JSON. Исходные файлы остаются на месте.' : 'Сравните исходник и результат. Применение можно отменить Ctrl+Z; PNG сохраняются отдельной кнопкой.';
+  $('#applyImageBatch').textContent = exportAtlases ? 'Сохранить выбранные · PNG + JSON' : 'Применить выбранные';
+  $("#imageBatchModal").classList.remove("hidden"); $("#imageBatchScope").value = "all";
+  renderImageBatchDraft(); showImageBatchPair(Math.min(state.selectedFrameIndex,paths.length-1)); $("#imageBatchScope").focus();
+};
+window.closeImageBatchPreview = function () {
+  if (state.busy) { $("#imageBatchSummary").textContent = "Остановите обработку перед закрытием. Готовые результаты сохранятся в просмотре."; return; }
+  persistImageBatchDraft(); $("#imageBatchModal").classList.add("hidden"); imageBatchReturnFocus?.focus();
+};
+async function prepareImageBatch(mode = "all") {
+  if (state.busy) return;
+  const indexes = imageBatchIndexes().filter(index => mode === "failed" ? imageBatchDraft.failures[index] : mode === "remaining" ? !imageBatchDraft.results[index] && !imageBatchDraft.failures[index] : true);
+  if (!indexes.length) return;
+  const configuration = imageBatchDraft.configuration || {};
+  const baseline = configuration.options || collectOptions();
+  const settings = { ...baseline, pixelate: configuration.exportAtlases ? baseline.pixelate : null, toning: configuration.exportAtlases ? baseline.toning : null, frameTransforms: {}, attachments: [], attachmentPlacements: null };
+  state.busy = true; updateActionState(); renderImageBatchDraft();
+  $("#cancelJob").classList.remove("hidden");
+  setStatus(`Готовлю просмотр: ${indexes.length} изображений…`, "busy", .02);
+  try {
+    const result = await window.spriteLab.imageBatch({ paths: indexes.map(index => imageBatchDraft.paths[index]), sourceIndexes: indexes, outputKind: "images", automatic: configuration.automatic ?? true, previewOnly: true, previewDirectory: imageBatchDraft.directory, options: settings });
+    imageBatchDraft.directory = result.outputDir;
+    for (const item of result.results) {
+      const index = imageBatchDraft.paths.indexOf(item.input);
+      imageBatchDraft.results[index] = item; imageBatchDraft.settings[index] = baseline; delete imageBatchDraft.failures[index];
+      delete imageBatchDraft.exported?.[index]; delete imageBatchDraft.exportFailures?.[index];
+    }
+    for (const item of result.failures) {
+      const index = imageBatchDraft.paths.indexOf(item.input); imageBatchDraft.failures[index] = item.message; delete imageBatchDraft.results[index];
+    }
+    persistImageBatchDraft(); showImageBatchPair(indexes[0]);
+    setStatus(result.cancelled || result.stopped ? "Обработка остановлена · готовое осталось в просмотре" : "Предпросмотр готов · сравните и примените", "done", 0);
+  } catch (error) { showError(error.message); }
+  finally { state.busy = false; updateActionState(); renderImageBatchDraft(); $("#cancelJob").classList.add("hidden"); }
+}
+$("#closeImageBatch").addEventListener("click", window.closeImageBatchPreview);
+$("#imageBatchScope").addEventListener("change", renderImageBatchDraft);
+$("#prepareImageBatch").addEventListener("click", () => prepareImageBatch());
+$("#retryImageBatch").addEventListener("click", () => prepareImageBatch("failed"));
+$("#continueImageBatch").addEventListener("click", () => prepareImageBatch("remaining"));
+$("#cancelImageBatchJob").addEventListener("click", () => window.spriteLab.cancelBuild());
+async function exportReviewedImageAtlases(indexes) {
+  const configuration = imageBatchDraft.configuration;
+  const pending = indexes.filter(index=>!imageBatchDraft.exported?.[index]);
+  if (!pending.length) { setStatus('Все выбранные PNG + JSON уже сохранены', 'done', 1); window.closeImageBatchPreview(); return; }
+  state.busy = true; updateActionState(); renderImageBatchDraft(); $('#cancelJob').classList.remove('hidden');
+  imageBatchDraft.exported ||= {}; imageBatchDraft.exportFailures ||= {};
+  try {
+    const outputDir = state.outputFolder || await window.spriteLab.automaticOutput(imageBatchDraft.paths[0]);
+    state.outputFolder=outputDir; $('#outputFolder').textContent=outputDir;
+    const options={...configuration.options, keyMode:'alpha', fringeCleanup:false, edgeDecontaminate:false, edgeRefine:{mode:'none'}, pixelate:null, toning:null, frameOverrides:{}, preparedCleanup:{}, maskEdits:[], aiEdits:[], frameTransforms:{},attachments:[],attachmentPlacements:null};
+    const result=await window.spriteLab.imageBatch({paths:pending.map(index=>imageBatchDraft.results[index].imagePath),outputDir,options,splitObjects:configuration.splitObjects});
+    for(const item of result.results) {
+      const index=pending.find(value=>imageBatchDraft.results[value].imagePath===item.input);
+      imageBatchDraft.exported[index]=item;delete imageBatchDraft.exportFailures[index];
+    }
+    for(const item of result.failures) {
+      const index=pending.find(value=>imageBatchDraft.results[value].imagePath===item.input);imageBatchDraft.exportFailures[index]=item.message;
+    }
+    state.lastExportDir=outputDir;state.lastRevealPath=result.revealPath;
+    const count=indexes.filter(index=>imageBatchDraft.exported[index]).length;
+    setStatus(`Сохранено PNG + JSON: ${count}/${indexes.length} · исходники сохранены${result.failed?' · повторите сохранение для ошибок':''}`,result.failed?'error':'done',1);
+    $('#exportSummary').textContent=`PNG + JSON: ${count}/${indexes.length} · ${outputDir}`;
+    $('#exportSummary').classList.remove('hidden');$('#completionActions').classList.remove('hidden');
+  } catch(error) { showError(error.message); }
+  finally { state.busy=false;updateActionState();$('#cancelJob').classList.add('hidden');persistImageBatchDraft();renderImageBatchDraft(); }
+  if(indexes.every(index=>imageBatchDraft.exported[index])) window.closeImageBatchPreview();
+}
+$("#applyImageBatch").addEventListener("click", async () => {
+  const indexes = imageBatchIndexes();
+  if (state.busy || !indexes.length || indexes.some(index => !imageBatchDraft.results[index])) return;
+  if (imageBatchDraft.configuration?.exportAtlases) { await exportReviewedImageAtlases(indexes); return; }
+  const { preparedCleanupRecord } = await import("./prepared-cleanup.mjs");
+  clearTimeout(state.historyTimer); pushHistory("До пакетной очистки");
+  for (const index of indexes) {
+    const item = imageBatchDraft.results[index]; state.frameOverrides[index] = item.imagePath;
+    state.preparedCleanup[index] = preparedCleanupRecord(imageBatchDraft.settings[index], item.imagePath);
+    const thumbnail = $("#filmstrip button[data-source-index='" + index + "'] img"); if (thumbnail) thumbnail.src = imageBatchUrl(item.imagePath);
+  }
+  pushHistory(`Очистка ${indexes.length} изображений`); markPreviewDirty(); scheduleFramePreview(0);
+  window.closeImageBatchPreview(); setStatus(`Применено: ${indexes.length} · Ctrl+Z отменяет весь пакет · сохраните PNG`, "done", 0);
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !$("#imageBatchModal").classList.contains("hidden")) { event.preventDefault(); window.closeImageBatchPreview(); }
+});

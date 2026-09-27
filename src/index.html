@@ -699,7 +699,7 @@
             <button id="regionEditImage" class="filmstrip-action" type="button" title="Выделите прямоугольник или лассо, выберите цвет пипеткой и удалите только его внутри выделения">Выделение и фон</button>
             <button id="saveImagePng" class="filmstrip-action image-only" type="button">Сохранить PNG</button>
             <button id="saveAllImagePng" class="filmstrip-action image-only" type="button">Сохранить все PNG</button>
-            <button id="imageAutoCleanup" class="filmstrip-action image-only" type="button" title="Оркестратор анализирует каждый файл и выбирает обработку; результат сохраняется в отдельную папку">Автоочистка всех</button>
+            <button id="imageAutoCleanup" class="filmstrip-action image-only" type="button" title="Выберите файлы, сравните результат и примените очистку одной отменяемой операцией">Автоочистка · просмотр</button>
             <button id="duplicateFrame" class="filmstrip-action" type="button" title="Повторить кадр в таймлайне (Ctrl+D)">Дублировать</button>
             <button id="excludeFrame" class="filmstrip-action" type="button">Исключить кадр</button>
             <button id="editFrame" class="filmstrip-action edit" type="button" title="Открыть во внешнем редакторе и вернуть результат в проект">Внешний редактор</button>
@@ -1186,6 +1186,14 @@
     <script src="./pixel-color-ui.js"></script>
     <script src="./auto-pilot.js"></script>
     <script src="./mask-region-ui.js"></script>
+    <div id="imageBatchModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="imageBatchTitle">
+      <article class="batch-preview-dialog">
+        <header class="batch-preview-header"><div><h2 id="imageBatchTitle">Автоочистка изображений</h2><p>Сравните исходник и результат. Применение можно отменить Ctrl+Z; PNG сохраняются отдельной кнопкой.</p></div><button id="closeImageBatch" type="button" aria-label="Закрыть предпросмотр">×</button></header>
+        <div class="batch-preview-scope"><label>Область действия <select id="imageBatchScope"><option value="current">Текущее изображение</option><option value="selected">Выбранные в списке</option><option value="all" selected>Все изображения</option></select></label><span id="imageBatchSummary" role="status" aria-live="polite">Выберите файлы и запустите предпросмотр.</span></div>
+        <div class="batch-preview-body"><div id="imageBatchList" class="batch-preview-list"></div><div class="batch-preview-comparison"><figure><figcaption>Исходник</figcaption><img id="imageBatchBefore" alt="Исходное изображение" /></figure><figure><figcaption>После очистки</figcaption><img id="imageBatchAfter" alt="Предпросмотр очистки" /></figure></div></div>
+        <footer class="batch-preview-footer"><button id="prepareImageBatch" class="button secondary" type="button">Подготовить просмотр</button><button id="retryImageBatch" class="button secondary" type="button" disabled>Повторить ошибки</button><button id="continueImageBatch" class="button secondary" type="button" disabled>Продолжить оставшиеся</button><button id="cancelImageBatchJob" class="button secondary" type="button" disabled>Остановить</button><button id="applyImageBatch" class="button primary" type="button" disabled>Применить выбранные</button></footer>
+      </article>
+    </div>
     <script src="./image-workspace.js"></script>
     <script src="./task-mode.js"></script>
     <script src="./feedback.js"></script>

@@ -32,6 +32,41 @@ test("white edge is coloured from inside while an enclosed white flower stays wh
   assert.deepEqual(frame.at(result, 8, 8), [255, 255, 255, 255]);
 });
 
+test("neutral grey export fringe is recoloured without touching a dark outline", () => {
+  const frame = canvas(17, 17);
+  for (let y = 2; y <= 14; y += 1) for (let x = 2; x <= 14; x += 1) frame.paint(x, y, [18, 78, 54, 255]);
+  for (let y = 2; y <= 14; y += 1) {
+    frame.paint(2, y, [168, 165, 162, 255]);
+    frame.paint(14, y, [16, 19, 18, 255]);
+  }
+  const result = refineEdgeRgba(frame.data, frame.info, {
+    mode: "recolor",
+    width: 1,
+    depth: 4,
+    whiteOnly: true,
+    whiteThreshold: 140,
+    neutralTolerance: 40,
+  });
+  assert.deepEqual(frame.at(result, 2, 8), [18, 78, 54, 255]);
+  assert.deepEqual(frame.at(result, 14, 8), [16, 19, 18, 255]);
+});
+
+test("grey fringe on a one-pixel needle borrows colour from the same thin stroke", () => {
+  const frame = canvas(9, 9);
+  frame.paint(3, 4, [165, 164, 160, 255]);
+  frame.paint(4, 4, [12, 62, 48, 255]);
+  frame.paint(5, 4, [10, 48, 38, 255]);
+  const result = refineEdgeRgba(frame.data, frame.info, {
+    mode: "recolor",
+    width: 1,
+    depth: 4,
+    whiteOnly: true,
+    whiteThreshold: 140,
+    neutralTolerance: 40,
+  });
+  assert.deepEqual(frame.at(result, 3, 4), [12, 62, 48, 255]);
+});
+
 test("only a large white exterior is removed, not a small border highlight or inner text", () => {
   const frame = canvas(30, 30, [255, 255, 255, 255]);
   for (let y = 6; y <= 23; y += 1) for (let x = 6; x <= 23; x += 1) frame.paint(x, y, [10, 80, 180, 255]);

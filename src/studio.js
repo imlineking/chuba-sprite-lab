@@ -802,7 +802,7 @@ function optionsFromDocument(doc, base = {}) {
     aiProvider: values.aiProvider || "auto",
     keyColor: /^#[0-9a-f]{6}$/i.test(String(controls.solidKeyMode || "")) ? hexToRgb(controls.solidKeyMode) : undefined,
     attachments: (doc.attachments || []).filter((attachment) => attachment.enabled !== false), attachmentPlacements: null,
-    frameOverrides: doc.frameOverrides || {}, frameTransforms: doc.frameTransforms || {},
+    frameOverrides: doc.frameOverrides || {}, frameTransforms: doc.frameTransforms || {}, preparedCleanup: doc.preparedCleanup || {},
     fitEachFrame: (doc.source?.kind === "sheet" && checks.sheetFitEach !== false) || (doc.source?.kind === "frames" && controls.studio?.imageAlign === "fit"),
     timeline: timelineOption(doc.timeline),
     ...loopOptions(controls.studio || { loopMode: "loop" }),

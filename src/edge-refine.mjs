@@ -5,10 +5,13 @@ export function refineEdgeRgba(input, info, options = {}) {
   if (channels !== 4) throw new Error("Очистка кромки требует RGBA-кадр.");
   const output = Buffer.from(input);
   const count = width * height;
-  const threshold = Math.max(200, Math.min(255, Math.round(Number(options.whiteThreshold) || 235)));
+  const threshold = Math.max(64, Math.min(255, Math.round(Number(options.whiteThreshold) || 235)));
+  const neutralTolerance = Math.max(0, Math.min(96, Math.round(Number(options.neutralTolerance) || 32)));
   const isWhite = (index) => {
     const offset = index * 4;
-    return output[offset + 3] >= 8 && output[offset] >= threshold && output[offset + 1] >= threshold && output[offset + 2] >= threshold;
+    const minimum = Math.min(output[offset], output[offset + 1], output[offset + 2]);
+    const maximum = Math.max(output[offset], output[offset + 1], output[offset + 2]);
+    return output[offset + 3] >= 8 && minimum >= threshold && maximum - minimum <= neutralTolerance;
   };
 
   // Only a sizeable white component reaching the canvas border is treated as a
@@ -67,7 +70,7 @@ export function refineEdgeRgba(input, info, options = {}) {
     if (distance[index] < 1 || distance[index] > widthPx || source[index * 4 + 3] < 8) continue;
     const offset = index * 4;
     if (mode === "trim") { output[offset + 3] = 0; continue; }
-    if (options.whiteOnly !== false && !(source[offset] >= threshold && source[offset + 1] >= threshold && source[offset + 2] >= threshold)) continue;
+    if (options.whiteOnly !== false && !isWhite(index)) continue;
     const x = index % width; const y = Math.floor(index / width);
     let nearest = -1; let nearestDistance = Infinity;
     for (let dy = -radius; dy <= radius; dy += 1) {
@@ -79,7 +82,11 @@ export function refineEdgeRgba(input, info, options = {}) {
         const candidate = sy * width + sx;
         if (distance[candidate] < minInterior || source[candidate * 4 + 3] < 200) continue;
         const candidateOffset = candidate * 4;
-        if (options.whiteOnly !== false && source[candidateOffset] >= threshold && source[candidateOffset + 1] >= threshold && source[candidateOffset + 2] >= threshold) continue;
+        if (options.whiteOnly !== false) {
+          const minimum = Math.min(source[candidateOffset], source[candidateOffset + 1], source[candidateOffset + 2]);
+          const maximum = Math.max(source[candidateOffset], source[candidateOffset + 1], source[candidateOffset + 2]);
+          if (minimum >= threshold && maximum - minimum <= neutralTolerance) continue;
+        }
         const score = dx * dx + dy * dy;
         if (score >= nearestDistance) continue;
         // Do not borrow colours across a transparent gap from another object.
@@ -91,6 +98,36 @@ export function refineEdgeRgba(input, info, options = {}) {
           if (source[(lineY * width + lineX) * 4 + 3] < 8) { connected = false; break; }
         }
         if (connected) { nearest = candidateOffset; nearestDistance = score; }
+      }
+    }
+    // Fine fur, grass and conifer needles can be only one or two pixels wide,
+    // so they have no pixel at minInterior depth. In that case borrow the
+    // nearest non-neutral colour from the same connected opaque stroke rather
+    // than leaving a grey/white export fringe in place.
+    if (nearest < 0) {
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        const sy = y + dy;
+        if (sy < 0 || sy >= height) continue;
+        for (let dx = -radius; dx <= radius; dx += 1) {
+          const sx = x + dx;
+          if (sx < 0 || sx >= width || (!dx && !dy)) continue;
+          const candidate = sy * width + sx;
+          const candidateOffset = candidate * 4;
+          if (source[candidateOffset + 3] < 200) continue;
+          const minimum = Math.min(source[candidateOffset], source[candidateOffset + 1], source[candidateOffset + 2]);
+          const maximum = Math.max(source[candidateOffset], source[candidateOffset + 1], source[candidateOffset + 2]);
+          if (minimum >= threshold && maximum - minimum <= neutralTolerance) continue;
+          const score = dx * dx + dy * dy;
+          if (score >= nearestDistance) continue;
+          let connected = true;
+          const steps = Math.max(Math.abs(dx), Math.abs(dy));
+          for (let step = 1; step < steps; step += 1) {
+            const lineX = Math.round(x + dx * step / steps);
+            const lineY = Math.round(y + dy * step / steps);
+            if (source[(lineY * width + lineX) * 4 + 3] < 8) { connected = false; break; }
+          }
+          if (connected) { nearest = candidateOffset; nearestDistance = score; }
+        }
       }
     }
     if (nearest < 0) continue;

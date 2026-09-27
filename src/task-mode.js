@@ -29,7 +29,7 @@
   let extractedPath = null;
   let objectEditOpened = false;
   let preparedLayout = "";
-  let batchReport = null;
+
   let preparingLayout = false;
 
   async function taskOutput(source = state.source) {
@@ -62,34 +62,16 @@
 
   async function taskBatchRun() {
     const paths = batchInputPaths(); if (!paths.length || state.busy) return;
-    state.busy = true; updateActionState(); taskRender();
     try {
-      await taskOutput();
       const profile = $("#batchImageProfile").value;
       if (profile === "ai") await taskEnsureModel($("#aiModel").value || "u2netp");
       const options = collectOptions();
       if (profile === "color") Object.assign(options, { keyMode: "custom", keyColor: hexToRgb($("#batchKeyColor").value), keyScope: $("#batchKeyScope").value, tolerance: Number($("#batchTolerance").value) });
       if (profile === "ai") options.keyMode = "ai";
-      Object.assign(options, { autoSize: true, autoColumns: true, anchor: "body", padding: Math.max(24, options.padding || 0), fitEachFrame: false, frameOverrides: {}, frameTransforms: {}, aiEdits: [], attachments: [], attachmentPlacements: null, excludedFrames: [], timeline: null, auxAI: { ...options.auxAI, interpolate: false, inpaintMaskPath: null } });
-      $("#stopAfterCurrent").disabled = false; $("#stopAfterCurrent").textContent = "Остановить после текущего"; $("#stopAfterCurrent").classList.remove("hidden");
-      setStatus(`Подготавливаю ${paths.length} изображений…`, "busy", 0.02);
-      batchReport = await window.spriteLab.imageBatch({ paths, outputDir: state.outputFolder, options, splitObjects: $("#batchSplitObjects").checked });
-      state.lastExportDir = batchReport.outputDir; state.lastRevealPath = batchReport.revealPath;
-      $("#exportSummary").textContent = `Готово: ${batchReport.completed}/${batchReport.total} файлов · PNG + JSON${batchReport.failed ? ` · ошибок: ${batchReport.failed}` : ""}${batchReport.stopped ? " · очередь остановлена" : ""}`;
-      $("#exportSummary").classList.remove("hidden"); $("#completionActions").classList.remove("hidden");
-      setStatus($("#exportSummary").textContent, batchReport.failed ? "error" : "done", 1);
-      const rows = batchReport.results.map(item => {
-        const button = document.createElement("button"); button.type = "button"; button.className = "button secondary";
-        button.textContent = `${item.name} · ${item.frameCount} объектов · PNG + JSON`; button.title = item.sheetPath;
-        button.addEventListener("click", () => window.spriteLab.revealOutput(item.sheetPath)); return button;
-      });
-      for (const failure of batchReport.failures) { const row = document.createElement("p"); row.textContent = `${failure.name}: ${failure.message}`; rows.push(row); }
-      $("#batchImageResults").replaceChildren(...rows);
-      if (!batchReport.failed) hideError();
-    } catch (error) { setStatus(error.message || "Обработка остановлена", /отмен|abort/i.test(error.message) ? "idle" : "error", 0); if (!/отмен|abort/i.test(error.message)) showError(error.message); }
-    finally { state.busy = false; updateActionState(); $("#stopAfterCurrent").classList.add("hidden"); $("#cancelJob").classList.add("hidden"); taskRender(); }
+      Object.assign(options, { autoSize: true, autoColumns: true, anchor: "body", padding: Math.max(24, options.padding || 0), fitEachFrame: false, frameOverrides: {}, preparedCleanup: {}, frameTransforms: {}, aiEdits: [], attachments: [], attachmentPlacements: null, excludedFrames: [], timeline: null, auxAI: { ...options.auxAI, interpolate: false, inpaintMaskPath: null } });
+      window.openImageBatchPreview({ paths, options, automatic: profile === "auto", exportAtlases: true, splitObjects: $("#batchSplitObjects").checked });
+    } catch (error) { showError(error.message); }
   }
-
   async function taskAddImages() {
     if (state.busy || (state.source && state.source.kind !== "frames")) return;
     try {
@@ -244,7 +226,7 @@
     if (selected === "batch") {
       const paths = batchInputPaths();
       guide.textContent = paths.length ? `Файлов: ${paths.length}. Применим один профиль ко всем. Выберите цвет пипеткой, область удаления и допуск либо используйте ИИ. Каждый файл получит отдельный прозрачный PNG и JSON.` : "Добавьте изображения деревьев, кустов или других объектов. Для всей серии выберите один профиль: удаление цвета, текущие настройки или локальный ИИ.";
-      primary.textContent = paths.length ? batchReport ? "Обработать ещё раз" : "Подготовить все · PNG + JSON" : "Добавить изображения";
+      primary.textContent = paths.length ? "Просмотр · затем PNG + JSON" : "Добавить изображения";
       primaryAction = paths.length ? taskBatchRun : taskBatchAdd;
       secondary.textContent = "Добавить ещё файлы"; secondary.classList.toggle("hidden", !paths.length); secondaryAction = taskBatchAdd;
     } else if (["layout", "clipping"].includes(selected) && source?.sheetPath === preparedLayout && result && !state.resultDirty) {
@@ -489,7 +471,7 @@
       guide.textContent = "Выберите изображение в ленте. Обведите область, удалите её цвет пипеткой или уберите запечённые шахматы. Сохраняются отдельные PNG исходного размера. Автоочистка анализирует каждый файл и сама выбирает модель; исходники остаются на месте.";
       primary.textContent = "Выделить область и очистить фон";
       primaryAction = () => openMaskEditor({ tool: "select" }).catch(error => showError(error.message));
-      secondary.textContent = approach === "auto" ? "Автоочистка всех · отдельные PNG" : "Сохранить все PNG"; secondary.classList.remove("hidden");
+      secondary.textContent = approach === "auto" ? "Автоочистка · сравнить и применить" : "Сохранить все PNG"; secondary.classList.remove("hidden");
       secondaryAction = () => window.saveIndependentImages({ all: true, automatic: approach === "auto" });
     } else if (["cutout", "stylize", "depth", "upscale"].includes(selected)) {
       if (result && !state.resultDirty) {
@@ -599,7 +581,7 @@
   window.taskOnSource = (source) => {
     $("#imageScenarioChoices").classList.toggle("hidden", source?.kind !== "frames");
     if (source?.kind === "frames") { selected = "edit"; state.intent = "images"; window.startImageEditing?.(); }
-    batchReport = null; $("#batchImageResults").replaceChildren();
+    $("#batchImageResults").replaceChildren();
     if (!source?.sheetPath) objectEditOpened = false;
     if (source?.kind === "sheet" && (!selected || selected === "animation")) taskSet("layout");
     taskRender();

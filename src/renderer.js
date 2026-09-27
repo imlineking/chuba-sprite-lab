@@ -10,7 +10,7 @@ const state = {
   maskEditorSnapshot: [], maskEditorImage: null, maskEditorPixels: null,
   attachments: [], attachmentAsset: null, attachmentSourceImage: null, attachmentAssetImage: null,
   attachmentPoints: [], attachmentPointCount: 1, attachmentEditingId: null, attachmentReferenceFrame: 0,
-  frameOverrides: {}, externalEdit: null, externalEditTimer: null,
+  frameOverrides: {}, preparedCleanup: {}, externalEdit: null, externalEditTimer: null,
   solidKeyMode: "black", projectPath: null, history: [], historyIndex: -1, historyTimer: null, historyApplying: false,
   warnings: [], warningIndex: 0, warningRefs: new Map(), batchItems: [], pendingSession: null, preferredEditor: "photopea",
   viewportPanX: 0, viewportPanY: 0, spaceHand: false, handToolLocked: false, viewportPanning: false, panPointerId: null,
@@ -104,6 +104,7 @@ function buildAnimationDocument() {
     maskEdits: state.maskEdits,
     attachments: state.attachments,
     frameOverrides: state.frameOverrides,
+    preparedCleanup: state.preparedCleanup,
     frameTransforms: state.frameTransforms,
     timeline: state.timeline ? structuredClone(state.timeline) : null,
     preferredEditor: state.preferredEditor,
@@ -177,6 +178,7 @@ async function applyProjectDocument(project, source, projectPath = null, { keepA
   state.maskEdits = structuredClone(project.maskEdits || []);
   state.attachments = structuredClone(project.attachments || []);
   state.frameOverrides = { ...(project.frameOverrides || {}) };
+  state.preparedCleanup = structuredClone(project.preparedCleanup || {});
   state.frameTransforms = structuredClone(project.frameTransforms || {});
   state.outputFolder = project.outputFolder || null;
   state.preferredEditor = project.preferredEditor || "photopea";
@@ -203,6 +205,7 @@ function captureHistoryState(label = "Изменение") {
     maskEdits: structuredClone(state.maskEdits),
     attachments: structuredClone(state.attachments),
     frameOverrides: { ...state.frameOverrides },
+    preparedCleanup: structuredClone(state.preparedCleanup),
     frameTransforms: structuredClone(state.frameTransforms),
     timeline: state.timeline ? structuredClone(state.timeline) : null,
     sheetDraftCells: state.sheetDraftCells ? state.sheetDraftCells.map((cell) => ({ ...cell })) : [],
@@ -250,6 +253,7 @@ function applyHistorySnapshot(snapshot) {
   state.maskEdits = structuredClone(snapshot.maskEdits || []);
   state.attachments = structuredClone(snapshot.attachments || []);
   state.frameOverrides = { ...(snapshot.frameOverrides || {}) };
+  state.preparedCleanup = structuredClone(snapshot.preparedCleanup || {});
   state.frameTransforms = structuredClone(snapshot.frameTransforms || {});
   state.timeline = snapshot.timeline ? structuredClone(snapshot.timeline) : null;
   state.sheetDraftCells = Array.isArray(snapshot.sheetDraftCells) ? snapshot.sheetDraftCells.map((cell) => ({ ...cell })) : [];
@@ -294,6 +298,7 @@ async function saveProjectFile(saveAs = false) {
     state.projectPath = result.projectPath;
     rememberRecentProject(result.projectPath);
     state.frameOverrides = { ...(result.project.frameOverrides || {}) };
+    state.preparedCleanup = structuredClone(result.project.preparedCleanup || {});
     state.attachments = structuredClone(result.project.attachments || state.attachments);
     renderAttachmentList();
     savedProjectSnapshot = JSON.stringify(buildProjectDocument());
@@ -715,7 +720,7 @@ function setSource(source) {
   state.excludedFrames.clear();
   state.maskEdits = [];
   state.attachments = [];
-  state.frameOverrides = {};
+  state.frameOverrides = {}; state.preparedCleanup = {};
   state.frameTransforms = {};
   state.timeline = null;
   state.selectedEntryId = null;
@@ -864,6 +869,7 @@ function renderRecommendations(source) {
     button.type = "button";
     button.classList.toggle("selected", index === 0);
     button.setAttribute("aria-pressed", String(index === 0));
+    button.setAttribute("aria-label", `Показать контрольный кадр ${index + 1}`);
     const img = document.createElement("img"); img.src = url; img.alt = `Контрольный кадр ${index + 1}`;
     button.append(img);
     button.addEventListener("click", () => {
@@ -973,6 +979,7 @@ function collectOptions() {
     keyColor: state.keyMode === "custom" ? hexToRgb(state.solidKeyMode) : undefined,
     attachments: state.attachments.filter((attachment) => attachment.enabled !== false), attachmentPlacements: state.resultDirty ? null : state.result?.attachmentPlacements || null,
     frameOverrides: state.frameOverrides,
+    preparedCleanup: state.preparedCleanup,
     frameTransforms: state.frameTransforms,
     fitEachFrame: (state.source?.kind === "sheet" && $("#sheetFitEach").checked) || (state.source?.kind === "frames" && state.imageAlign === "fit"),
     timeline: timelineOption(state.timeline),

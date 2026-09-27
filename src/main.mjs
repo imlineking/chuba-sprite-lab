@@ -17,6 +17,7 @@ import { resolveAIModel, segmentSubject } from "./ai-segmentation.mjs";
 import { resolveAuxModel } from "./model-paths.mjs";
 import { startupShell } from "./startup-shell.mjs";
 import { DesktopCompanion } from "./desktop-companion.mjs";
+import { loadPortableProject, savePortableProject, missingProjectFiles, mapProjectPaths } from "./project-storage.mjs";
 import { windowsLoginName } from "./windows-user-name.mjs";
 import { readUserProfile, saveUserProfile, effectiveUserName } from "./user-profile.mjs";
 import { processImageBatch } from "./image-batch.mjs";
@@ -248,6 +249,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      backgroundThrottling: !uiRegressionMode,
     },
   });
   mainWindow.on("closed", () => {
@@ -346,8 +348,10 @@ const describeSpriteSheet = (sheetPath, options = {}) => describeSpriteSheetFrom
 
 async function restoreProjectSource(descriptor = {}) {
   const paths = Array.isArray(descriptor.paths) ? descriptor.paths.map((item) => path.resolve(String(item))) : [];
-  const available = [];
-  for (const filePath of paths) if (await pathExists(filePath)) available.push(filePath);
+  const available = paths;
+  const missing = [];
+  for (const filePath of paths) if (!await pathExists(filePath)) missing.push(filePath);
+  if (missing.length) throw new Error(`Не найдены исходники (${missing.length}). Порядок кадров сохранён. Откройте проект и укажите файлы заново:\n${missing.slice(0, 5).join("\n")}`);
   if (descriptor.kind === "sheet") {
     const sheetPath = path.resolve(String(descriptor.sheetPath || paths[0] || ""));
     if (!await pathExists(sheetPath)) throw new Error("Исходный спрайт-лист проекта не найден.");
@@ -799,13 +803,30 @@ ipcMain.handle("output:folder", async () => {
 
 ipcMain.handle("project:restore", async (_event, request = {}) => restoreProjectSource(request.source));
 
+const projectRevisions = new Map();
 async function loadProjectPath(filePath) {
   const projectPath = path.resolve(String(filePath || ""));
   if (path.extname(projectPath).toLowerCase() !== ".cslab") throw new Error("Выберите файл проекта .cslab.");
-  const project = JSON.parse(await fs.readFile(projectPath, "utf8"));
-  if (!project || project.format !== "chuba-sprite-lab-project" || !project.source) throw new Error("Файл не является проектом Chuba Sprite Lab.");
+  let loaded;
+  try { loaded = await loadPortableProject(projectPath); }
+  catch (error) {
+    if (!await pathExists(projectPath + ".bak")) throw error;
+    const answer = await dialog.showMessageBox(mainWindow, { type: "warning", message: "Проект не читается. Открыть предыдущую сохранённую копию?", detail: error.message, buttons: ["Восстановить", "Отмена"], cancelId: 1 });
+    if (answer.response !== 0) return null;
+    loaded = await loadPortableProject(projectPath, { backup: true });
+  }
+  let project = loaded.project;
+  const missing = await missingProjectFiles(project);
+  const replacements = new Map();
+  for (const file of missing) {
+    const answer = await dialog.showOpenDialog(mainWindow, { title: "Не найден файл: " + path.basename(file).replace(/^[a-f0-9]{64}-/, "") + " — выберите замену", properties: ["openFile"] });
+    if (answer.canceled || !answer.filePaths[0]) return null;
+    replacements.set(file, answer.filePaths[0]);
+  }
+  project = mapProjectPaths(project, file => replacements.get(file) || file);
   const source = await restoreProjectSource(project.source);
-  return { projectPath, project, source };
+  projectRevisions.set(projectPath, loaded.revision);
+  return { projectPath, project, source, recovered: loaded.recovered };
 }
 
 ipcMain.handle("project:load-path", async (_event, filePath) => loadProjectPath(filePath));
@@ -834,54 +855,9 @@ ipcMain.handle("project:save", async (_event, request = {}) => {
     projectPath = result.filePath.toLowerCase().endsWith(".cslab") ? result.filePath : `${result.filePath}.cslab`;
   }
 
-  const assetDir = path.join(path.dirname(projectPath), `${path.basename(projectPath, ".cslab")}.assets`);
-  await fs.mkdir(assetDir, { recursive: true });
-  const frameOverrides = {};
-  for (const [index, sourcePath] of Object.entries(project.frameOverrides || {})) {
-    if (!await pathExists(sourcePath)) continue;
-    const targetPath = path.join(assetDir, `frame-${String(Number(index) + 1).padStart(4, "0")}.png`);
-    if (path.resolve(sourcePath) !== path.resolve(targetPath)) await sharp(sourcePath).toColourspace("srgb").ensureAlpha().png().toFile(targetPath);
-    frameOverrides[index] = targetPath;
-  }
-  const attachments = [];
-  for (const [index, attachment] of (project.attachments || []).entries()) {
-    if (!attachment?.path || !await pathExists(attachment.path)) {
-      attachments.push(attachment);
-      continue;
-    }
-    const extension = supportedImageExtensions.has(path.extname(attachment.path).toLowerCase()) ? path.extname(attachment.path).toLowerCase() : ".png";
-    const targetPath = path.join(assetDir, `attachment-${String(index + 1).padStart(3, "0")}-${safeOutputName(attachment.title || "element")}${extension}`);
-    if (path.resolve(attachment.path) !== path.resolve(targetPath)) await fs.copyFile(attachment.path, targetPath);
-    attachments.push({ ...attachment, path: targetPath, url: pathToFileURL(targetPath).href });
-  }
-  // Named animations: copy each animation's edited frames and elements next to the project.
-  let animations = project.animations;
-  if (Array.isArray(project.animations)) {
-    animations = [];
-    for (const [animIndex, animation] of project.animations.entries()) {
-      const doc = animation?.document;
-      if (!doc) { animations.push(animation); continue; }
-      const docOverrides = {};
-      for (const [index, sourcePath] of Object.entries(doc.frameOverrides || {})) {
-        if (!await pathExists(sourcePath)) continue;
-        const targetPath = path.join(assetDir, `anim-${animIndex + 1}-frame-${String(Number(index) + 1).padStart(4, "0")}.png`);
-        if (path.resolve(sourcePath) !== path.resolve(targetPath)) await sharp(sourcePath).toColourspace("srgb").ensureAlpha().png().toFile(targetPath);
-        docOverrides[index] = targetPath;
-      }
-      const docAttachments = [];
-      for (const [index, attachment] of (doc.attachments || []).entries()) {
-        if (!attachment?.path || !await pathExists(attachment.path)) { docAttachments.push(attachment); continue; }
-        const extension = supportedImageExtensions.has(path.extname(attachment.path).toLowerCase()) ? path.extname(attachment.path).toLowerCase() : ".png";
-        const targetPath = path.join(assetDir, `anim-${animIndex + 1}-attachment-${String(index + 1).padStart(3, "0")}-${safeOutputName(attachment.title || "element")}${extension}`);
-        if (path.resolve(attachment.path) !== path.resolve(targetPath)) await fs.copyFile(attachment.path, targetPath);
-        docAttachments.push({ ...attachment, path: targetPath, url: pathToFileURL(targetPath).href });
-      }
-      animations.push({ ...animation, document: { ...doc, frameOverrides: docOverrides, attachments: docAttachments } });
-    }
-  }
-  const saved = { ...project, frameOverrides, attachments, ...(animations ? { animations } : {}), savedAt: new Date().toISOString() };
-  await fs.writeFile(projectPath, `${JSON.stringify(saved, null, 2)}\n`, "utf8");
-  return { projectPath, project: saved };
+  const saved = await savePortableProject(projectPath, project, { expectedRevision: projectRevisions.get(projectPath) });
+  projectRevisions.set(projectPath, saved.revision);
+  return saved;
 });
 
 ipcMain.handle("overlay:choose", async () => {
@@ -1130,8 +1106,16 @@ ipcMain.handle("sprites:image-batch", async (event, request = {}) => {
   activeJob = { controller: new AbortController(), stopAfterCurrent: false };
   try {
     const installed = request.automatic ? installedModelIds(await modelsStatus()) : [];
-    const result = await processImageBatch({ ...request, installed, appRoot, options: { ...(request.options || {}), aiModelDirs: [modelsDirectory()] }, signal: activeJob.controller.signal, shouldStop: () => Boolean(activeJob?.stopAfterCurrent), onProgress: progress => { mainWindow?.setProgressBar(progress.value); mainWindow?.webContents.send("sprites:progress", progress); } });
-    notifyFinished(result); return result;
+    let outputDir = request.outputDir;
+    if (request.previewOnly) {
+      const cache = path.join(app.getPath("userData"), "image-batch-previews");
+      await fs.mkdir(cache, { recursive: true });
+      outputDir = request.previewDirectory ? path.resolve(request.previewDirectory) : await fs.mkdtemp(path.join(cache, "preview-"));
+      if (path.dirname(outputDir) !== cache) throw new Error("Недопустимая папка предпросмотра.");
+    }
+    const result = await processImageBatch({ ...request, outputDir, installed, appRoot, options: { ...(request.options || {}), aiModelDirs: [modelsDirectory()] }, signal: activeJob.controller.signal, shouldStop: () => Boolean(activeJob?.stopAfterCurrent), onProgress: progress => { mainWindow?.setProgressBar(progress.value); mainWindow?.webContents.send("sprites:progress", progress); } });
+    if (!request.previewOnly) notifyFinished(result);
+    return result;
   } finally { activeJob = null; mainWindow?.setProgressBar(-1); }
 });
 
@@ -1338,6 +1322,17 @@ async function runDesktopProbe() {
     await fs.writeFile(`${desktopProbePath}.bubble.png`, image.toPNG());
     const petImage = await companion.pet.webContents.capturePage();
     await fs.writeFile(`${desktopProbePath}.pet.png`, petImage.toPNG());
+    const themeGeometry=[];
+    for(const theme of ['light','dark']) {
+      companion.update({theme,loading:false});await new Promise(resolve=>setTimeout(resolve,250));
+      const layout=await companion.bubble.webContents.executeJavaScript("(()=>{const controls=[...document.querySelectorAll('button')].filter(b=>b.checkVisibility());const r=document.querySelector('#speech').getBoundingClientRect();return {width:r.width,height:r.height,clipped:controls.filter(b=>b.scrollHeight>b.clientHeight+2||b.scrollWidth>b.clientWidth+2).map(b=>b.textContent)};})()");
+      if(layout.clipped.length) throw new Error('Обрезанные кнопки в облаке: '+layout.clipped.join(', '));
+      themeGeometry.push(layout);
+      await fs.writeFile(`${desktopProbePath}.${theme}.png`,(await companion.bubble.webContents.capturePage()).toPNG());
+      const current=companion.pet.getBounds();if(current.x!==restored.x||current.y!==restored.y) throw new Error('Облако или тема переместили помощника.');
+    }
+    if(themeGeometry[0].width!==themeGeometry[1].width || themeGeometry[0].height!==themeGeometry[1].height) throw new Error('Геометрия облака различается в темах.');
+    report.checks.push({name:'bubble-themes-and-fixed-pet',ok:true,themeGeometry});
     const petBounds = companion.pet.getBounds(); const windowBounds = mainWindow.getBounds();
     report.checks.push({ name: "separate-windows", ok: companion.pet !== mainWindow && companion.bubble !== mainWindow, petBounds, windowBounds });
     const desktopText = await companion.bubble.webContents.executeJavaScript("document.body.innerText");

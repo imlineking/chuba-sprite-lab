@@ -1,0 +1,35 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import sharp from "sharp";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { processFramePreview } from "../src/processor.mjs";
+import { preparedCleanupRecord, resolvePreparedCleanup } from "../src/prepared-cleanup.mjs";
+import { readProfile, profileFormat, profileVersion } from "../src/build-profile.mjs";
+test("accepted batch cleanup preserves unselected frames and allows new edits", () => {
+  const original = { keyMode: "white", tolerance: 18, edgeRefine: { mode: "trim", width: 3, depth: 2, whiteOnly: false }, aiEdits: [{ type: "checker", frameIndex: 1 }] };
+  const options = { ...original, preparedCleanup: { 1: preparedCleanupRecord(original, "cleaned.png") } };
+  assert.equal(resolvePreparedCleanup(options, 0, "other.png"), options);
+  const prepared = resolvePreparedCleanup(options, 1, "cleaned.png");
+  assert.equal(prepared.keyMode, "alpha"); assert.equal(prepared.edgeRefine.mode, "none"); assert.deepEqual(prepared.aiEdits, []);
+  const changed = { ...options, tolerance: 25, aiEdits: [...options.aiEdits, { type: "remove", frameIndex: 1 }] };
+  assert.equal(resolvePreparedCleanup(changed, 1, "cleaned.png").keyMode, "white");
+  assert.equal(resolvePreparedCleanup(changed, 1, "cleaned.png").aiEdits.length, 1);
+});
+test("previewing and saving accepted cleanup does not erode the edge twice", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "batch-edge-")); t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const input = path.join(root, "cleaned.png");
+  const body = await sharp({ create: { width: 12, height: 12, channels: 4, background: { r: 100, g: 160, b: 50, alpha: 1 } } }).png().toBuffer();
+  const bytes = await sharp({ create: { width: 20, height: 20, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: body, left: 4, top: 4 }]).png().toBuffer(); await fs.writeFile(input, bytes);
+  const baseline = { keyMode: "alpha", edgeRefine: { mode: "trim", width: 3, depth: 2, whiteOnly: false }, previewFrameIndex: 1 };
+  const raw = { ...baseline, frameOverrides: { 1: "cleaned.png" }, preparedCleanup: { 1: preparedCleanupRecord(baseline, "cleaned.png") } };
+  const options = readProfile({ format: profileFormat, version: profileVersion, name: "accepted-cleanup", source: { kind: "frames", paths: ["cleaned.png"] }, options: raw }, { baseDir: root }).animations[0].options;
+  assert.equal(options.frameOverrides[1], input);
+  assert.equal(options.preparedCleanup[1].imagePath, input);
+  const result = await processFramePreview({ inputPath: input, options, appRoot: root });
+  assert.deepEqual(await sharp(result.afterPath).raw().toBuffer(), await sharp(input).raw().toBuffer());
+  const unmarked = await processFramePreview({ inputPath: input, options: baseline, appRoot: root });
+  const opaqueCount = pixels => pixels.reduce((sum, value, index) => sum + (index % 4 === 3 && value > 0 ? 1 : 0), 0);
+  assert.ok(opaqueCount(await sharp(unmarked.afterPath).ensureAlpha().raw().toBuffer()) < opaqueCount(await sharp(input).ensureAlpha().raw().toBuffer()), "the fixture must expose repeated edge trimming without the accepted-cleanup marker");
+});

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import os from "node:os";
 import fs from "node:fs/promises";
+import { resolvePreparedCleanup } from "./prepared-cleanup.mjs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import sharp from "sharp";
@@ -1103,6 +1104,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
   const inFlight = new Map();
   let nextToSchedule = 0;
   const prepareFrame = async (index) => {
+    const frameOptions = resolvePreparedCleanup(options, index, inputFrames[index]);
     let framePath = inputFrames[index];
     if (lama) {
       throwIfAborted(signal);
@@ -1111,13 +1113,13 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
       await fs.mkdir(tempRoot, { recursive: true });
       await fs.writeFile(framePath, filled.buffer);
     }
-    let keyed = await keyFrame(framePath, options.keyMode || "auto", options.tolerance ?? 28, options.blackOutline ?? 3, options.blackFeather ?? 0, {
+    let keyed = await keyFrame(framePath, frameOptions.keyMode || "auto", frameOptions.tolerance ?? 28, frameOptions.blackOutline ?? 3, frameOptions.blackFeather ?? 0, {
       appRoot, maskPrepared: source.maskPrepared === true, autoKeyColor, frameIndex: index, aiCutoff: options.aiCutoff, aiSoftness: options.aiSoftness,
-      aiEdits: options.aiEdits, keyScope: options.keyScope, fringeCleanup: options.fringeCleanup, fringeStrength: options.fringeStrength,
-      edgeDecontaminate: options.edgeDecontaminate, keyColor: options.keyColor, aiProvider: options.aiProvider,
+      aiEdits: frameOptions.aiEdits, keyScope: frameOptions.keyScope, fringeCleanup: frameOptions.fringeCleanup, fringeStrength: frameOptions.fringeStrength,
+      edgeDecontaminate: frameOptions.edgeDecontaminate, keyColor: frameOptions.keyColor, aiProvider: options.aiProvider,
       aiForceModel: options.aiForceModel, aiQuality: options.aiQuality, aiModel: options.aiModel, aiModelDirs: options.aiModelDirs,
     });
-    if (options.edgeRefine) keyed = await applyEdgeRefine(keyed, options.edgeRefine);
+    if (frameOptions.edgeRefine) keyed = await applyEdgeRefine(keyed, frameOptions.edgeRefine);
     keyed = await compositeAttachments(keyed, attachmentPlacements[index]);
     if (esrgan) {
       throwIfAborted(signal);
@@ -2349,6 +2351,7 @@ export async function processVideoBatch({ paths, outputDir, options = {}, appRoo
 
 export async function processFramePreview({ inputPath, options = {}, appRoot }) {
   if (!inputPath) throw new Error("Нет кадра для быстрого предпросмотра.");
+  options = resolvePreparedCleanup(options, options.previewFrameIndex ?? 0, inputPath);
   const previewRoot = await makeTempWorkspace("chuba-sprite-live-");
   let keyed = await keyFrame(inputPath, options.keyMode || "auto", options.tolerance ?? 28, options.blackOutline ?? 3, options.blackFeather ?? 0, {
     appRoot,

@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import sharp from "sharp";
 import { profileFormat, profileVersion } from "../src/build-profile.mjs";
+import { preparedCleanupRecord } from "../src/prepared-cleanup.mjs";
 
 const cliPath = path.resolve("scripts", "cli.mjs");
 
@@ -55,6 +56,25 @@ test("the command line builds a set from a profile", async () => {
   const manifest = JSON.parse(await fs.readFile(summary.manifest, "utf8"));
   assert.equal(manifest.frameCount, 2);
   assert.ok(manifest.frames.every((frame) => frame.hitboxSpace === "cell"));
+});
+
+test("CLI export preserves the pixels of accepted cleanup in a saved window recipe", async t => {
+  const { temp, profilePath } = await prepareProfile();
+  t.after(() => fs.rm(temp, { recursive: true, force: true }));
+  const body = await sharp({ create: { width: 20, height: 24, channels: 4, background: { r: 80, g: 150, b: 40, alpha: 1 } } }).png().toBuffer();
+  const input = path.join(temp, "cleaned.png");
+  await sharp({ create: { width: 64, height: 64, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: body, left: 22, top: 30 }]).png().toFile(input);
+  const recipe = JSON.parse(await fs.readFile(profilePath, "utf8"));
+  recipe.source.paths = ["in/frame-0.png"];
+  Object.assign(recipe.options, { keyMode: "alpha", edgeRefine: { mode: "trim", width: 3, depth: 2, whiteOnly: false }, frameOverrides: { 0: "cleaned.png" } });
+  recipe.options.preparedCleanup = { 0: preparedCleanupRecord(recipe.options, "cleaned.png") };
+  await fs.writeFile(profilePath, JSON.stringify(recipe), "utf8");
+  const run = runCli(["--profile", profilePath, "--json"]);
+  assert.equal(run.status, 0, run.stderr);
+  const summary = JSON.parse(run.stdout);
+  assert.equal(summary.frames.length, 1);
+  const pixels = await sharp(summary.frames[0]).ensureAlpha().raw().toBuffer();
+  assert.equal(pixels.reduce((count, alpha, index) => count + (index % 4 === 3 && alpha > 0 ? 1 : 0), 0), 20 * 24, "CLI must not trim an accepted edge again");
 });
 
 test("--dry-run validates without writing anything", async () => {

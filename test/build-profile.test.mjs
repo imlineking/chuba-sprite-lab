@@ -127,6 +127,20 @@ test("a profile that would export nothing is rejected", () => {
   assert.doesNotThrow(() => readProfile(profile({ options: { exports: {} } }), { baseDir }));
 });
 
+test("accepted cleanup records reject malformed entries instead of bypassing cleanup", () => {
+  const record = { imagePath: "cleaned.png", signature: "[]", edits: [] };
+  for (const [key, value, expected] of [
+    ["-1", record, /ожидался номер кадра/],
+    ["0", null, /ожидался объект/],
+    ["0", { ...record, imagePath: " " }, /imagePath: ожидался путь/],
+    ["0", { ...record, signature: "broken" }, /signature: ожидалась/],
+    ["0", { ...record, edits: [2] }, /edits: ожидался список/],
+    ["0", { ...record, typo: true }, /typo: неизвестная настройка/],
+  ]) {
+    assert.throws(() => readProfile(profile({ options: { preparedCleanup: { [key]: value } } }), { baseDir }), expected);
+  }
+});
+
 test("a batch of videos cannot be mixed with other animations", () => {
   const batch = { kind: "video", paths: ["a.mp4", "b.mp4"] };
   assert.doesNotThrow(() => readProfile(profile({ source: batch }), { baseDir }));
