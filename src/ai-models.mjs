@@ -39,6 +39,19 @@ export const modelFamilies = {
 //   manual — no verified direct file: the official page is offered instead.
 export const aiModelCatalog = [
   {
+    id: "toonout", name: "ToonOut", family: "birefnet",
+    tasks: ["matting", "matting-art", "matting-checker"], readiness: "ready",
+    file: "toonout.onnx", sizeBytes: 929574435,
+    sha256: "b9eec8cc66541c9a55a69986d3b0ca44150cf19ed399f42022ee81edf528f48a",
+    page: "https://huggingface.co/joelseytre/toonout",
+    source: "https://huggingface.co/joelseytre/toonout/blob/cbf720eca394edcde66b861a8a8c20fbabe9c748/birefnet_finetuned_toonout.pth",
+    localExport: true, probabilityOutput: true, wholeImage: true, flattenBackground: "#ffffff",
+    licence: { name: "MIT", commercial: true, note: "ToonOut / BiRefNet; официальный checkpoint, локальный ONNX-export; см. docs/TOONOUT.md" },
+    speed: "slow", quality: "high",
+    note: "Сложная рисованная графика и растительность с запечённой подложкой. Один проход по всему изображению; результат нужно проверить. Не заменяет лёгкую вырезку простого фона и не рисует портреты.",
+  },
+
+  {
     id: "u2netp",
     name: "U²-Net small",
     family: "u2net",

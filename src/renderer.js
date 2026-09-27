@@ -963,7 +963,7 @@ function collectOptions() {
     fringeCleanup: $("#fringeCleanup").checked, fringeStrength: Number($("#fringeStrength").value),
     edgeDecontaminate: $("#edgeDecontaminate").checked,
     edgeRefine: { mode: $("#edgeRefineMode").value, width: Number($("#edgeRefineWidth").value), depth: Number($("#edgeRefineDepth").value), whiteOnly: $("#edgeRefineWhiteOnly").checked },
-    aiProvider: $("#aiProvider").value, aiModel: $("#aiModel").value,
+    aiProvider: $("#aiProvider").value, aiModel: $("#aiModel").value, aiForceModel: $("#aiModel").value === "toonout",
     auxAI: {
       interpolate: $("#auxRife").checked,
       upscale: $("#auxEsrgan").checked,

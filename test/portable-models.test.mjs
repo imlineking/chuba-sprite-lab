@@ -13,7 +13,7 @@ test("portable resources include every bundled model and no optional download", 
   const config = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url)));
   const resource = config.build.extraResources.find((entry) => entry.to === "models");
   const bundled = aiModelCatalog.filter((entry) => entry.bundled);
-  assert.equal(bundled.length, 14);
+  assert.equal(bundled.length, 15);
   assert.ok(bundled.every(entry => entry.readiness === "ready"));
   assert.deepEqual(resource.filter.filter((file) => file.endsWith(".onnx")).sort(), bundled.map((entry) => entry.file).sort());
   assert.ok(resource.filter.includes("bundled-models.json"));

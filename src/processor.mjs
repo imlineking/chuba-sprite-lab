@@ -458,7 +458,7 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
 
   if (mode === "ai") {
     const edits = context.aiEdits || [];
-    const fastMode = !context.aiForceModel ? await detectFastAIKeyMode(inputPath) : null;
+    const fastMode = !context.aiForceModel && context.aiModel !== "toonout" ? await detectFastAIKeyMode(inputPath) : null;
     if (fastMode) {
       const fastResult = await keyFrame(inputPath, fastMode, tolerance, blackOutline, blackFeather, {});
       const edited = await applyCorrectionsToResult({ ...fastResult, aiFastPath: fastMode }, inputPath, context);

@@ -8,7 +8,7 @@
   function render() {
     document.documentElement.dataset.theme = state.theme || 'dark';
     document.querySelector('#badge').textContent = state.suggestions?.length ? String(state.suggestions.length) : '';
-    message.textContent = state.loading ? 'Подождите, идёт загрузка' + '.'.repeat(dots) : state.busy ? (state.workLabel || 'Выполняю задачу') + '.'.repeat(dots) : state.greeting;
+    message.textContent = state.loading ? 'Загрузка' + '.'.repeat(dots) : state.busy ? (state.workLabel || 'Выполняю задачу') + '.'.repeat(dots) : state.greeting;
     choices.replaceChildren();
     if (state.loading) return;
     const button = (title, detail, callback) => {
@@ -53,7 +53,7 @@
     } else button('Выбрать задачу','Автоматический или ручной сценарий',()=>action({action:'toggle'}));
   }
   api.onState(next=>{ state=next; render(); });
-  setInterval(()=>{ dotPhase=(dotPhase+1)%4; dots=[1,2,3,2][dotPhase]; if(state.loading || state.busy) message.textContent=(state.loading?'Подождите, идёт загрузка':state.workLabel || 'Выполняю задачу')+'.'.repeat(dots); },450);
+  setInterval(()=>{ dotPhase=(dotPhase+1)%4; dots=[1,2,3,2][dotPhase]; if(state.loading || state.busy) message.textContent=(state.loading?'Загрузка':state.workLabel || 'Выполняю задачу')+'.'.repeat(dots); },450);
   document.querySelector('#close').onclick=()=>action({action:'dismiss'});
   document.querySelector('#hide').onclick=()=>action({action:'hide'});
   for(const name of ['dragstart','drop','dragover']) document.addEventListener(name,event=>{event.preventDefault();event.stopPropagation();});

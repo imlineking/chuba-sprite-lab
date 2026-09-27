@@ -14,7 +14,7 @@
     match: "Выровнять размеры объекта",
     edit: "Редактировать изображения",
     cutout: "Вырезать объект",
-    stylize: "Стилизовать в пиксель-арт",
+    stylize: "Пикселизировать изображение",
     depth: "Построить карту глубины",
     upscale: "Увеличить небольшой спрайт",
   };
@@ -507,8 +507,8 @@
           ? async () => { setTab("process"); if (await taskApplyAutoPlan()) await runBuild(true); }
           : () => { setTab("process"); $("#keyMode").scrollIntoView({ block: "center", behavior: "smooth" }); };
       } else if (selected === "stylize") {
-        guide.textContent = approach === "auto" ? "Оркестратор измерит рисунок, подберёт размер пикселя, палитру и стиль, затем покажет PNG-превью." : "Откройте настройки пиксель-арта: размер блока, палитра и дизеринг доступны вручную.";
-        primary.textContent = approach === "auto" ? "2 · Подобрать стиль и показать" : "2 · Настроить стиль";
+        guide.textContent = approach === "auto" ? "Оркестратор подберёт размер блока и палитру для пикселизации. Это фильтр исходного изображения; художественная перерисовка портрета ещё не реализована." : "Откройте настройки пиксель-арта: размер блока, палитра и дизеринг доступны вручную.";
+        primary.textContent = approach === "auto" ? "2 · Пикселизировать и показать" : "2 · Настроить пикселизацию";
         primaryAction = approach === "auto"
           ? async () => { $("#pixelateEnabled").checked = true; setTab("process"); if (await taskApplyAutoPlan()) await runBuild(true); }
           : () => { setTab("process"); $("#pixelatePanel").open = true; $("#pixelatePanel").scrollIntoView({ block: "start", behavior: "smooth" }); };

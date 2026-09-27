@@ -1,10 +1,10 @@
 {
   "name": "chuba-sprite-lab",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "private": true,
   "type": "module",
   "description": "Standalone Windows sprite-sheet preparation tool for Chuba the Game",
-  "author": "Hanuman Media Company — Demidenko Dmitriy",
+  "author": "Hanuman Media Company вЂ” Demidenko Dmitriy",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -17,7 +17,7 @@
   "build": {
     "appId": "com.hanumanmedia.chubaspritelab",
     "productName": "Chuba Sprite Lab",
-    "copyright": "Copyright © 2026 Hanuman Media Company — Demidenko Dmitriy. All rights reserved.",
+    "copyright": "Copyright В© 2026 Hanuman Media Company вЂ” Demidenko Dmitriy. All rights reserved.",
     "asar": false,
     "directories": {
       "output": ".build"
@@ -55,7 +55,9 @@
           "RIFE_fp32_timestep.onnx",
           "realesrgan-x4plus.onnx",
           "depth-anything-v2-small.onnx",
-          "bundled-models.json"
+          "bundled-models.json",
+          "toonout.onnx",
+          "ToonOut-LICENSE.txt"
         ]
       }
     ],
@@ -76,7 +78,7 @@
       "requestExecutionLevel": "user"
     }
   },
-  "main": "src/main.mjs",
+  "main": "src/bootstrap.mjs",
   "scripts": {
     "start": "electron .",
     "prepare:vendor": "node scripts/prepare-vendor.mjs",

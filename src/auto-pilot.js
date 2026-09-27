@@ -151,7 +151,7 @@ async function autoPilotRun() {
     const plan = await window.spriteLab.planAutoPilot({
       paths,
       target: autoPilotTarget(),
-      source: { kind: source.kind || "images", frameCount: state.result?.allSourceFramePaths?.length || source.estimatedFrames || source.frameCount || paths.length },
+      source: { maskPrepared: Boolean(source.maskPrepared), kind: source.kind || "images", frameCount: state.result?.allSourceFramePaths?.length || source.estimatedFrames || source.frameCount || paths.length },
     });
     autoPilotState.plan = plan;
     autoPilotRenderSteps(plan);

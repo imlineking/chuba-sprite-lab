@@ -38,7 +38,7 @@ test("every catalogue entry is complete and uniquely named", () => {
 
 test("only models that really exist can be downloaded", () => {
   const downloadable = aiModelCatalog.filter((model) => canDownload(model));
-  assert.equal(aiModelCatalog.filter(model => model.bundled).length, 14);
+  assert.equal(aiModelCatalog.filter(model => model.bundled).length, 15);
   for (const model of downloadable) {
     for (const file of modelFiles(model)) {
       assert.equal(assertDownloadUrl(file.url), file.url);

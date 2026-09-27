@@ -202,11 +202,12 @@ async function runModel(session, rgb, size) {
   return outputs[session.outputNames[0]].data;
 }
 
-async function readRegionRgb(inputPath, rect, fullSize, size) {
+async function readRegionRgb(inputPath, rect, fullSize, size, model) {
   let pipeline = sharp(inputPath).toColourspace("srgb");
   if (rect.left || rect.top || rect.width !== fullSize.width || rect.height !== fullSize.height) {
     pipeline = pipeline.extract(rect);
   }
+  if (model?.flattenBackground) pipeline = pipeline.flatten({ background: model.flattenBackground });
   return pipeline
     .removeAlpha()
     .resize(size, size, { fit: "fill", kernel: sharp.kernel.lanczos3 })
@@ -224,8 +225,8 @@ async function toRegionSize(bytes, rect, size) {
   return data;
 }
 
-async function predictRegion(session, inputPath, rect, fullSize, useTta, size) {
-  const rgb = await readRegionRgb(inputPath, rect, fullSize, size);
+async function predictRegion(session, inputPath, rect, fullSize, useTta, size, model) {
+  const rgb = await readRegionRgb(inputPath, rect, fullSize, size, model);
   const passes = [await runModel(session, rgb, size)];
   // Averaging a mirrored pass removes the model's own left/right bias, at the cost of one more run.
   if (useTta) passes.push(flopPlane(await runModel(session, flopPlane(rgb, size, size, 3), size), size, size));
@@ -239,6 +240,7 @@ async function predictRegion(session, inputPath, rect, fullSize, useTta, size) {
       if (value > maximum) maximum = value;
     }
   }
+  if (model?.probabilityOutput) { minimum = 0; maximum = 1; }
   const range = Math.max(1e-6, maximum - minimum);
   const plane = size * size;
   const bytes = Buffer.alloc(plane);
@@ -265,18 +267,18 @@ export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness
   const usedModel = requested && path.basename(loader.modelPath).toLowerCase() === requested.file.toLowerCase() ? requested : modelById("u2netp");
   const { data: source, info } = await sharp(inputPath).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const fullSize = { width: info.width, height: info.height };
-  const plan = tilePlan(info.width, info.height, quality);
+  const plan = tilePlan(info.width, info.height, usedModel?.wholeImage ? "fast" : quality);
   const useTta = plan.quality === "max";
   const rects = plan.useTiles ? tileRects(info.width, info.height, plan) : [fullSize];
 
   let mask;
   if (rects.length === 1 && !useTta) {
-    mask = await predictRegion(session, inputPath, rects[0], fullSize, false, inputSize);
+    mask = await predictRegion(session, inputPath, rects[0], fullSize, false, inputSize, usedModel);
   } else {
     const sum = new Float32Array(info.width * info.height);
     const counts = new Uint8Array(info.width * info.height);
     for (const rect of rects) {
-      const tile = await predictRegion(session, inputPath, rect, fullSize, useTta, inputSize);
+      const tile = await predictRegion(session, inputPath, rect, fullSize, useTta, inputSize, usedModel);
       for (let y = 0; y < rect.height; y += 1) {
         const target = (rect.top + y) * info.width + rect.left;
         const from = y * rect.width;

@@ -15,6 +15,7 @@ import { describePaths as describePathsFrom, describeSpriteSheet as describeSpri
 import { assertGitHubDownloadUrl, compareVersions, parseSha256 } from "./update-utils.mjs";
 import { resolveAIModel, segmentSubject } from "./ai-segmentation.mjs";
 import { resolveAuxModel } from "./model-paths.mjs";
+import { startupShell } from "./startup-shell.mjs";
 import { DesktopCompanion } from "./desktop-companion.mjs";
 import { windowsLoginName } from "./windows-user-name.mjs";
 import { readUserProfile, saveUserProfile, effectiveUserName } from "./user-profile.mjs";
@@ -37,7 +38,8 @@ for (const stream of [process.stdout, process.stderr]) {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, "..");
 let mainWindow = null;
-let companion = null;
+let companion = startupShell.companion;
+if (companion) companion.mainWindow = () => mainWindow;
 let profileSaveQueue=Promise.resolve();
 async function userProfileInfo() {
   const profile=await readUserProfile(path.join(app.getPath("userData"),"user-profile.json"));
@@ -1287,6 +1289,8 @@ function writeSelfTestReport(report) {
 async function runDesktopProbe() {
   const report = { ok: false, checks: [] };
   try {
+    if (!startupShell.shownAt || !startupShell.loadingText?.startsWith("Загрузка")) throw new Error("Копилот не появился до импорта основного приложения.");
+    report.checks.push({ name: "copilot-before-main-import", ok: true, text: startupShell.loadingText });
     await new Promise(resolve => setTimeout(resolve, 1200));
     const area = screen.getPrimaryDisplay().workArea;
     companion.pet.setPosition(area.x + 150, area.y + 150);
@@ -1318,7 +1322,7 @@ async function runDesktopProbe() {
     const loadingA = await companion.bubble.webContents.executeJavaScript("document.querySelector('#message').textContent");
     await new Promise(resolve => setTimeout(resolve, 550));
     const loadingB = await companion.bubble.webContents.executeJavaScript("document.querySelector('#message').textContent");
-    if (!loadingB.startsWith("Подождите, идёт загрузка") || loadingA === loadingB) throw new Error("Облако загрузки не анимируется.");
+    if (!loadingB.startsWith("Загрузка") || loadingA === loadingB) throw new Error("Облако загрузки не анимируется.");
     report.checks.push({ name: "animated-loading", ok: true });
     companion.state.loading = false;
     const probeSource = { kind: "frames", paths: [path.join(appRoot, "assets", "mascot.png"), path.join(appRoot, "assets", "hanuman-media-logo.png")] };
@@ -1411,7 +1415,7 @@ ipcMain.handle("companion:show", (event, request = {}) => {
   companion?.show(request.open !== false);
 });
 
-const hasInstanceLock = selfTestMode || uiRegressionMode || Boolean(desktopProbePath) || Boolean(startupProbePath) || Boolean(screenshotPath) || app.requestSingleInstanceLock();
+const hasInstanceLock = startupShell.instanceLock ?? (selfTestMode || uiRegressionMode || Boolean(desktopProbePath) || Boolean(startupProbePath) || Boolean(screenshotPath) || app.requestSingleInstanceLock());
 
 if (!hasInstanceLock) {
   app.quit();
@@ -1423,7 +1427,7 @@ if (!hasInstanceLock) {
     mainWindow.focus();
   });
   app.whenReady().then(async () => {
-    if (!selfTestMode && (!screenshotPath || desktopProbePath)) {
+    if (!companion && !selfTestMode && (!screenshotPath || desktopProbePath)) {
       companion = new DesktopCompanion({ app, BrowserWindow, screen, ipcMain, appRoot, mainWindow: () => mainWindow });
       await companion.create();
     }

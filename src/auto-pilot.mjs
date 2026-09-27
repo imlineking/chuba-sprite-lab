@@ -317,11 +317,22 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
   /* 1. Preserve an existing alpha channel before considering background removal. */
   const alreadyTransparent = source.maskPrepared === true || (measurements.transparentShare > 0.15 && measurements.borderOpaqueRatio < 0.2);
   const independent = target.intent === "images" || (source.kind === "images" && !target.cellWidth);
-  const checker = Number(measurements.checkerPixels) >= 64;
+  const checkerCandidate = Number(measurements.checkerPixels) >= 64;
   const solid = measurements.solidBackground !== undefined
     ? measurements.solidBackground && Number(measurements.borderSolidRatio) >= 0.92
     : measurements.borderOpaqueRatio > SOLID_BORDER_RATIO && measurements.borderColourCount <= SOLID_BORDER_COLOURS;
-  if (alreadyTransparent) {
+  // Only promote the verified complex cases, never a prepared mask or a simple flower/photo.
+  const checker = checkerCandidate && !solid && !source.maskPrepared;
+  const complexArt = measurements.edgeMeasurement === "native"
+    && measurements.width * measurements.height > 400000
+    && measurements.detailDensity >= 0.085;
+  const toonout = !source.maskPrepared && installed.includes("toonout") && complexArt
+    && (checker || (solid && measurements.colourCount >= 512 && measurements.flatShare >= 0.1));
+  if (toonout) {
+    steps.push(modelStep(modelById("toonout"), { installed, confidence: "medium",
+      why: checker ? "Сложные детали и остатки запечённой клетки: ToonOut лучше сохранил такие просветы на проверенных ветках. Проверим результат на контрастной подложке."
+        : "Однотонный фон, но рисунок содержит много тонких цветных границ. На сложной комиксной графике ToonOut лучше сохранил светлые детали, чем простой контур. Проверим маску перед сохранением." }));
+  } else if (alreadyTransparent) {
     steps.push({
       stage: "key",
       kind: "builtin",
@@ -360,7 +371,7 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
     for (const id of order.slice(0, 3)) see(modelById(id), hairy ? "Лучше держит мех и волосы" : "Ровнее контур, чем у модели в комплекте");
   }
 
-  if (checker && (target.cleanupRequested || independent)) steps.push({ stage: "checker", kind: "builtin", tool: "checker", title: "Убрать псевдопрозрачность", why: "Найдена повторяющаяся светлая клетка в двух направлениях. Удаляем подтверждённый узор; сложные остатки можно ограничить выделением и поправить маску.", confidence: "medium", status: "ready" });
+  if (checker && !toonout && (target.cleanupRequested || independent)) steps.push({ stage: "checker", kind: "builtin", tool: "checker", title: "Убрать псевдопрозрачность", why: "Найдена повторяющаяся светлая клетка в двух направлениях. Удаляем подтверждённый узор; сложные остатки можно ограничить выделением и поправить маску.", confidence: "medium", status: "ready" });
   if (alreadyTransparent) notes.push("Наличие альфа-канала не гарантирует чистый фон: проверьте внутренние просветы на чёрной и зелёной подложке.");
 
   /* 2. The edge that the model leaves behind. */
@@ -449,7 +460,7 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
       stage: "pixelate",
       kind: "builtin",
       tool: "pixelate",
-      title: `Перевести в пиксель-арт: блок ${settings.size} px, ${settings.colors} цветов`,
+      title: `Пикселизировать: блок ${settings.size} px, ${settings.colors} цветов`,
       why: `${settings.sizeWhy} ${settings.why} ${settings.colorsWhy}`,
       confidence: "medium",
       status: "ready",
@@ -485,8 +496,9 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
   });
 
   const heavy = steps.some((step) => ["birefnet-hr-matting", "birefnet-general", "birefnet-portrait"].includes(step.modelId));
-  const quality = measurements.width <= 640 && measurements.height <= 640 && !heavy ? "fast" : heavy ? "max" : "balanced";
+  const quality = toonout ? "fast" : measurements.width <= 640 && measurements.height <= 640 && !heavy ? "fast" : heavy ? "max" : "balanced";
   const mattingStep = steps.find((step) => step.stage === "matting");
+  if (toonout) notes.push("ToonOut: около 887 МиБ весов, один проход 1024×1024. Тонкие детали и белые элементы проверьте вручную; это вырезка, не художественная перерисовка.");
   if (heavy) notes.push("Выбранная модель занимает около 1 ГБ и требует 3–4 ГБ свободной памяти при запуске.");
 
   return {
@@ -496,7 +508,7 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
     needed,
     notes,
     settings: { provider: "auto", quality, modelId: mattingStep?.modelId || "u2netp" },
-    summary: checker && (target.cleanupRequested || independent)
+    summary: toonout ? "Выбран ToonOut для сложной графики. Проверьте светлые детали и просветы перед сохранением." : checker && (target.cleanupRequested || independent)
       ? "Найдена запечённая клетка: удалим подтверждённый узор, затем проверьте просветы и светлые детали."
       : alreadyTransparent
       ? "Прозрачность уже есть: сохраним исходный контур без повторного выделения моделью."

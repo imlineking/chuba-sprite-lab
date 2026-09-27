@@ -62,7 +62,7 @@ export class DesktopCompanion {
   update(state) {
     const wasLoading = this.state.loading;
     const newSource = state.sourceKey && state.sourceKey !== this.state.sourceKey;
-    this.state = { ...this.state, ...state, loading: false };
+    this.state = { ...this.state, ...state, loading: state.loading === true };
     if (wasLoading || newSource) { this.speechVisible = true; this.panelOpen = false; this.raise(); if (!this.hidden) this.bubble?.showInactive(); }
     this.send();
   }
