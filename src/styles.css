@@ -1042,6 +1042,7 @@ body[data-intent="images"] .filmstrip-actions { grid-template-columns: repeat(au
 .batch-preview-row button span { overflow-wrap: anywhere; }
 .batch-preview-row small { line-height: 1.5; opacity: .8; }
 .batch-preview-comparison { min-height: 0; display: grid; grid-template-rows: 1fr 1fr; gap: 10px; }
+.batch-preview-comparison.with-healing { grid-template-rows: repeat(3, minmax(0, 1fr)); }
 .batch-preview-comparison figure { margin: 0; min-height: 0; display: flex; flex-direction: column; background: repeating-conic-gradient(#747c82 0% 25%, #abb1b7 0% 50%) 0 / 20px 20px; border-radius: 10px; overflow: hidden; }
 .batch-preview-comparison figcaption { padding: 7px 10px; background: #17202c; color: #fff; }
 .batch-preview-comparison img { min-height: 0; flex: 1; width: 100%; object-fit: contain; image-rendering: pixelated; }

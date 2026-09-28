@@ -7,6 +7,7 @@
     clipping: "Исправить обрезание",
     remove: "Убрать объект из кадров",
     background: "Удалить фон",
+    healing: "Восстановить повреждённый объект",
     animation: "Собрать анимацию",
     combine: "Собрать общий атлас объектов",
     extract: "Вырезать один объект из листа",
@@ -83,8 +84,8 @@
   function taskSet(name, nextApproach = "auto") {
     if (!taskNames[name]) return;
     selected = name;
-    state.intent = name === "edit" ? "images" : name === "combine" ? "combine" : name === "animation" ? "animation" : ""; document.body.dataset.intent = state.intent;
-    if (name === "edit") window.startImageEditing?.();
+    state.intent = ["edit", "healing"].includes(name) ? "images" : name === "combine" ? "combine" : name === "animation" ? "animation" : ""; document.body.dataset.intent = state.intent;
+    if (["edit", "healing"].includes(name)) window.startImageEditing?.();
     else if (state.result?.imageWorkspace) { state.result = null; state.timeline = null; $("#filmstripBar").classList.add("hidden"); }
     resumeCollapsed = false;
     approach = nextApproach === "manual" ? "manual" : "auto";
@@ -459,6 +460,16 @@
       secondary.textContent = "Открыть спрайт-лист";
       secondary.classList.remove("hidden");
       secondaryAction = () => chooseSource("chooseSheet");
+    } else if (selected === "healing") {
+      if (source?.kind !== "frames") {
+        guide.textContent = "Подорожник обрабатывает отдельные изображения. Откройте один или несколько PNG, JPG либо WebP с повреждённым объектом.";
+        primary.textContent = "Открыть изображения"; primaryAction = () => chooseSource("chooseSource");
+      } else {
+        guide.textContent = "Подорожник восстановит уцелевшие цвета и повреждённые детали, распознает и уберёт запечённую шахматную сетку, защитит светлые элементы и заполнит внутренние прорези. Затем обычные инструменты найдут оставшийся фон, удалят его и обработают край. Сравните все три состояния перед применением; исходники не меняются.";
+        primary.textContent = "2 · Восстановить и показать три этапа";
+        primaryAction = () => window.openImageBatchPreview({ healFirst: true, automatic: true });
+        secondary.textContent = "Добавить ещё файлы"; secondary.classList.remove("hidden"); secondaryAction = taskAddImages;
+      }
     } else if (selected === "background") {
       guide.textContent = approach === "auto"
         ? "Оркестратор измерит фон и край, подберёт точный контур либо установленную модель и покажет результат для проверки."
@@ -525,7 +536,7 @@
     if (selected === "layout") { setTab("source"); $("#sheetControls").scrollIntoView({ block: "start", behavior: "smooth" }); }
     else if (selected === "objectEdit") { selectFrame(Number($("#taskObjectSelect").value) || 0); setTab("process"); setTransformPanel(true); }
     else if (selected === "edit") void openMaskEditor({ tool: "select" }).catch(error => showError(error.message));
-    else { setTab("process"); $(selected === "remove" ? "#openMaskEditor" : selected === "background" ? "#keyMode" : "#fps").scrollIntoView({ block: "center", behavior: "smooth" }); }
+    else { setTab("process"); $(selected === "remove" ? "#openMaskEditor" : ["background", "healing"].includes(selected) ? "#keyMode" : "#fps").scrollIntoView({ block: "center", behavior: "smooth" }); }
   });
   $("#taskObjectSelect").addEventListener("change", () => {
     const index = Number($("#taskObjectSelect").value);
@@ -580,7 +591,7 @@
   });
   window.taskOnSource = (source) => {
     $("#imageScenarioChoices").classList.toggle("hidden", source?.kind !== "frames");
-    if (source?.kind === "frames") { selected = "edit"; state.intent = "images"; window.startImageEditing?.(); }
+    if (source?.kind === "frames" && selected !== "healing") { selected = "edit"; state.intent = "images"; window.startImageEditing?.(); }
     $("#batchImageResults").replaceChildren();
     if (!source?.sheetPath) objectEditOpened = false;
     if (source?.kind === "sheet" && (!selected || selected === "animation")) taskSet("layout");

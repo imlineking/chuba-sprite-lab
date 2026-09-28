@@ -4,6 +4,7 @@ Chuba Sprite Lab includes or uses the following third-party projects:
 
 - [Electron](https://www.electronjs.org/) — MIT License.
 - [Sharp](https://sharp.pixelplumbing.com/) and libvips — Apache-2.0 and their respective dependency licenses.
+- [Python](https://www.python.org/), [NumPy](https://numpy.org/) and [Pillow](https://python-pillow.org/) — included locally for the Healing Tool; their license texts are copied into `resources/vendor/healing-runtime` during packaging.
 - [FFmpeg](https://ffmpeg.org/) — distributed under the license applicable to the bundled build. FFmpeg is a separate project and is not owned by Hanuman Media Company.
 - [electron-builder](https://www.electron.build/) — MIT License; used to produce release builds and not required as a separate end-user installation.
 - [ONNX Runtime](https://onnxruntime.ai/) — MIT License; runs the included local models.

@@ -46,7 +46,8 @@
         </nav>
         <div id="sourcePanel" class="panel active" role="tabpanel" aria-labelledby="sourceTab" data-panel="source">
           <article id="imageScenarioChoices" class="image-scenario-card hidden">
-            <strong>Что сделать с изображениями?</strong><p>Выберите результат: отдельные файлы, общий атлас или последовательность движения.</p>
+            <strong>Что сделать с изображениями?</strong><p>Восстановите повреждённый объект или выберите отдельные файлы, общий атлас либо анимацию.</p>
+            <button type="button" class="button primary" data-image-task="healing">Восстановить повреждённый объект · Подорожник</button>
             <button type="button" class="button secondary" data-image-task="edit">Править обрезку и фон · PNG</button>
             <button type="button" class="button secondary" data-image-task="combine">Атлас объектов · PNG + JSON</button>
             <button type="button" class="button secondary" data-image-task="animation">Сделать анимацию</button>
@@ -1161,6 +1162,7 @@
         <article data-task="layout"><strong>Разнести объекты по сетке</strong><small>Готовый лист → отдельные кадры → новый лист и JSON</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="remove"><strong>Убрать объект из кадров</strong><small>Лист или видео → выделить лишнее → новый лист</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="background"><strong>Удалить фон</strong><small>Прозрачность и чистый край</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="healing"><strong>Восстановить повреждённый объект</strong><small>Подорожник: восстановить детали → удалить псевдопрозрачность → передать в очистку фона и края</small><div><button data-approach="auto" type="button">Начать</button></div></article>
         <article data-task="animation"><strong>Собрать анимацию</strong><small>Видео или кадры → атлас</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="combine"><strong>Собрать общий атлас объектов</strong><small>Несколько PNG/JPG/WebP → один лист + JSON координат</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="extract"><strong>Вырезать один объект из листа</strong><small>PNG/JPG/WebP с объектами → отдельный PNG</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
@@ -1190,7 +1192,7 @@
       <article class="batch-preview-dialog">
         <header class="batch-preview-header"><div><h2 id="imageBatchTitle">Автоочистка изображений</h2><p>Сравните исходник и результат. Применение можно отменить Ctrl+Z; PNG сохраняются отдельной кнопкой.</p></div><button id="closeImageBatch" type="button" aria-label="Закрыть предпросмотр">×</button></header>
         <div class="batch-preview-scope"><label>Область действия <select id="imageBatchScope"><option value="current">Текущее изображение</option><option value="selected">Выбранные в списке</option><option value="all" selected>Все изображения</option></select></label><span id="imageBatchSummary" role="status" aria-live="polite">Выберите файлы и запустите предпросмотр.</span></div>
-        <div class="batch-preview-body"><div id="imageBatchList" class="batch-preview-list"></div><div class="batch-preview-comparison"><figure><figcaption>Исходник</figcaption><img id="imageBatchBefore" alt="Исходное изображение" /></figure><figure><figcaption>После очистки</figcaption><img id="imageBatchAfter" alt="Предпросмотр очистки" /></figure></div></div>
+        <div class="batch-preview-body"><div id="imageBatchList" class="batch-preview-list"></div><div id="imageBatchComparison" class="batch-preview-comparison"><figure><figcaption>Исходник</figcaption><img id="imageBatchBefore" alt="Исходное изображение" /></figure><figure id="imageBatchHealingFigure" class="hidden"><figcaption>После Подорожника</figcaption><img id="imageBatchHealing" alt="Восстановленный объект до очистки" /></figure><figure><figcaption>После очистки</figcaption><img id="imageBatchAfter" alt="Предпросмотр очистки" /></figure></div></div>
         <footer class="batch-preview-footer"><button id="prepareImageBatch" class="button secondary" type="button">Подготовить просмотр</button><button id="retryImageBatch" class="button secondary" type="button" disabled>Повторить ошибки</button><button id="continueImageBatch" class="button secondary" type="button" disabled>Продолжить оставшиеся</button><button id="cancelImageBatchJob" class="button secondary" type="button" disabled>Остановить</button><button id="applyImageBatch" class="button primary" type="button" disabled>Применить выбранные</button></footer>
       </article>
     </div>

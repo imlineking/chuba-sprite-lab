@@ -3,6 +3,7 @@ import { planTaskScenarios, planSuggestions } from "./copilot-rules.mjs";
 
 export const plannerModels = { qwen: "qwen3-vl:4b-instruct", gemma: "gemma3:4b" };
 export const taskVocabulary = {
+  healing: "Restore damaged sprite details and remove baked checkerboard first, then run the usual background and edge cleanup on the repaired image",
   edit: "Edit independent images, remove colours/checkerboard in a selection, preserve source dimensions; export separate PNGs",
   batch: "Clean several unrelated files individually with one profile",
   layout: "Separate objects on an existing sheet into safe cells and create new PNG+JSON",

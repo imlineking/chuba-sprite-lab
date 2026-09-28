@@ -6,6 +6,7 @@ import { keyFrame, processFramePreview, processSprites, supportedImageExtensions
 import { sliceSpriteSheet } from "./sheet-slicer.mjs";
 import { measureSource, planAutoPilot } from "./auto-pilot.mjs";
 import { findWhiteRemainders } from "./white-remainders.mjs";
+import { healImage } from "./healing-bridge.mjs";
 
 export async function inspectCleanupQuality(preview, measurements) {
   const issues=[];
@@ -44,7 +45,7 @@ export async function previewWithModelFallback({ inputPath, options, appRoot, au
   }
 }
 
-export async function processImageBatch({ paths, outputDir, options = {}, splitObjects = true, outputKind = "atlas", automatic = false, installed = [], sourceIndexes = [], appRoot, signal, onProgress, shouldStop }) {
+export async function processImageBatch({ paths, outputDir, options = {}, splitObjects = true, outputKind = "atlas", automatic = false, healFirst = false, installed = [], sourceIndexes = [], appRoot, signal, onProgress, shouldStop }) {
   const inputs = [...new Set((paths || []).map(file => path.resolve(file)))];
   if (!inputs.length || inputs.length > 256) throw new Error("Выберите от 1 до 256 изображений.");
   if (!outputDir) throw new Error("Выберите папку результатов.");
@@ -60,13 +61,28 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
       onProgress?.({ stage: "batch", value: index / inputs.length, message: `Изображение ${index + 1}/${inputs.length} · ${name}` });
       if (outputKind === "images") {
         const sourceIndex = sourceIndexes[index] ?? index;
-        const inputPath = options.frameOverrides?.[sourceIndex] || file;
+        let inputPath = options.frameOverrides?.[sourceIndex] || file;
+        let healing = null;
+        if (healFirst) {
+          onProgress?.({ stage: "healing", value: index / inputs.length, message: `Подорожник · ${index + 1}/${inputs.length} · восстанавливаю ${name}` });
+          healing = await healImage(inputPath, path.join(workspace, "healing"), { signal });
+          inputPath = healing.imagePath;
+        }
         let settings = { ...options, previewFrameIndex: sourceIndex, outputBackground: "transparent" };
+        if (healing && (!settings.edgeRefine || settings.edgeRefine.mode === "none")) {
+          // Repaint a confirmed pale fringe on dark/coloured sprites. Cream
+          // petals and mushroom spots are material, so their boundary stays
+          // untouched until the user explicitly chooses an edge policy.
+          if (!healing.report.lightDetailGuard?.enabled) settings.edgeRefine = { mode: "recolor", width: 1, depth: 2, whiteOnly: true };
+        }
         let plan = null;
         let measurements=null;
         if (automatic) {
           measurements = await measureSource([inputPath]);
-          plan = planAutoPilot({ measurements, installed, source: { kind: "images", frameCount: 1 }, target: { intent: "images", cleanupRequested: true } });
+          // The repaired alpha is the baseline. Do not replace it with a new
+          // whole-object ToonOut mask during the specialist cleanup pass.
+          const available = healing ? installed.filter(id => id !== "toonout") : installed;
+          plan = planAutoPilot({ measurements, installed: available, source: { kind: "images", frameCount: 1 }, target: { intent: "images", cleanupRequested: true } });
           const matting = plan.steps.find(step => step.stage === "matting");
           if (matting?.status === "blocked") throw new Error(`Нужна локальная модель ${matting.modelId}. Откройте каталог моделей.`);
           settings = { ...settings, keyMode: matting ? "ai" : plan.steps.find(step => step.stage === "key")?.tool === "alpha" ? "alpha" : "auto", aiModel: matting?.modelId || settings.aiModel, aiQuality: plan.settings.quality, aiForceModel: Boolean(matting) };
@@ -78,13 +94,23 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
         if (!preview.bounds?.width || !preview.bounds?.height) throw new Error("После очистки не осталось объекта. Попробуйте другой профиль или защитите детали маской.");
         const qualityIssues=await inspectCleanupQuality(preview,measurements);
         const qualityWarnings=qualityIssues.map(issue=>issue.message);
+        if (healing?.report.lightDetailGuard?.enabled && (!settings.edgeRefine || settings.edgeRefine.mode === "none")) qualityWarnings.push("Светлые детали защищены: перекраска кромки оставлена для ручной проверки.");
         let imagePath = path.join(outputDir, `${name}.png`), version = 2;
         // Exclusive copy prevents overwriting sources or previous results, even on collision.
         for (;;) {
           try { await fs.copyFile(preview.afterPath, imagePath, 1); break; }
           catch (error) { if (error.code !== "EEXIST") throw error; imagePath = path.join(outputDir, `${name}-${version++}.png`); }
         }
-        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, fallback, qualityIssues, qualityWarnings });
+        let healingPath = null;
+        if (healing) {
+          healingPath = path.join(outputDir, `${name}-healed.png`);
+          let healingVersion = 2;
+          for (;;) {
+            try { await fs.copyFile(healing.imagePath, healingPath, 1); break; }
+            catch (error) { if (error.code !== "EEXIST") throw error; healingPath = path.join(outputDir, `${name}-healed-${healingVersion++}.png`); }
+          }
+        }
+        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, fallback, qualityIssues, qualityWarnings, healingPath, healingReport: healing?.report || null });
         onProgress?.({ stage: "batch", value: (index + 1) / inputs.length, message: `Сохранено ${index + 1}/${inputs.length} · ${name}.png` });
         continue;
       }
@@ -109,6 +135,6 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
   const summary = { batch: true, kind: "images", outputDir, total: inputs.length, completed: results.length, failed: failures.length, stopped: results.length + failures.length < inputs.length, cancelled: Boolean(signal?.aborted), results, failures, revealPath: results[0]?.sheetPath || outputDir };
   let reportPath = path.join(outputDir, "image-batch-report.json"); let version = 2;
   while (await fs.stat(reportPath).then(() => true, () => false)) reportPath = path.join(outputDir, `image-batch-report-${version++}.json`);
-  await fs.writeFile(reportPath, JSON.stringify({ ...summary, profile: options, splitObjects, outputKind, automatic }, null, 2));
+  await fs.writeFile(reportPath, JSON.stringify({ ...summary, profile: options, splitObjects, outputKind, automatic, healFirst }, null, 2));
   return { ...summary, outputKind, automatic, reportPath };
 }

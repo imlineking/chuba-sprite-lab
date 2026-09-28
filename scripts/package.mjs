@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { prepareVendor } from "./prepare-vendor.mjs";
 import { preparePortableModels } from "./prepare-portable-models.mjs";
+import { prepareHealingRuntime } from "./prepare-healing-runtime.mjs";
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const builder = path.join(appRoot, "node_modules", "electron-builder", "cli.js");
@@ -21,6 +22,7 @@ function assertNoRunningBuild() {
 assertNoRunningBuild();
 
 await prepareVendor(appRoot);
+await prepareHealingRuntime(appRoot);
 const models = await preparePortableModels(appRoot);
 await fs.access(path.join(appRoot, "assets", "app.ico"));
 async function checked(relative) {
@@ -52,7 +54,7 @@ if (result.status !== 0) throw new Error(`electron-builder завершился 
 
 const staging = await checked(".build/win-unpacked");
 await fs.access(path.join(staging, "Chuba Sprite Lab.exe"));
-await fs.writeFile(path.join(staging, "START-HERE.txt"), `Chuba Sprite Lab ${packageInfo.version}\n\nЗапуск: Chuba Sprite Lab.exe\nКопируйте на флешку ВСЮ папку portable. Resources и DLL нужны приложению.\n\nВсе ${models.length} поддержанных моделей работают локально. Интернет нужен только для\nпроверки обновлений и внешних сайтов/онлайн-редакторов. Node.js и Python не нужны.\nВнутренние EXE (FFmpeg и компоненты Electron) не являются другими версиями программы.\n`);
+await fs.writeFile(path.join(staging, "START-HERE.txt"), `Chuba Sprite Lab ${packageInfo.version}\n\nЗапуск: Chuba Sprite Lab.exe\nКопируйте на флешку ВСЮ папку portable. Resources и DLL нужны приложению.\n\nВсе ${models.length} поддержанных моделей работают локально. Интернет нужен только для\nпроверки обновлений и внешних сайтов/онлайн-редакторов. Node.js и Python не нужны.\nВнутренние EXE (FFmpeg, Python-runtime Подорожника и компоненты Electron) не являются другими версиями программы.\n`);
 assertNoRunningBuild();
 await fs.mkdir(await checked(".build-archive"), { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");

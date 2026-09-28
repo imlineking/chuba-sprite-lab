@@ -100,7 +100,11 @@ const i18nSources = {
     "Изображения, готовый лист или видео. Выберите задачу — копилот предложит следующий шаг.":
       "Images, a ready-made sheet or a video. Choose a task and the copilot will suggest the next step.",
     "Что сделать с изображениями?": "What would you like to do with these images?",
-    "Выберите результат: отдельные файлы, общий атлас или последовательность движения.": "Choose the result: separate files, a shared atlas or an animation sequence.",
+    "Восстановите повреждённый объект или выберите отдельные файлы, общий атлас либо анимацию.": "Restore a damaged object, or choose separate files, a shared atlas or an animation.",
+    "Восстановить повреждённый объект · Подорожник": "Restore a damaged object · Healing Tool",
+    "Восстановить повреждённый объект": "Restore a damaged object",
+    "Подорожник: восстановить детали → удалить псевдопрозрачность → передать в очистку фона и края": "Healing Tool: repair details → remove baked checkerboard → clean background and edges",
+    "После Подорожника": "After Healing Tool",
     "Править обрезку и фон · PNG": "Edit cutout and background · PNG",
     "Атлас объектов · PNG + JSON": "Object atlas · PNG + JSON",
     "Сделать анимацию": "Create an animation",

@@ -54,7 +54,7 @@ $("#saveAllImagePng").addEventListener("click", () => window.saveIndependentImag
 $("#imageAutoCleanup").addEventListener("click", () => window.openImageBatchPreview());
 $("#imageScenarioChoices").addEventListener("click", event => {
   const button = event.target.closest("button[data-image-task]");
-  if (button) window.taskChoose(button.dataset.imageTask, "manual");
+  if (button) window.taskChoose(button.dataset.imageTask, button.dataset.imageTask === "healing" ? "auto" : "manual");
 });
 // History belongs beside Apply/Cancel and must stay visible when tools scroll.
 const maskHistoryButtons = $(".mask-history-actions");
@@ -78,6 +78,8 @@ function showImageBatchPair(index) {
   const item = imageBatchDraft.results[index];
   if (item) $("#imageBatchAfter").src = imageBatchUrl(item.imagePath);
   else $("#imageBatchAfter").removeAttribute("src");
+  if (item?.healingPath) $("#imageBatchHealing").src = imageBatchUrl(item.healingPath);
+  else $("#imageBatchHealing").removeAttribute("src");
 }
 function renderImageBatchDraft() {
   const scope = imageBatchIndexes();
@@ -95,7 +97,7 @@ function renderImageBatchDraft() {
     const title = document.createElement("span"); title.textContent = `${index + 1} · ${baseName(file)}`;
     const detail = document.createElement("small"), item = imageBatchDraft.results[index];
     const model = item?.fallback?.model || item?.plan?.steps?.find(step => step.stage === "matting")?.modelId;
-    detail.textContent = imageBatchDraft.exportFailures?.[index] ? `Ошибка сохранения: ${imageBatchDraft.exportFailures[index]}` : imageBatchDraft.failures[index] ? `Ошибка: ${imageBatchDraft.failures[index]}` : imageBatchDraft.exported?.[index] ? "Сохранено · PNG + JSON" : item ? `Готово · ${model || "локальная очистка"}${item.fallback ? " · CPU fallback" : ""}${item.qualityWarnings?.length ? " · " + item.qualityWarnings.join(" ") : ""}` : "Ещё не обработано";
+    detail.textContent = imageBatchDraft.exportFailures?.[index] ? `Ошибка сохранения: ${imageBatchDraft.exportFailures[index]}` : imageBatchDraft.failures[index] ? `Ошибка: ${imageBatchDraft.failures[index]}` : imageBatchDraft.exported?.[index] ? "Сохранено · PNG + JSON" : item ? `Готово · ${item.healingPath ? "Подорожник → " : ""}${model || "локальная очистка"}${item.fallback ? " · CPU fallback" : ""}${item.qualityWarnings?.length ? " · " + item.qualityWarnings.join(" ") : ""}` : "Ещё не обработано";
     button.append(title, detail); button.addEventListener("click", () => showImageBatchPair(index)); row.append(checkbox, button); list.append(row);
   });
   const ready = scope.filter(index => imageBatchDraft.results[index]).length;
@@ -112,13 +114,15 @@ window.openImageBatchPreview = function (configuration = {}) {
   imageBatchReturnFocus = document.activeElement;
   const paths = configuration.paths || state.source.paths;
   const exportAtlases = Boolean(configuration.exportAtlases);
-  const configurationKey = JSON.stringify({exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic});
+  const configurationKey = JSON.stringify({exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst});
   let saved; try { saved = JSON.parse(localStorage.getItem("spriteLab.pendingImageBatch")); } catch { /* No prior job. */ }
   if (!imageBatchDraft || JSON.stringify(imageBatchDraft.paths) !== JSON.stringify(paths) || imageBatchDraft.configurationKey !== configurationKey) {
     imageBatchDraft = saved && JSON.stringify(saved.paths) === JSON.stringify(paths) && saved.configurationKey === configurationKey && saved.results && saved.failures && saved.selected ? saved : { paths: [...paths], selected: [Math.min(state.selectedFrameIndex,paths.length-1)], results: {}, failures: {}, settings: {}, directory: null, configurationKey, configuration };
   }
-  $('#imageBatchTitle').textContent = exportAtlases ? 'Пакетная подготовка PNG + JSON' : 'Автоочистка изображений';
-  $('.batch-preview-header p').textContent = exportAtlases ? 'Проверьте очистку каждого исходника. После просмотра сохраняются отдельные PNG + JSON. Исходные файлы остаются на месте.' : 'Сравните исходник и результат. Применение можно отменить Ctrl+Z; PNG сохраняются отдельной кнопкой.';
+  $('#imageBatchTitle').textContent = configuration.healFirst ? 'Восстановление объекта · Подорожник' : exportAtlases ? 'Пакетная подготовка PNG + JSON' : 'Автоочистка изображений';
+  $('.batch-preview-header p').textContent = configuration.healFirst ? 'Сравните исходник, восстановленный объект и результат обычной очистки. Применение можно отменить Ctrl+Z; исходные файлы остаются на месте.' : exportAtlases ? 'Проверьте очистку каждого исходника. После просмотра сохраняются отдельные PNG + JSON. Исходные файлы остаются на месте.' : 'Сравните исходник и результат. Применение можно отменить Ctrl+Z; PNG сохраняются отдельной кнопкой.';
+  $('#imageBatchHealingFigure').classList.toggle('hidden', !configuration.healFirst);
+  $('#imageBatchComparison').classList.toggle('with-healing', Boolean(configuration.healFirst));
   $('#applyImageBatch').textContent = exportAtlases ? 'Сохранить выбранные · PNG + JSON' : 'Применить выбранные';
   $("#imageBatchModal").classList.remove("hidden"); $("#imageBatchScope").value = "all";
   renderImageBatchDraft(); showImageBatchPair(Math.min(state.selectedFrameIndex,paths.length-1)); $("#imageBatchScope").focus();
@@ -138,7 +142,7 @@ async function prepareImageBatch(mode = "all") {
   $("#cancelJob").classList.remove("hidden");
   setStatus(`Готовлю просмотр: ${indexes.length} изображений…`, "busy", .02);
   try {
-    const result = await window.spriteLab.imageBatch({ paths: indexes.map(index => imageBatchDraft.paths[index]), sourceIndexes: indexes, outputKind: "images", automatic: configuration.automatic ?? true, previewOnly: true, previewDirectory: imageBatchDraft.directory, options: settings });
+    const result = await window.spriteLab.imageBatch({ paths: indexes.map(index => imageBatchDraft.paths[index]), sourceIndexes: indexes, outputKind: "images", automatic: configuration.automatic ?? true, healFirst: Boolean(configuration.healFirst), previewOnly: true, previewDirectory: imageBatchDraft.directory, options: settings });
     imageBatchDraft.directory = result.outputDir;
     for (const item of result.results) {
       const index = imageBatchDraft.paths.indexOf(item.input);
