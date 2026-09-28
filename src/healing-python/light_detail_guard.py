@@ -16,6 +16,93 @@ def _closed(mask: np.ndarray, size: int = 9) -> np.ndarray:
     return np.asarray(image.filter(ImageFilter.MaxFilter(size)).filter(ImageFilter.MinFilter(size))) > 0
 
 
+def complete_shape_gaps(source: np.ndarray, result: np.ndarray, restored: np.ndarray, cell: float):
+    """Complete narrow gaps only when both banks belong to one recovered object.
+
+    Fully enclosed gaps can have lost all useful RGB. Exterior-connected or
+    color-ambiguous gaps are returned for review rather than silently painted.
+    """
+    h, w = restored.shape
+    filled = np.zeros((h, w), bool)
+    uncertain = np.zeros((h, w), bool)
+    recolored = np.zeros((h, w), bool)
+    confidence = np.zeros((h, w), np.uint8)
+    opaque = result[:, :, 3] == 255
+    foreground = components(opaque, diagonal=True)
+    recovered_ids = np.unique(foreground[restored & opaque])
+    recovered_ids = recovered_ids[recovered_ids != 0]
+    if not len(recovered_ids):
+        return filled, uncertain, recolored, confidence
+
+    cell = float(np.clip(cell or 16, 4, 32))
+    closing_size = min(25, max(9, 2 * round(cell / 2) + 1))
+    crossing = min(14, max(4, round(cell * .75)))
+    candidates = _closed(opaque, closing_size) & ~opaque
+    background = components(~opaque)
+    exterior = np.unique(np.r_[background[0], background[-1], background[:, 0], background[:, -1]])
+    labels = components(candidates, diagonal=True)
+    counts = np.bincount(labels.ravel())
+    ys, xs = np.nonzero(candidates)
+    ids = labels[ys, xs]
+    minx, miny = np.full(len(counts), w), np.full(len(counts), h)
+    maxx, maxy = np.zeros(len(counts), int), np.zeros(len(counts), int)
+    np.minimum.at(minx, ids, xs)
+    np.maximum.at(maxx, ids, xs)
+    np.minimum.at(miny, ids, ys)
+    np.maximum.at(maxy, ids, ys)
+    source_rgb = source[:, :, :3].astype(np.int16)
+    result_rgb = result[:, :, :3].astype(np.int16)
+    for y, x in zip(ys, xs):
+        label = labels[y, x]
+        width, height = maxx[label] - minx[label] + 1, maxy[label] - miny[label] + 1
+        area = counts[label]
+        if area > 2 * cell * cell and not (min(width, height) <= cell / 3 and area <= 4 * cell * cell):
+            continue
+        pairs = []
+        for dy, dx in ((0, 1), (1, 0), (1, 1), (1, -1)):
+            sides = []
+            for sign in (-1, 1):
+                for step in range(1, crossing + 1):
+                    ny, nx = y + sign * step * dy, x + sign * step * dx
+                    if not (0 <= ny < h and 0 <= nx < w):
+                        break
+                    if opaque[ny, nx]:
+                        sides.append((step, ny, nx))
+                        break
+            if len(sides) != 2:
+                continue
+            a, b = sides
+            object_id = foreground[a[1], a[2]]
+            if object_id != foreground[b[1], b[2]] or object_id not in recovered_ids:
+                continue
+            first, second = result_rgb[a[1], a[2]], result_rgb[b[1], b[2]]
+            disagreement = int(np.max(np.abs(first - second)))
+            if disagreement > 70:
+                continue
+            source_match = int(min(np.max(np.abs(first - source_rgb[y, x])),
+                                   np.max(np.abs(second - source_rgb[y, x]))))
+            pairs.append((a[0] + b[0], disagreement, source_match, a, b))
+        if not pairs:
+            continue
+        span, disagreement, source_match, a, b = min(pairs, key=lambda pair: (pair[1] * 2 + pair[0], pair[2]))
+        enclosed = background[y, x] not in exterior
+        if not enclosed or (disagreement > 35 and source_match > 35):
+            uncertain[y, x] = True
+            continue
+        first, second = result_rgb[a[1], a[2]], result_rgb[b[1], b[2]]
+        if disagreement <= 35:
+            color = np.rint((first * b[0] + second * a[0]) / span).astype(np.uint8)
+        else:
+            donor = a if a[0] <= b[0] else b
+            color = result[donor[1], donor[2], :3]
+        result[y, x, :3] = color
+        result[y, x, 3] = 255
+        filled[y, x] = True
+        recolored[y, x] = True
+        confidence[y, x] = 255 if disagreement <= 35 else 180
+    return filled, uncertain, recolored, confidence
+
+
 def recover_light_details(source: np.ndarray, cutout: np.ndarray, structure: dict):
     """Protect coherent cream/light texture against a neutral checkerboard.
 
@@ -29,7 +116,7 @@ def recover_light_details(source: np.ndarray, cutout: np.ndarray, structure: dic
         raise ValueError('Expected matching uint8 RGBA images')
     result = cutout.copy()
     h, w = source.shape[:2]
-    masks = {name: np.zeros((h, w), bool) for name in ('preserved-visible', 'restored-hidden', 'filled-holes', 'recolored-seams')}
+    masks = {name: np.zeros((h, w), bool) for name in ('preserved-visible', 'restored-hidden', 'filled-holes', 'recolored-seams', 'shape-filled', 'shape-uncertain')}
     report = {'enabled': False, 'reason': 'No confirmed bright neutral checker'}
     modes = structure.get('learnedBoundaryValues')
     if not structure.get('found') or not modes or len(modes) != 2:
@@ -320,6 +407,23 @@ def recover_light_details(source: np.ndarray, cutout: np.ndarray, structure: dic
     else:
         iterative_fill = 0
 
+    shape_recolored = np.zeros((h, w), bool)
+    if recover_hidden:
+        shape_filled, shape_uncertain, shape_recolored, shape_confidence = complete_shape_gaps(
+            source, result, masks['restored-hidden'], structure.get('cell', 16))
+        masks['shape-filled'] = shape_filled
+        # This profile reviews coherent petals, not every grass antialiasing
+        # pixel attached to the same stem.
+        petal_core = (result[:, :, 3] == 255) & (np.min(result[:, :, :3], axis=2) >= 210)
+        petal_core &= (warmth >= 4) & (np.ptp(result[:, :, :3], axis=2) <= 35)
+        petal_zone = np.asarray(Image.fromarray(petal_core.astype('uint8') * 255)
+                                 .filter(ImageFilter.MinFilter(7)).filter(ImageFilter.MaxFilter(45))) > 0
+        masks['shape-uncertain'] = shape_uncertain & petal_zone
+        masks['filled-holes'] |= shape_filled
+        recolored |= shape_recolored
+    else:
+        shape_confidence = np.zeros((h, w), np.uint8)
+
     masks['recolored-seams'] = recolored
     assert np.array_equal(result[:, :, :3][~recolored], source[:, :, :3][~recolored])
     report = {'enabled': True, 'seedPixels': count, 'hiddenSeedFraction': round(hidden_seed_fraction, 4),
@@ -330,6 +434,9 @@ def recover_light_details(source: np.ndarray, cutout: np.ndarray, structure: dic
               'restoredHidden': int(masks['restored-hidden'].sum()),
               'filledHolePixels': int(masks['filled-holes'].sum()),
               'iterativeFillPixels': iterative_fill,
+              'shapeFillPixels': int(masks['shape-filled'].sum()),
+              'shapeUncertainPixels': int(masks['shape-uncertain'].sum()),
+              'shapeHighConfidencePixels': int((shape_confidence == 255).sum()),
               'rgbUnchangedOutsideSeams': True,
               'recoloredSeamPixels': int(recolored.sum())}
     return result, masks, report
