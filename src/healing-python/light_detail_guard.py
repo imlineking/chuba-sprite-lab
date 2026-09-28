@@ -228,6 +228,65 @@ def recover_light_details(source: np.ndarray, cutout: np.ndarray, structure: dic
             recolored[y, x] = True
             masks['filled-holes'][y, x] = True
 
+        # A petal reconstructed from hidden RGB can still have a longer,
+        # one-pixel seam along an old cut. The old 11px closing misses it.
+        # Widen the search only inside a confirmed light body and require
+        # surviving artwork on opposite sides before borrowing its color.
+        visible = alpha >= 240
+        light_body = visible & (np.min(result[:, :, :3], axis=2) >= 170) & (warmth >= 3)
+        wider_seams = _closed(light_body, 25) & ~visible & around_restoration
+        wider_seams &= (brightness >= 140) & (warmth >= 2)
+        for y, x in np.argwhere(wider_seams):
+            pairs = []
+            for dy, dx in ((0, 1), (1, 0), (1, 1), (1, -1)):
+                sides = []
+                for sign in (-1, 1):
+                    for step in range(1, 13):
+                        ny, nx = y + sign * step * dy, x + sign * step * dx
+                        if not (0 <= ny < h and 0 <= nx < w):
+                            break
+                        if light_body[ny, nx]:
+                            sides.append((step, ny, nx))
+                            break
+                if len(sides) == 2 and sum(item[0] for item in sides) <= 18:
+                    pairs.extend(sides)
+            if not pairs:
+                continue
+            _, ny, nx = min(pairs, key=lambda item: item[0])
+            result[y, x, :3] = result[ny, nx, :3]
+            alpha[y, x] = 255
+            recolored[y, x] = True
+            masks['filled-holes'][y, x] = True
+
+        # The center has yellow and green texture, so a white-only donor
+        # leaves dark pinholes there. Use intact pixels of the same local
+        # material, still requiring a short, bracketed interior crossing.
+        opaque = alpha >= 240
+        near_petal = np.asarray(Image.fromarray(light_body.astype('uint8') * 255).filter(ImageFilter.MaxFilter(25))) > 0
+        colored_seams = _closed(opaque, 17) & ~opaque & around_restoration & near_petal
+        colored_seams &= (brightness >= 50) & ((np.ptp(rgb, axis=2) >= 12) | (warmth >= 2))
+        for y, x in np.argwhere(colored_seams):
+            pairs = []
+            for dy, dx in ((0, 1), (1, 0), (1, 1), (1, -1)):
+                sides = []
+                for sign in (-1, 1):
+                    for step in range(1, 9):
+                        ny, nx = y + sign * step * dy, x + sign * step * dx
+                        if not (0 <= ny < h and 0 <= nx < w):
+                            break
+                        if opaque[ny, nx]:
+                            sides.append((step, ny, nx))
+                            break
+                if len(sides) == 2 and sum(item[0] for item in sides) <= 12:
+                    pairs.extend(sides)
+            if not pairs:
+                continue
+            _, ny, nx = min(pairs, key=lambda item: (item[0] * 100 + int(np.square(result[item[1], item[2], :3].astype(np.int16) - rgb[y, x]).sum())))
+            result[y, x, :3] = result[ny, nx, :3]
+            alpha[y, x] = 255
+            recolored[y, x] = True
+            masks['filled-holes'][y, x] = True
+
     masks['recolored-seams'] = recolored
     assert np.array_equal(result[:, :, :3][~recolored], source[:, :, :3][~recolored])
     report = {'enabled': True, 'seedPixels': count, 'hiddenSeedFraction': round(hidden_seed_fraction, 4),
