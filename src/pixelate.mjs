@@ -52,11 +52,42 @@ export function hexToColor(hex) {
   return match ? [1, 2, 3].map((index) => Number.parseInt(match[index], 16)) : null;
 }
 
-export function resolvePalette(name) {
+// A palette supplied by the user travels with the project/profile as text. No
+// source file is needed when the project is moved to another offline computer.
+export function parseCustomPalette(value) {
+  if (typeof value !== "string" || value.length > 640) return null;
+  const entries = value.trim().split(/[\s,;]+/).filter(Boolean);
+  if (entries.length < 2 || entries.length > 64) return null;
+  const parsed = entries.map(hexToColor);
+  if (parsed.some((color) => !color)) return null;
+  const unique = [...new Map(parsed.map((color) => [color.join(","), color])).values()];
+  return unique.length >= 2 ? unique : null;
+}
+
+export function resolvePalette(name, customColors = "") {
   const requested = String(name || "auto");
+  if (requested === "custom") return parseCustomPalette(customColors);
   const known = Object.keys(pixelPalettes);
   if (requested === "auto" || !known.includes(requested)) return null;
   return pixelPalettes[requested].map((hex) => hexToColor(hex)).filter(Boolean);
+}
+
+// An optional small-grid detail pass. It acts only where the centre and four
+// neighbours are opaque, so brightening facial features cannot grow the alpha
+// silhouette or pull transparent-background colours into it.
+function enhanceInteriorDetail(grid, width, height, amount) {
+  if (!amount) return grid;
+  const result = Buffer.from(grid);
+  for (let y = 1; y < height - 1; y += 1) for (let x = 1; x < width - 1; x += 1) {
+    const centre = (y * width + x) * 4;
+    const neighbours = [centre - 4, centre + 4, centre - width * 4, centre + width * 4];
+    if (grid[centre + 3] < 240 || neighbours.some((offset) => grid[offset + 3] < 240)) continue;
+    for (let channel = 0; channel < 3; channel += 1) {
+      const average = neighbours.reduce((sum, offset) => sum + grid[offset + channel], 0) / 4;
+      result[centre + channel] = clamp(Math.round(grid[centre + channel] + (grid[centre + channel] - average) * amount), 0, 255);
+    }
+  }
+  return result;
 }
 
 // Median cut: repeatedly split the colour cloud along its widest channel. Cheap, deterministic and
@@ -323,7 +354,11 @@ export function pixelate(data, info, options = {}) {
     }
   }
 
-  const fixed = resolvePalette(options.palette);
+  const detail = clamp(Number(options.detail) || 0, 0, 100) / 100;
+  grid = enhanceInteriorDetail(grid, gridWidth, gridHeight, detail);
+
+  const fixed = resolvePalette(options.palette, options.customColors);
+  if (options.palette === "custom" && !fixed) throw new Error("Своя палитра: укажите от 2 до 64 разных цветов #RRGGBB через пробел или запятую.");
   const colorCount = clamp(Math.round(Number(options.colors) || 16), 2, 256);
   const sampled = [];
   for (let index = 0; index < gridWidth * gridHeight; index += 1) {
@@ -361,6 +396,6 @@ export function pixelate(data, info, options = {}) {
 // A named palette is a fixed artistic choice, so it reports its own size; the colour count only
 // applies to an extracted palette. Kept separate so the interface can explain the difference.
 export function effectiveColorCount(options = {}) {
-  const fixed = resolvePalette(options.palette);
+  const fixed = resolvePalette(options.palette, options.customColors);
   return fixed ? fixed.length : clamp(Math.round(Number(options.colors) || 16), 2, 256);
 }

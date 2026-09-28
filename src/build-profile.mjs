@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { pixelDithers, pixelModes, pixelPalettes } from "./pixelate.mjs";
+import { parseCustomPalette, pixelDithers, pixelModes, pixelPalettes } from "./pixelate.mjs";
 
 // A build profile is the complete recipe of one export: the sources plus every
 // processing option. The command line and the desktop window accept the same options,
@@ -113,7 +113,7 @@ function normalizeOptions(value, problem, label, baseDir) {
     if (!isPlainObject(options.pixelate)) {
       problem(`${label}.pixelate: ожидался объект с настройками пиксель-арта.`);
     } else {
-      const known = ["size", "colors", "palette", "mode", "dither", "shadingSteps", "softAlpha", "edgeThreshold", "ditherStrength", "inkColor"];
+      const known = ["size", "colors", "palette", "customColors", "mode", "dither", "shadingSteps", "detail", "softAlpha", "edgeThreshold", "ditherStrength", "inkColor"];
       for (const key of Object.keys(options.pixelate)) {
         if (!known.includes(key)) problem(`${label}.pixelate.${key}: неизвестная настройка.`);
       }
@@ -124,9 +124,11 @@ function normalizeOptions(value, problem, label, baseDir) {
         problem(`${label}.pixelate.colors: ожидалось целое 2…256.`);
       }
       const palette = options.pixelate.palette ?? "auto";
-      if (palette !== "auto" && !Object.keys(pixelPalettes).includes(palette)) {
-        problem(`${label}.pixelate.palette: ожидается auto или одна из ${Object.keys(pixelPalettes).join(", ")}.`);
+      if (palette !== "auto" && palette !== "custom" && !Object.keys(pixelPalettes).includes(palette)) {
+        problem(`${label}.pixelate.palette: ожидается auto, custom или одна из ${Object.keys(pixelPalettes).join(", ")}.`);
       }
+      if (palette === "custom" && !parseCustomPalette(options.pixelate.customColors)) problem(`${label}.pixelate.customColors: укажите 2…64 разных цветов #RRGGBB.`);
+      if (options.pixelate.detail !== undefined && (typeof options.pixelate.detail !== "number" || !Number.isFinite(options.pixelate.detail) || options.pixelate.detail < 0 || options.pixelate.detail > 100)) problem(`${label}.pixelate.detail: ожидалось число 0…100.`);
       if (options.pixelate.mode !== undefined && !pixelModes.includes(options.pixelate.mode)) {
         problem(`${label}.pixelate.mode: ожидается одна из ${pixelModes.join(", ")}.`);
       }

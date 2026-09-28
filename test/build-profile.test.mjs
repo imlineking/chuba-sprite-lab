@@ -103,6 +103,14 @@ test("a custom background colour is validated and normalised", () => {
   assert.throws(() => readProfile(profile({ options: { keyColor: [1, 2] } }), { baseDir }), /keyColor: ожидался массив/);
 });
 
+test("a saved HEX sprite palette and optional detail level work in CLI profiles", () => {
+  const settings={size:4,palette:"custom",customColors:"#123456, #abcdef",detail:25};
+  const parsed=readProfile(profile({options:{pixelate:settings}}),{baseDir});
+  assert.deepEqual(parsed.animations[0].options.pixelate,settings);
+  assert.throws(()=>readProfile(profile({options:{pixelate:{...settings,customColors:"#123456"}}}),{baseDir}),/pixelate.customColors/);
+  assert.throws(()=>readProfile(profile({options:{pixelate:{...settings,detail:101}}}),{baseDir}),/pixelate.detail/);
+});
+
 test("every path in a profile resolves against the profile folder", () => {
   const parsed = readProfile(profile({
     options: {

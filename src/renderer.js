@@ -33,7 +33,7 @@ const exportPresets = {
   artist: { sheet: false, frames: true, metadata: false, preview: true },
   engine: { sheet: true, frames: false, metadata: true, preview: false },
 };
-const preferenceValueIds = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "keyScope", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness", "aiProvider", "aiQuality", "fringeStrength", "edgeRefineMode", "edgeRefineWidth", "edgeRefineDepth", "trimStart", "trimEnd", "pixelateSize", "pixelateColors", "pixelateShading", "pixelatePalette", "pixelateMode", "pixelateDither", "toningColor", "toningStrength", "locale"];
+const preferenceValueIds = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "keyScope", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness", "aiProvider", "aiQuality", "fringeStrength", "edgeRefineMode", "edgeRefineWidth", "edgeRefineDepth", "trimStart", "trimEnd", "pixelateSize", "pixelateColors", "pixelateShading", "pixelateDetail", "pixelatePalette", "pixelateCustomColors", "pixelateMode", "pixelateDither", "toningColor", "toningStrength", "locale"];
 const preferenceCheckIds = ["autoSize", "autoColumns", "pixelPerfect", "removeDuplicates", "whiteOutput", "openAfterExport", "fringeCleanup", "edgeDecontaminate", "edgeRefineWhiteOnly", "aiAutoCutoff", "pixelateEnabled", "toningEnabled", "sheetFitEach", "auxRife", "auxEsrgan", "auxDepth"];
 
 function sourceDescriptor(source = state.source) {
@@ -142,6 +142,7 @@ function saveSessionSoon() {
 function applyControlState(controls = {}) {
   state.historyApplying = true;
   Object.entries(controls.values || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).value = value; });
+  syncCustomPaletteField();
   Object.entries(controls.checks || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).checked = Boolean(value); });
   Object.entries(controls.exports || {}).forEach(([name, value]) => { const selector = exportControls[name]; if (selector) $(selector).checked = Boolean(value); });
   state.auxMaskPath = controls.auxMaskPath || null;
@@ -990,9 +991,11 @@ function collectOptions() {
       size: Number($("#pixelateSize").value),
       colors: Number($("#pixelateColors").value),
       palette: $("#pixelatePalette").value,
+      customColors: $("#pixelatePalette").value === "custom" ? $("#pixelateCustomColors").value : undefined,
       mode: $("#pixelateMode").value,
       dither: $("#pixelateDither").value,
       shadingSteps: Number($("#pixelateShading").value),
+      detail: Number($("#pixelateDetail").value),
     } : null,
     toning: $("#toningEnabled").checked ? { color: $("#toningColor").value, strength: Number($("#toningStrength").value) } : null,
   };
@@ -2229,6 +2232,7 @@ function loadPreferences() {
     if (["10", "25", "50", "100", "200", "500"].includes(String(saved.gridSpacing))) $("#gridSpacing").value = String(saved.gridSpacing);
     setBackdrop(previewBackdrops.includes(saved.backdrop) && saved.backdrop !== "scene" ? saved.backdrop : "checker", false);
     Object.entries(saved.values || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).value = value; });
+    syncCustomPaletteField();
     if (Number(saved.schema || 0) < 2) $("#aiSoftness").value = "0";
     $("#toleranceValue").textContent = $("#tolerance").value;
     $("#blackOutlineValue").textContent = $("#blackOutline").value;
@@ -2403,11 +2407,26 @@ for (const id of ["toningEnabled", "toningColor", "toningStrength"]) {
     savePreferences(); markPreviewDirty(); scheduleFramePreview(180); scheduleHistory("Тонировка изменена");
   });
 }
-for (const id of ["pixelateSize", "pixelateColors", "pixelateShading"]) {
-  $(`#${id}`).addEventListener("change", () => { savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Настройки пиксель-арта изменены"); });
+function syncCustomPaletteField() {
+  const active = $("#pixelatePalette").value === "custom";
+  $("#pixelateCustomPaletteField").classList.toggle("hidden", !active);
+  $("#pixelateColors").disabled = $("#pixelatePalette").value !== "auto";
+  const input = $("#pixelateCustomColors");
+  const colors = input.value.trim().split(/[\s,;]+/).filter(Boolean);
+  const valid = colors.length >= 2 && colors.length <= 64 && colors.every((color) => /^#[0-9a-f]{6}$/i.test(color)) && new Set(colors.map((color) => color.toLowerCase())).size >= 2;
+  input.setCustomValidity(active && !valid ? t("Укажите от 2 до 64 разных цветов #RRGGBB.") : "");
+  $("#pixelateCustomPalettePreview").replaceChildren(...(valid ? colors.map((color) => {
+    const swatch = document.createElement("i");
+    swatch.style.backgroundColor = color;
+    return swatch;
+  }) : []));
 }
+for (const id of ["pixelateSize", "pixelateColors", "pixelateShading", "pixelateDetail", "pixelateCustomColors"]) {
+  $(`#${id}`).addEventListener("change", () => { syncCustomPaletteField(); savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Настройки пиксель-арта изменены"); });
+}
+$("#pixelateCustomColors").addEventListener("input", syncCustomPaletteField);
 for (const id of ["pixelatePalette", "pixelateMode", "pixelateDither"]) {
-  $(`#${id}`).addEventListener("change", () => { savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Стиль пиксель-арта изменён"); });
+  $(`#${id}`).addEventListener("change", () => { syncCustomPaletteField(); savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Стиль пиксель-арта изменён"); });
 }
 $("#fringeCleanup").addEventListener("change", (event) => {
   $("#fringeStrengthRow").classList.toggle("hidden", !event.target.checked);
@@ -2795,7 +2814,7 @@ window.spriteLab.onUpdateProgress((progress) => {
 });
 
 $$("button.selected").forEach((button) => button.setAttribute("aria-pressed", "true"));
-loadCustomExportProfiles(); setBackdrop("checker", false); loadPreferences(); syncAutoSize(); updateMaskEditSummary(); renderAttachmentList(); updateActionState(); syncExportDependencies(""); setPreviewMode("after"); setStatus("Готов к работе"); loadSessionOffer();
+loadCustomExportProfiles(); setBackdrop("checker", false); loadPreferences(); syncCustomPaletteField(); syncAutoSize(); updateMaskEditSummary(); renderAttachmentList(); updateActionState(); syncExportDependencies(""); setPreviewMode("after"); setStatus("Готов к работе"); loadSessionOffer();
 window.spriteLab.getAppInfo().then((info) => {
   $("#versionBadge").textContent = info.version;
   $("#aboutVersion").textContent = info.version;

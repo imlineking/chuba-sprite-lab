@@ -4,6 +4,7 @@ import {
   effectiveColorCount,
   hexToColor,
   medianCutPalette,
+  parseCustomPalette,
   pixelate,
   pixelDithers,
   pixelModes,
@@ -165,6 +166,31 @@ test("hard alpha is the default and soft alpha can be asked for", () => {
   };
   assert.ok([...alphas(hard.data)].every((value) => value === 0 || value === 255), "pixel art uses hard edges");
   assert.ok([...alphas(soft.data)].some((value) => value > 0 && value < 255), "soft alpha keeps intermediate values");
+});
+
+test("a portable HEX palette is used verbatim and invalid colours do not silently fall back", () => {
+  assert.deepEqual(parseCustomPalette("#102030, 405060 #102030 #A0B0C0"), [[16,32,48],[64,80,96],[160,176,192]]);
+  for (const invalid of ["#123", "#112233", "#112233, not-a-colour", "#000000 #000000"]) assert.equal(parseCustomPalette(invalid), null);
+  const input = Buffer.from([15,30,45,255, 155,170,185,255]);
+  const output = pixelate(input, {width:2,height:1,channels:4}, {size:1,palette:"custom",customColors:"#102030 #a0b0c0"});
+  assert.equal(output.colors,2);
+  assert.deepEqual([...output.data], [16,32,48,255,160,176,192,255]);
+  assert.throws(() => pixelate(input,{width:2,height:1,channels:4},{size:1,palette:"custom",customColors:"#123"}), /Своя палитра/);
+  assert.equal(effectiveColorCount({palette:"custom",customColors:"#102030 #a0b0c0"}),2);
+});
+
+test("optional detail enhancement stays inside opaque artwork and never changes alpha", () => {
+  const width=9, data=Buffer.alloc(width*width*4);
+  for(let y=1;y<8;y++) for(let x=1;x<8;x++) {
+    const level=x===4&&y===4?145:100;
+    data.set([level,level,level,255],(y*width+x)*4);
+  }
+  const info={width,height:width,channels:4}, options={size:1,palette:"grayscale16",dither:"none"};
+  const plain=pixelate(data,info,options).data;
+  const detailed=pixelate(data,info,{...options,detail:100}).data;
+  assert.ok(detailed[(4*width+4)*4]>plain[(4*width+4)*4]);
+  for(let index=3;index<data.length;index+=4) assert.equal(detailed[index],plain[index]);
+  assert.deepEqual(pixel(detailed,width,0,0),pixel(plain,width,0,0));
 });
 
 test("median cut returns the requested size and stays in range", () => {

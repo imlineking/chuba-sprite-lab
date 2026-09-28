@@ -10,7 +10,8 @@ const output = path.resolve(process.argv[2]);
 const game = path.resolve(process.argv[3] || path.join(root, "../.."));
 await fs.mkdir(output, { recursive: true });
 const profileDirectory=path.join(output, `profile-${Date.now()}`);
-const port=await new Promise((resolve,reject)=>{const server=net.createServer();server.on('error',reject);server.listen(0,'127.0.0.1',()=>{const value=server.address().port;server.close(()=>resolve(value));});});
+const freePort=()=>new Promise((resolve,reject)=>{const server=net.createServer();server.on('error',reject);server.listen(0,'127.0.0.1',()=>{const value=server.address().port;server.close(()=>resolve(value));});});
+let port=await freePort();
 const start=()=>{
   const launched=spawn(path.join(root, "node_modules/electron/dist/electron.exe"), [".", "--ui-regression", `--remote-debugging-port=${port}`, "--self-test-user-data", profileDirectory], { cwd: root, windowsHide: true, stdio: ['ignore','pipe','pipe'] });
   for(const stream of [launched.stdout,launched.stderr])stream.on('data',chunk=>fs.appendFile(path.join(output,'audit-process.log'),chunk).catch(()=>{}));
@@ -97,6 +98,18 @@ try {
       await evaluate(`document.documentElement.dataset.theme='${theme}'`);
       for (const tab of ["source","process","export"]) { await evaluate(`setTab('${tab}')`); await inspect(`empty-${theme}-${width}-${tab}`); }
     }
+  }
+  for (const width of [1000,1360]) for (const theme of ["light","dark"]) {
+    await call("Emulation.setDeviceMetricsOverride", { width, height: width===1000?720:900, deviceScaleFactor:1, mobile:false });
+    await evaluate(`document.documentElement.dataset.theme='${theme}'; setTab('process'); $('#pixelatePanel').open=true; $('#pixelatePalette').value='custom'; syncCustomPaletteField(); $('#pixelatePanel').scrollIntoView()`);
+    assert.ok(await evaluate("!$('#pixelateCustomPaletteField').classList.contains('hidden')"));
+    assert.equal(await evaluate("$('#pixelateCustomPalettePreview').children.length"),2);
+    assert.equal(await evaluate("$('#pixelateColors').disabled"),true);
+    await inspect(`custom-palette-${theme}-${width}`);
+    await evaluate("$('#pixelateCustomColors').value='#abc'; $('#pixelateCustomColors').dispatchEvent(new Event('input'))");
+    assert.equal(await evaluate("$('#pixelateCustomColors').validity.valid"),false);
+    await evaluate("$('#pixelateCustomColors').value='#1a1c2c, #f4f4f4'; $('#pixelatePalette').value='auto'; syncCustomPaletteField()");
+    assert.equal(await evaluate("$('#pixelateColors').disabled"),false);
   }
   const paths = ["new assets/branch_leaves_hanging_01.png","new assets/flower_white.png","new assets/branch_leaves_hanging_09.png"].map(file=>path.join(game,file));
   await evaluate(`(async()=>{ setSource(await spriteLab.restoreProject({source:{kind:'frames',paths:${JSON.stringify(paths)}}})); window.taskRestore('edit'); initializeHistory('UI audit'); })()`);
@@ -254,6 +267,7 @@ try {
   assert.ok(report.views.every(view=>view.clipped.length===0 && view.unnamed.length===0 && !view.bodyOverflow),"Clipped controls, unnamed buttons or horizontal overflow found");
   assert.ok(report.views.every(view=>view.modals.every(item=>item.rect.x>=-2 && item.rect.y>=-2 && item.rect.right<=view.size[0]+2 && item.rect.bottom<=view.size[1]+2)),"Dialog outside viewport");
   socket.close();await stopAuditApp();
+  port=await freePort();
   child=start();let restarted;
   for(let i=0;i<150;i++) {
     try {restarted=(await(await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(item=>item.url.includes("index.html")&&item.id!==target.id);if(restarted)break;}catch{/* restarting */}

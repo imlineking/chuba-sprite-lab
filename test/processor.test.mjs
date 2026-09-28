@@ -761,6 +761,14 @@ test("pixel art reaches the exported frame and snaps the cell to its grid", asyn
     return [data[offset], data[offset + 1], data[offset + 2], data[offset + 3]];
   };
   assert.deepEqual(at(block, block), at(block + block - 1, block + block - 1), "a block must be flat");
+
+  const custom = await build({ size: 6, mode: "clean", palette: "custom", customColors: "#101820, #e4c789", detail: 35 });
+  const customRaw = await sharp(custom.frame).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let offset = 0; offset < customRaw.data.length; offset += 4) {
+    if (customRaw.data[offset + 3] === 0) continue;
+    const color = [...customRaw.data.subarray(offset, offset + 3)].join(",");
+    assert.ok(color === "16,24,32" || color === "228,199,137", `unexpected exported palette colour ${color}`);
+  }
 });
 
 test("size assistant suggests proportional scale only for comparable poses", () => {

@@ -328,6 +328,14 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; width: 15px; heigh
 .advanced-panel summary span { font: 700 11px "Bahnschrift", sans-serif; letter-spacing: .08em; }
 .advanced-panel summary small { color: #737c87; font-size: 11px; }
 .advanced-panel .advanced-grid { padding: 12px 13px; border-top: 1px solid #252b32; }
+.pixelate-custom-palette { grid-column: 1 / -1; min-width: 0; }
+.pixelate-settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pixelate-wide-choice { grid-column: 1 / -1; }
+.pixelate-settings-grid > .field:not(.pixelate-custom-palette, .pixelate-wide-choice) > span:first-child { display: flex; align-items: flex-end; min-height: 28px; }
+.pixelate-custom-palette small { color: var(--muted); font-size: 11px; line-height: 1.35; }
+.pixelate-palette-preview { display: flex; min-height: 20px; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+.pixelate-palette-preview i { width: 18px; height: 18px; border: 1px solid rgba(128,128,128,.45); border-radius: 4px; }
+.pixelate-custom-palette input:invalid { border-color: var(--danger); }
 .advanced-panel .toggle-list { padding: 0 13px 12px; }
 .preview-help { display: flex; align-items: center; gap: 9px; margin-top: 11px; color: #7d8691; font-size: 11px; line-height: 1.35; }
 

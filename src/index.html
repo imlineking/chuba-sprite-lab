@@ -393,12 +393,12 @@
           <details class="advanced-panel" id="pixelatePanel">
             <summary><span>Пиксель-арт</span><small>пикселизация: размер · палитра · дизеринг</small></summary>
             <label class="toggle-row"><span><strong>Включить пикселизацию</strong><small>фильтр преобразует цвета и пиксели кадра; не рисует новую форму</small></span><input id="pixelateEnabled" type="checkbox" /><i></i></label>
-            <div class="form-grid advanced-grid">
+            <div class="form-grid advanced-grid pixelate-settings-grid">
               <label class="field"><span>Размер пикселя</span><input id="pixelateSize" type="number" min="2" max="64" value="4" /></label>
-              <label class="field"><span>Цветов (своя палитра)</span><input id="pixelateColors" type="number" min="2" max="256" value="16" /></label>
-              <label class="field"><span>Палитра</span>
+              <label class="field"><span>Цветов из изображения</span><input id="pixelateColors" type="number" min="2" max="256" value="16" /></label>
+              <label class="field pixelate-wide-choice"><span>Палитра</span>
                 <select id="pixelatePalette">
-                  <option value="auto">Своя — по картинке</option>
+                  <option value="auto">Авто — из изображения</option>
                   <option value="gameboy">Game Boy — 4 цвета</option>
                   <option value="pico8">PICO-8 — 16</option>
                   <option value="c64">Commodore 64 — 16</option>
@@ -406,9 +406,11 @@
                   <option value="zx">ZX Spectrum — 8</option>
                   <option value="grayscale4">Оттенки серого — 4</option>
                   <option value="grayscale16">Оттенки серого — 16</option>
+                  <option value="custom">Своя палитра · HEX</option>
                 </select>
               </label>
-              <label class="field"><span>Стиль рисования</span>
+              <label id="pixelateCustomPaletteField" class="field pixelate-custom-palette hidden"><span>Цвета своей палитры</span><input id="pixelateCustomColors" type="text" value="#1a1c2c, #f4f4f4" spellcheck="false" autocomplete="off" aria-describedby="pixelateCustomPaletteHelp" /><span id="pixelateCustomPalettePreview" class="pixelate-palette-preview" aria-hidden="true"></span><small id="pixelateCustomPaletteHelp">От 2 до 64 разных цветов #RRGGBB через пробел или запятую. Сохраняются в проекте и рецепте.</small></label>
+              <label class="field pixelate-wide-choice"><span>Стиль рисования</span>
                 <select id="pixelateMode">
                   <option value="clean">Чистый — только палитра</option>
                   <option value="shaded">Плоский тон — ступени цвета</option>
@@ -417,7 +419,7 @@
                   <option value="stitch" title="Экспериментальный режим: без дизеринга результат пока совпадает с чистой пикселизацией">Стежок — эксперимент</option>
                 </select>
               </label>
-              <label class="field"><span>Дизеринг</span>
+              <label class="field pixelate-wide-choice"><span>Дизеринг</span>
                 <select id="pixelateDither">
                   <option value="none">Без дизеринга</option>
                   <option value="bayer2">Упорядоченный 2×2</option>
@@ -428,6 +430,7 @@
                 </select>
               </label>
               <label class="field"><span>Ступеней тона</span><input id="pixelateShading" type="number" min="2" max="8" value="4" /></label>
+              <label class="field"><span>Чёткость деталей</span><input id="pixelateDetail" type="number" min="0" max="100" value="0" title="Усиливает только детали внутри непрозрачной части; контур и альфа не меняются" /></label>
             </div>
             <p class="atlas-hint">Для палитр старого железа лучше подходит упорядоченный дизеринг: диффузия на насыщенных 16 цветах рассыпается в крапинки. Штриховой стиль игнорирует палитру и берёт из неё только цвет туши и бумаги.</p>
           </details>
