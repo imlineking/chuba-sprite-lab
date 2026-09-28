@@ -62,6 +62,21 @@ test("batch removes a custom colour from opaque and transparent files, produces 
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
+test("image-only batch includes RGBA review of the actual cleaned PNG", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "cslab-matte-batch-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = await fixture(root, "flower.png");
+  const original = await fs.readFile(file);
+  const result = await processImageBatch({ paths: [file], outputDir: path.join(root, "out"), outputKind: "images", options, appRoot: path.resolve(".") });
+  assert.equal(result.failed, 0);
+  const review = result.results[0].matteReview;
+  assert.equal(review.width, 64);
+  assert.equal(review.height, 48);
+  assert.ok(review.clear > 0);
+  assert.equal(review.opaque + review.partial + review.clear, 64 * 48);
+  assert.deepEqual(await fs.readFile(file), original);
+});
+
 test("background-only cleaning starts at isolated transparency while preserving closed opaque details", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-transparent-hole-"));
   try {

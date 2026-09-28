@@ -74,6 +74,9 @@ const i18nSources = {
     "Начать работу": "Get started",
     "Стежок — эксперимент": "Stitch — experimental",
     "Экспериментальный режим: без дизеринга результат пока совпадает с чистой пикселизацией": "Experimental mode: without dithering the result currently matches clean pixelation",
+    "пикселизация: размер · палитра · дизеринг": "pixel conversion: size · palette · dithering",
+    "Включить пикселизацию": "Enable pixel conversion",
+    "фильтр преобразует цвета и пиксели кадра; не рисует новую форму": "the filter changes frame pixels and colours; it does not redraw the shape",
     /* window and workflow */
     "Новый": "New",
     "Открыть проект": "Open project",

@@ -7,6 +7,7 @@ import { sliceSpriteSheet } from "./sheet-slicer.mjs";
 import { measureSource, planAutoPilot } from "./auto-pilot.mjs";
 import { findWhiteRemainders } from "./white-remainders.mjs";
 import { healImage } from "./healing-bridge.mjs";
+import { reviewMatteFile } from "./matte-review.mjs";
 
 export async function inspectCleanupQuality(preview, measurements) {
   const issues=[];
@@ -94,6 +95,7 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
         if (!preview.bounds?.width || !preview.bounds?.height) throw new Error("После очистки не осталось объекта. Попробуйте другой профиль или защитите детали маской.");
         const qualityIssues=await inspectCleanupQuality(preview,measurements);
         const qualityWarnings=qualityIssues.map(issue=>issue.message);
+        const matteReview=await reviewMatteFile(preview.afterPath);
         if (healing?.report.lightDetailGuard?.enabled && (!settings.edgeRefine || settings.edgeRefine.mode === "none")) qualityWarnings.push("Светлые детали защищены: перекраска кромки оставлена для ручной проверки.");
         let imagePath = path.join(outputDir, `${name}.png`), version = 2;
         // Exclusive copy prevents overwriting sources or previous results, even on collision.
@@ -110,7 +112,7 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
             catch (error) { if (error.code !== "EEXIST") throw error; healingPath = path.join(outputDir, `${name}-healed-${healingVersion++}.png`); }
           }
         }
-        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, fallback, qualityIssues, qualityWarnings, healingPath, healingReport: healing?.report || null });
+        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, fallback, qualityIssues, qualityWarnings, matteReview, healingPath, healingReport: healing?.report || null });
         onProgress?.({ stage: "batch", value: (index + 1) / inputs.length, message: `Сохранено ${index + 1}/${inputs.length} · ${name}.png` });
         continue;
       }

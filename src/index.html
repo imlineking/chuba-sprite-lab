@@ -391,8 +391,8 @@
           </details>
 
           <details class="advanced-panel" id="pixelatePanel">
-            <summary><span>Пиксель-арт</span><small>перерисовать кадры: палитра · стиль · дизеринг</small></summary>
-            <label class="toggle-row"><span><strong>Включить перерисовку</strong><small>кадры превращаются в пиксель-арт после удаления фона</small></span><input id="pixelateEnabled" type="checkbox" /><i></i></label>
+            <summary><span>Пиксель-арт</span><small>пикселизация: размер · палитра · дизеринг</small></summary>
+            <label class="toggle-row"><span><strong>Включить пикселизацию</strong><small>фильтр преобразует цвета и пиксели кадра; не рисует новую форму</small></span><input id="pixelateEnabled" type="checkbox" /><i></i></label>
             <div class="form-grid advanced-grid">
               <label class="field"><span>Размер пикселя</span><input id="pixelateSize" type="number" min="2" max="64" value="4" /></label>
               <label class="field"><span>Цветов (своя палитра)</span><input id="pixelateColors" type="number" min="2" max="256" value="16" /></label>
@@ -1021,7 +1021,7 @@
         <button id="closeModels" class="about-close" type="button" aria-label="Закрыть">×</button>
         <p class="eyebrow">ЛОКАЛЬНЫЕ МОДЕЛИ</p>
         <h2 id="modelsTitle">Модели ИИ</h2>
-        <p class="models-lead">Все 14 поддержанных моделей входят в офлайн-комплект. Удаление фона, заполнение по маске, промежуточные кадры, увеличение и карты глубины работают без интернета. Кнопка «Проверить запуском» проверяет модель на этом компьютере. Каталожные этапы в разработке пока не являются рабочими инструментами.</p>
+        <p class="models-lead">Доступные локальные модели показаны ниже. Удаление фона, заполнение по маске, промежуточные кадры, увеличение и карты глубины работают без интернета при наличии соответствующих весов. Кнопка «Проверить запуском» проверяет модель на этом компьютере. Каталожные этапы в разработке пока не являются рабочими инструментами.</p>
         <div class="models-toolbar">
           <button id="openModelsFolder" class="button secondary" type="button">Открыть папку моделей</button>
           <span id="modelsDirectory" class="models-directory"></span>
@@ -1192,7 +1192,8 @@
       <article class="batch-preview-dialog">
         <header class="batch-preview-header"><div><h2 id="imageBatchTitle">Автоочистка изображений</h2><p>Сравните исходник и результат. Применение можно отменить Ctrl+Z; PNG сохраняются отдельной кнопкой.</p></div><button id="closeImageBatch" type="button" aria-label="Закрыть предпросмотр">×</button></header>
         <div class="batch-preview-scope"><label>Область действия <select id="imageBatchScope"><option value="current">Текущее изображение</option><option value="selected">Выбранные в списке</option><option value="all" selected>Все изображения</option></select></label><span id="imageBatchSummary" role="status" aria-live="polite">Выберите файлы и запустите предпросмотр.</span></div>
-        <div class="batch-preview-body"><div id="imageBatchList" class="batch-preview-list"></div><div id="imageBatchComparison" class="batch-preview-comparison"><figure><figcaption>Исходник</figcaption><img id="imageBatchBefore" alt="Исходное изображение" /></figure><figure id="imageBatchHealingFigure" class="hidden"><figcaption>После Подорожника</figcaption><img id="imageBatchHealing" alt="Восстановленный объект до очистки" /></figure><figure><figcaption>После очистки</figcaption><img id="imageBatchAfter" alt="Предпросмотр очистки" /></figure></div></div>
+        <div class="batch-matte-review" aria-label="Проверка прозрачности"><strong>ПРОВЕРКА ПРОЗРАЧНОСТИ</strong><label>Фон <select id="imageBatchReviewBackdrop"><option value="magenta-gray">Маджента и серый</option><option value="checker">Светлая клетка</option><option value="black">Чёрный</option><option value="white">Белый</option><option value="green">Зелёный</option></select></label><label>Просмотр <select id="imageBatchReviewScale"><option value="original">Исходный размер · вписать</option><option value="64">64 px · 1:1</option><option value="64-2">64 px · 2×</option><option value="128">128 px · 1:1</option><option value="128-2">128 px · 2×</option><option value="256">256 px · 1:1</option></select></label><span id="imageBatchMatteSummary" role="status" aria-live="polite">Выберите подготовленный файл.</span></div>
+        <div class="batch-preview-body"><div id="imageBatchList" class="batch-preview-list"></div><div id="imageBatchComparison" class="batch-preview-comparison" data-review-background="magenta-gray"><figure><figcaption>Исходник</figcaption><div class="batch-preview-art"><img id="imageBatchBefore" alt="Исходное изображение" /><canvas id="imageBatchBeforeGamePreview" class="hidden" aria-label="Исходник в игровом размере без сглаживания"></canvas></div></figure><figure id="imageBatchHealingFigure" class="hidden"><figcaption>После Подорожника</figcaption><img id="imageBatchHealing" alt="Восстановленный объект до очистки" /></figure><figure><figcaption>После очистки · подложка и масштаб не меняют PNG</figcaption><div class="batch-preview-art"><img id="imageBatchAfter" alt="Предпросмотр очистки" /><canvas id="imageBatchGamePreview" class="hidden" aria-label="Результат в игровом размере без сглаживания"></canvas></div></figure></div></div>
         <footer class="batch-preview-footer"><button id="prepareImageBatch" class="button secondary" type="button">Подготовить просмотр</button><button id="retryImageBatch" class="button secondary" type="button" disabled>Повторить ошибки</button><button id="continueImageBatch" class="button secondary" type="button" disabled>Продолжить оставшиеся</button><button id="cancelImageBatchJob" class="button secondary" type="button" disabled>Остановить</button><button id="applyImageBatch" class="button primary" type="button" disabled>Применить выбранные</button></footer>
       </article>
     </div>

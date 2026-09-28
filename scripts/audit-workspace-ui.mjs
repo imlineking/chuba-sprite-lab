@@ -146,6 +146,22 @@ try {
   await evaluate("$('#imageBatchScope').value='current'; renderImageBatchDraft(); prepareImageBatch()");
   assert.equal(await evaluate("Object.keys(state.frameOverrides).length"),0,"Preview changed the workspace before Apply");
   await inspect("batch-ready-current");
+  assert.ok(await evaluate("imageBatchDraft.results[0].matteReview?.width > 0"), "Batch result lacks real RGBA review");
+  await evaluate("$('#imageBatchReviewScale').value='64-2';$('#imageBatchReviewScale').dispatchEvent(new Event('change'));$('#imageBatchReviewBackdrop').value='black';$('#imageBatchReviewBackdrop').dispatchEvent(new Event('change'))");
+  for (let attempt=0; attempt<20; attempt++) { if (await evaluate("$('#imageBatchGamePreview').width===64")) break; await pause(100); }
+  assert.equal(await evaluate("$('#imageBatchGamePreview').width"),64);
+  assert.equal(await evaluate("$('#imageBatchBeforeGamePreview').width"),64);
+  assert.equal(await evaluate("$('#imageBatchBeforeGamePreview').classList.contains('hidden')"),false);
+  assert.equal(await evaluate("$('#imageBatchGamePreview').style.width"),"128px");
+  assert.equal(await evaluate("$('#imageBatchComparison').dataset.reviewBackground"),"black");
+  await inspect("batch-matte-game-size");
+  await evaluate("$('#imageBatchReviewScale').value='original';$('#imageBatchReviewScale').dispatchEvent(new Event('change'));$('#imageBatchReviewBackdrop').value='magenta-gray';$('#imageBatchReviewBackdrop').dispatchEvent(new Event('change'))");
+  assert.ok(await evaluate("$('#imageBatchGamePreview').classList.contains('hidden')"));
+  assert.ok(await evaluate("$('#imageBatchBeforeGamePreview').classList.contains('hidden')"));
+  await inspect("batch-matte-original");
+  await evaluate("document.documentElement.dataset.theme='light'");
+  await inspect("batch-matte-light");
+  await evaluate("document.documentElement.dataset.theme='dark'");
   assert.equal(await evaluate("$('#applyImageBatch').disabled"),false);
   await evaluate("$('#applyImageBatch').click()"); await pause(500);
   assert.equal(await evaluate("Object.keys(state.frameOverrides).length"),1);

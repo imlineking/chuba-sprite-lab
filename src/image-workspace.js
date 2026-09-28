@@ -64,6 +64,7 @@ $(".mask-tools").insertBefore(checkerButton, $(".mask-tools").firstChild);
 
 let imageBatchDraft = null;
 let imageBatchReturnFocus = null;
+let imageBatchReviewIndex = 0;
 const imageBatchUrl = file => "file:///" + file.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/");
 function persistImageBatchDraft() {
   try { localStorage.setItem("spriteLab.pendingImageBatch", JSON.stringify(imageBatchDraft)); } catch { /* UI still keeps the preview. */ }
@@ -74,13 +75,52 @@ function imageBatchIndexes() {
   return imageBatchDraft.paths.map((_, index) => index).filter(index => scope === "all" || imageBatchDraft.selected.includes(index));
 }
 function showImageBatchPair(index) {
+  imageBatchReviewIndex = index;
   $("#imageBatchBefore").src = imageBatchUrl(imageBatchDraft.paths[index]);
   const item = imageBatchDraft.results[index];
   if (item) $("#imageBatchAfter").src = imageBatchUrl(item.imagePath);
   else $("#imageBatchAfter").removeAttribute("src");
   if (item?.healingPath) $("#imageBatchHealing").src = imageBatchUrl(item.healingPath);
   else $("#imageBatchHealing").removeAttribute("src");
+  renderImageBatchMatteReview();
 }
+function renderImageBatchMatteReview() {
+  const review = imageBatchDraft?.results[imageBatchReviewIndex]?.matteReview;
+  const scale = $("#imageBatchReviewScale").value;
+  const before = $("#imageBatchBefore"), after = $("#imageBatchAfter");
+  const beforeCanvas = $("#imageBatchBeforeGamePreview"), afterCanvas = $("#imageBatchGamePreview");
+  const showGameSize = scale !== "original" && Boolean(review);
+  before.classList.toggle("hidden", showGameSize && before.complete && Boolean(before.naturalWidth));
+  after.classList.toggle("hidden", showGameSize && after.complete && Boolean(after.naturalWidth));
+  beforeCanvas.classList.add("hidden"); afterCanvas.classList.add("hidden");
+  if (!review) { $("#imageBatchMatteSummary").textContent = "Выберите подготовленный файл."; return; }
+  const notes = [`RGBA ${review.width} × ${review.height}`, `${review.partial.toLocaleString("ru-RU")} пикс. с частичной прозрачностью`];
+  if (review.palePartial) notes.push(`${review.palePartial.toLocaleString("ru-RU")} светлых на полупрозрачной кромке — проверьте, это могут быть детали`);
+  if (review.innerPartial) notes.push(`${review.innerPartial.toLocaleString("ru-RU")} частично прозрачных внутри объекта`);
+  if (review.touchesCanvas) notes.push("объект касается края холста — проверьте обрезание");
+  if (review.contentFraction < 25) notes.push(`объект занимает ${review.contentFraction}% холста — перед упаковкой проверьте лишние поля`);
+  $("#imageBatchMatteSummary").textContent = `${notes.join(" · ")}. Жёсткую альфу применяйте только для пиксельной графики после просмотра.`;
+  if (!showGameSize) return;
+  const [widthText, zoomText] = scale.split("-");
+  const targetWidth = Number(widthText), zoom = zoomText === "2" ? 2 : 1;
+  for (const [image, canvas] of [[before, beforeCanvas], [after, afterCanvas]]) {
+    if (!image.complete || !image.naturalWidth) continue;
+    const targetHeight = Math.max(1, Math.round(targetWidth * image.naturalHeight / image.naturalWidth));
+    canvas.width = targetWidth; canvas.height = targetHeight;
+    canvas.style.width = `${targetWidth * zoom}px`; canvas.style.height = `${targetHeight * zoom}px`;
+    const context = canvas.getContext("2d");
+    context.imageSmoothingEnabled = false;
+    context.clearRect(0, 0, targetWidth, targetHeight);
+    context.drawImage(image, 0, 0, targetWidth, targetHeight);
+    canvas.classList.remove("hidden");
+  }
+}
+$("#imageBatchBefore").addEventListener("load", renderImageBatchMatteReview);
+$("#imageBatchAfter").addEventListener("load", renderImageBatchMatteReview);
+$("#imageBatchReviewScale").addEventListener("change", renderImageBatchMatteReview);
+$("#imageBatchReviewBackdrop").addEventListener("change", event => {
+  $("#imageBatchComparison").dataset.reviewBackground = event.target.value;
+});
 function renderImageBatchDraft() {
   const scope = imageBatchIndexes();
   const list = $("#imageBatchList"); list.replaceChildren();
