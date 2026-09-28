@@ -161,7 +161,7 @@ export function paint(sessionId, options = {}) {
     session.frameIndex,
     from,
     to,
-    { color: normalizeColor(options.color), size: normalizeBrushSize(options.size), erase },
+    { color: normalizeColor(options.color), size: normalizeBrushSize(options.size), shape: options.shape === "round" ? "round" : "square", erase },
   ));
 }
 

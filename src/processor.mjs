@@ -12,6 +12,7 @@ import { pixelate } from "./pixelate.mjs";
 import { toneRgba } from "./toning.mjs";
 import { decontaminateEdges } from "./edge-decontaminate.mjs";
 import { refineEdgeRgba } from "./edge-refine.mjs";
+import { adjustImageRgba } from "./color-adjust.mjs";
 import { findBodyAnchor } from "./body-anchor.mjs";
 import { compositeAttachments, trackAttachmentPlacements } from "./attachment-tracker.mjs";
 import { inspectAtlas } from "./atlas-inspector.mjs";
@@ -845,10 +846,22 @@ async function applyToning(frame, options) {
 }
 
 async function applyEdgeRefine(frame, options) {
-  if (!options || (options.mode === "none" && !options.removeWhiteExterior)) return frame;
+  if (!options || (options.mode === "none" && !options.removeWhiteExterior && !options.autoPaleCleanup)) return frame;
   const { data, info } = await sharp(frame.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const refined = refineEdgeRgba(data, info, options);
-  return { ...frame, buffer: await sharp(refined, { raw: info }).png().toBuffer(), info, bounds: alphaBounds(refined, info) };
+  const edgeRefineReport = { removed: 0, recolored: 0 };
+  for (let offset = 0; offset < data.length; offset += 4) {
+    if (data[offset + 3] > 0 && refined[offset + 3] === 0) edgeRefineReport.removed += 1;
+    else if (data[offset] !== refined[offset] || data[offset + 1] !== refined[offset + 1] || data[offset + 2] !== refined[offset + 2]) edgeRefineReport.recolored += 1;
+  }
+  return { ...frame, buffer: await sharp(refined, { raw: info }).png().toBuffer(), info, bounds: alphaBounds(refined, info), edgeRefineReport };
+}
+
+async function applyImageColorAdjust(frame, options) {
+  if (!options || ![options.brightness, options.contrast, options.warmth].some(value => Number(value))) return frame;
+  const { data, info } = await sharp(frame.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const adjusted = adjustImageRgba(data, options);
+  return { ...frame, buffer: await sharp(adjusted, { raw: info }).png().toBuffer() };
 }
 
 async function renderFrames(frames, options) {
@@ -2382,6 +2395,7 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
   keyed = await compositeAttachments(keyed, placements);
   if (options.pixelate && Number(options.pixelate.size) > 1) keyed = await applyPixelation(keyed, options.pixelate);
   if (options.toning) keyed = await applyToning(keyed, options.toning);
+  if (options.colorAdjust) keyed = await applyImageColorAdjust(keyed, options.colorAdjust);
   const transform = resolveFrameTransform(options, previewFrameIndex);
   if (transform && keyed.bounds) {
     const sprite = await sharp(keyed.buffer).extract(keyed.bounds).png().toBuffer();
@@ -2404,6 +2418,7 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
     bounds: keyed.bounds,
     keyColor: keyed.keyColor,
     whiteRemainders,
+    edgeRefineReport: keyed.edgeRefineReport || null,
   };
 }
 

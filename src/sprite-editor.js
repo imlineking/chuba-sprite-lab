@@ -16,6 +16,7 @@ const pixelEditor = {
   tool: "pencil",
   color: [17, 17, 17, 255],
   brush: 1,
+  brushShape: "square",
   tolerance: 24,
   zoom: 8,
   gridOn: true,
@@ -256,6 +257,7 @@ async function pixelEditorOpen() {
   pixelEditorSetColor(pixelEditor.color);
   pixelEditorStatus(t(state.intent === "images" ? "Правки применяются к проекту. PNG сохраняется в главном окне." : "Примените правки к проекту, затем пересоберите лист перед экспортом."), "ready");
   setModalOpen($("#pixelEditorModal"), true, $("#pixelToolPencil"), $("#openPixelEditor"));
+  if (state.intent === "images") $("#pixelAdjustDetails").open = true;
   // Measure after the dialog is laid out; hidden elements have no viewport.
   await new Promise(resolve => requestAnimationFrame(resolve));
   if (pixelEditorIsOpen()) pixelEditorSetZoom(pixelEditorFitZoom(), true);
@@ -355,7 +357,7 @@ function pixelEditorPaintTo(point) {
   const erase = pixelEditor.tool === "eraser";
   const from = pixelEditor.lastPoint || point;
   pixelEditor.lastPoint = point;
-  pixelEditorSend({ op: "paint", from: [from.x, from.y], to: [point.x, point.y], color: pixelEditor.color, size: pixelEditor.brush, erase });
+  pixelEditorSend({ op: "paint", from: [from.x, from.y], to: [point.x, point.y], color: pixelEditor.color, size: pixelEditor.brush, shape: pixelEditor.brushShape, erase });
 }
 
 function pixelEditorPointerDown(event) {
@@ -428,6 +430,7 @@ new ResizeObserver(() => {
 
 function pixelEditorSyncBrush() {
   pixelEditor.brush = Math.max(1, Math.min(16, Number($("#pixelBrushSize").value) || 1));
+  pixelEditor.brushShape = $("#pixelBrushShape").value;
   $("#pixelBrushValue").textContent = `${pixelEditor.brush} px`;
 }
 
@@ -455,6 +458,7 @@ $("#pixelToolEraser").addEventListener("click", () => pixelEditorSetTool("eraser
 $("#pixelToolFill").addEventListener("click", () => pixelEditorSetTool("fill"));
 $("#pixelToolPicker").addEventListener("click", () => pixelEditorSetTool("picker"));
 $("#pixelBrushSize").addEventListener("input", pixelEditorSyncBrush);
+$("#pixelBrushShape").addEventListener("change", pixelEditorSyncBrush);
 $("#pixelTolerance").addEventListener("input", pixelEditorSyncTolerance);
 $("#pixelEraseTransparent").addEventListener("click", () => {
   pixelEditorSend({ op: "eraseTransparent", threshold: pixelEditor.tolerance });

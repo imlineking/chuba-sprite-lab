@@ -676,7 +676,7 @@ function updateActionState() {
     : state.result?.frameCount && !state.resultDirty ? `ЭКСПОРТИРОВАТЬ ${state.result.frameCount} КАДРОВ` : "ЭКСПОРТИРОВАТЬ";
   $("#openMaskEditor").disabled = !hasSource || state.busy;
   $("#addAttachment").disabled = !hasSource || state.busy || state.source?.kind === "video-batch";
-  $$("#regionEditImage, #saveImagePng, #saveAllImagePng, #imageAutoCleanup").forEach(button => { button.disabled = !hasSource || state.busy; });
+  $$("#regionEditImage, #saveImagePng, #saveAllImagePng, #imageAutoCleanup, #imageHealBatch").forEach(button => { button.disabled = !hasSource || state.busy; });
   $("#editFrame").disabled = !state.result?.allSourceFramePaths?.length || state.busy || state.source?.kind === "video-batch";
   $("#copyFrame").disabled = !state.result?.copyableFrameIndexes?.includes(state.selectedFrameIndex) || state.resultDirty || state.busy || state.source?.kind === "video-batch";
   $("#transformTool").disabled = (!state.framePreview && !state.result) || state.busy || state.source?.kind === "video-batch";
@@ -1410,7 +1410,12 @@ function redrawMaskCanvas() {
       continue;
     }
     context.beginPath();
-    context.arc(edit.x * canvas.width, edit.y * canvas.height, edit.radius * Math.max(canvas.width, canvas.height), 0, Math.PI * 2);
+    if (edit.sizePx != null) {
+      const size = Number(edit.sizePx) * canvas.width / state.maskEditorImage.naturalWidth;
+      const x = edit.x * (canvas.width - 1), y = edit.y * (canvas.height - 1);
+      if (edit.shape === "square") context.rect(x - size / 2, y - size / 2, size, size);
+      else context.arc(x, y, size / 2, 0, Math.PI * 2);
+    } else context.arc(edit.x * canvas.width, edit.y * canvas.height, edit.radius * Math.max(canvas.width, canvas.height), 0, Math.PI * 2);
     context.fillStyle = edit.mode === "keep" ? "rgba(200, 223, 111, .34)" : "rgba(255, 92, 98, .34)";
     context.fill();
     context.strokeStyle = edit.mode === "keep" ? "rgba(220, 239, 143, .72)" : "rgba(255, 126, 130, .72)";
@@ -1503,16 +1508,21 @@ function addMaskPoint(event) {
   const rect = canvas.getBoundingClientRect();
   const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
   const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / Math.max(1, rect.height)));
-  const radius = Number($("#maskBrushSize").value) / Math.max(rect.width, rect.height, 1);
+  const width = state.maskEditorImage.naturalWidth, height = state.maskEditorImage.naturalHeight;
+  const pixelX = Math.round(x * (width - 1)), pixelY = Math.round(y * (height - 1));
+  const sizePx = Number($("#maskBrushSize").value);
+  const shape = $("#maskBrushShape").value;
   const previous = state.maskEdits.at(-1);
-  if (previous?.strokeId === state.maskStrokeId && Math.hypot(previous.x - x, previous.y - y) < radius * 0.32) return;
-  state.maskEdits.push({
-    x, y, radius,
-    mode: state.maskBrushMode,
-    frameIndex: activeMaskFrameIndex(),
-    applyAll: $("#maskApplyAll").checked,
-    strokeId: state.maskStrokeId,
-  });
+  const startX = previous?.strokeId === state.maskStrokeId ? Math.round(previous.x * (width - 1)) : pixelX;
+  const startY = previous?.strokeId === state.maskStrokeId ? Math.round(previous.y * (height - 1)) : pixelY;
+  const steps = Math.max(Math.abs(pixelX - startX), Math.abs(pixelY - startY));
+  if (previous?.strokeId === state.maskStrokeId && !steps) return;
+  for (let step = previous?.strokeId === state.maskStrokeId ? 1 : 0; step <= steps; step += 1) {
+    const px = Math.round(startX + (pixelX - startX) * step / Math.max(1, steps));
+    const py = Math.round(startY + (pixelY - startY) * step / Math.max(1, steps));
+    state.maskEdits.push({ x: px / Math.max(1, width - 1), y: py / Math.max(1, height - 1), sizePx, shape,
+      mode: state.maskBrushMode, frameIndex: activeMaskFrameIndex(), applyAll: $("#maskApplyAll").checked, strokeId: state.maskStrokeId });
+  }
   redrawMaskCanvas();
 }
 
@@ -1582,6 +1592,7 @@ function setMaskTool(mode) {
   $$("#maskBrushMode button").forEach((item) => item.classList.toggle("selected", item.dataset.mode === mode));
   $("#smartRegionRow").classList.toggle("hidden", mode !== "smart");
   $("#maskBrushSizeRow").classList.toggle("hidden", !["erase", "keep"].includes(mode));
+  $("#maskBrushShapeRow").classList.toggle("hidden", !["erase", "keep"].includes(mode));
   $("#regionColorTools").classList.toggle("hidden", !["select", "lasso", "pick"].includes(mode));
   $("#maskApplyTitle").textContent = mode === "smart" ? "Искать во всей серии" : "Повторить во всех кадрах";
   $("#maskApplyHint").textContent = mode === "smart" ? "слежение за цветом, размером и формой" : "кисть останется в тех же координатах";

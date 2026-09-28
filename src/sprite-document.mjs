@@ -99,11 +99,17 @@ export function linePoints(fromX, fromY, toX, toY) {
   return points;
 }
 
-function brushPoints(x, y, size) {
-  const radius = Math.max(0, Math.floor((size - 1) / 2));
+function brushPoints(x, y, size, shape = "square") {
+  const diameter = Math.max(1, Math.min(64, Math.round(size)));
+  const left = Math.round(x - (diameter - 1) / 2);
+  const top = Math.round(y - (diameter - 1) / 2);
+  const radius = diameter === 2 ? .72 : (diameter - 1) / 2 + .01;
   const points = [];
-  for (let dy = -radius; dy <= radius; dy += 1) {
-    for (let dx = -radius; dx <= radius; dx += 1) points.push([x + dx, y + dy]);
+  for (let dy = 0; dy < diameter; dy += 1) {
+    for (let dx = 0; dx < diameter; dx += 1) {
+      if (shape === "round" && Math.hypot(dx - (diameter - 1) / 2, dy - (diameter - 1) / 2) > radius) continue;
+      points.push([left + dx, top + dy]);
+    }
   }
   return points;
 }
@@ -133,9 +139,9 @@ function writePixels(document, layerId, frameIndex, points, color, erase) {
   return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
 }
 
-export function paintStroke(document, layerId, frameIndex, from, to, { color = [0, 0, 0, 255], size = 1, erase = false } = {}) {
+export function paintStroke(document, layerId, frameIndex, from, to, { color = [0, 0, 0, 255], size = 1, shape = "square", erase = false } = {}) {
   const points = [];
-  for (const [x, y] of linePoints(from[0], from[1], to[0], to[1])) points.push(...brushPoints(x, y, size));
+  for (const [x, y] of linePoints(from[0], from[1], to[0], to[1])) points.push(...brushPoints(x, y, size, shape));
   return writePixels(document, layerId, frameIndex, points, color, erase);
 }
 

@@ -41,6 +41,15 @@ test("a brush erase clears the painted area and reports no tracking", () => {
   assert.equal(alphaAt(data, 0, 0), 255, "untouched pixels must keep their alpha");
 });
 
+test("a one-pixel square mask brush erases exactly one source pixel", () => {
+  const original = fixture(); const data = Buffer.from(original);
+  applyMaskEdits(data, original, info, [{ type: "brush", mode: "erase", x: 9 / 19, y: 9 / 19, sizePx: 1, shape: "square", frameIndex: 0 }], 0);
+  assert.equal(alphaAt(data, 9, 9), 0);
+  assert.equal(alphaAt(data, 8, 9), 255);
+  assert.equal(alphaAt(data, 10, 9), 255);
+  assert.equal(alphaAt(data, 9, 8), 255);
+});
+
 test("a keep brush restores alpha from the original frame", () => {
   const original = fixture();
   const data = Buffer.from(original);

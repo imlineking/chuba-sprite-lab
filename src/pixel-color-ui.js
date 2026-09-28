@@ -4,7 +4,7 @@ let pixelPaletteExpanded=true;
 let pixelColorBusy=false;
 let pixelColorPreviewTask=0;
 let pixelAdjustDraft=null;
-const pixelAdjustDefaults={brightness:0,saturation:0,contrast:0,shadows:0,highlights:0,tintStrength:0,tint:'#ffffff'};
+const pixelAdjustDefaults={brightness:0,saturation:0,contrast:0,warmth:0,shadows:0,highlights:0,tintStrength:0,tint:'#ffffff'};
 
 function pixelEditorCancelPreview() {
   const hadPreview = Boolean(pixelEditor.preview);
@@ -117,7 +117,7 @@ $('#pixelColorDelete').addEventListener('click',()=>{void pixelColorCommit(true)
 $('#pixelColorCancel').addEventListener('click',pixelEditorCancelPreview);
 $('#pixelColorBrush').addEventListener('click',()=>{const color=pixelColorDraft?.replacement;pixelEditorCancelPreview();if(color)pixelEditorSetColor(color);pixelEditorSetTool('pencil');});
 
-const pixelAdjustLabels={brightness:'Яркость',saturation:'Насыщенность',contrast:'Контраст',shadows:'Тени',highlights:'Светлые участки',tintStrength:'Сила фильтра'};
+const pixelAdjustLabels={brightness:'Яркость',saturation:'Насыщенность',contrast:'Контраст',warmth:'Тепло',shadows:'Тени',highlights:'Светлые участки',tintStrength:'Сила фильтра'};
 for(const [key,label] of Object.entries(pixelAdjustLabels)) {
   const row=document.createElement('label');row.className='pixel-color-label';
   const title=document.createElement('span');title.textContent=label;
@@ -128,6 +128,9 @@ for(const [key,label] of Object.entries(pixelAdjustLabels)) {
 }
 function pixelAdjustmentPreview() {
   cancelAnimationFrame(pixelColorPreviewTask);
+  const active=pixelAdjustDraft&&Object.keys(pixelAdjustLabels).some(key=>Number(pixelAdjustDraft[key]));
+  if(!active){pixelEditor.preview=null;pixelEditorRenderCanvas();$('#pixelAdjustApply').disabled=true;return;}
+  $('#pixelAdjustApply').disabled=false;
   pixelColorPreviewTask=requestAnimationFrame(()=>{
     if(!pixelAdjustDraft||!pixelEditor.composite)return;
     pixelEditor.preview=window.SpriteLabPixelColors.adjust(pixelEditor.composite,pixelAdjustDraft);pixelEditorRenderCanvas();pixelEditorStatus(t('Свет и цвет · предпросмотр, ещё не применено'),'ready');

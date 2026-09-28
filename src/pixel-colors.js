@@ -52,7 +52,7 @@
   }
   function adjust(pixels, options={}) {
     const bounded=(name,min=-100,max=100)=>Math.max(min,Math.min(max,Number(options[name])||0))/100;
-    const brightness=bounded('brightness'), saturation=1+bounded('saturation'), contrast=2**(bounded('contrast')*2);
+    const brightness=bounded('brightness'), saturation=1+bounded('saturation'), contrast=2**(bounded('contrast')*2), warmth=bounded('warmth');
     const shadows=bounded('shadows'),highlights=bounded('highlights'),strength=bounded('tintStrength',0,100);
     const hex=/^#([0-9a-f]{6})$/i.exec(String(options.tint||'#ffffff'));
     const tint=hex?[0,2,4].map(i=>parseInt(hex[1].slice(i,i+2),16)/255):[1,1,1];
@@ -63,7 +63,8 @@
       const lum=rgb[0]*0.2126+rgb[1]*0.7152+rgb[2]*0.0722;
       const shift=brightness+0.5*shadows*(1-lum)**2+0.5*highlights*lum**2;
       for(let c=0;c<3;c++) {
-        const value=(lum+(rgb[c]-lum)*saturation-0.5)*contrast+0.5+shift;
+        const temperature=c===0?warmth*.18:c===1?warmth*.025:-warmth*.18;
+        const value=(lum+(rgb[c]-lum)*saturation-0.5)*contrast+0.5+shift+temperature;
         out[i+c]=Math.round(255*Math.max(0,Math.min(1,value*(1-strength+strength*tint[c]))));
       }
     }

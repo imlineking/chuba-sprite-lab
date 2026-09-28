@@ -75,3 +75,24 @@ test("only a large white exterior is removed, not a small border highlight or in
   assert.equal(frame.at(result, 0, 0)[3], 0);
   assert.equal(frame.at(result, 15, 15)[3], 255);
 });
+
+test("automatic pale cleanup removes a narrow background pocket and protects white artwork", () => {
+  const options = { mode: "recolor", width: 2, depth: 3, whiteOnly: true, whiteThreshold: 175, neutralTolerance: 45, autoPaleCleanup: true };
+  const sprite = canvas(100, 100);
+  for (let y = 5; y <= 94; y += 1) for (let x = 5; x <= 94; x += 1) sprite.paint(x, y, [30, 90, 40, 255]);
+  for (let y = 20; y <= 49; y += 1) for (let x = 48; x <= 49; x += 1) sprite.paint(x, y, [255, 255, 255, 255]);
+  sprite.paint(47, 30, [0, 0, 0, 0]); sprite.paint(50, 30, [0, 0, 0, 0]);
+  // The component is small relative to the full sprite but reaches alpha on both sides.
+  const result = refineEdgeRgba(sprite.data, sprite.info, options);
+  assert.equal(sprite.at(result, 48, 30)[3], 0);
+  const flower = canvas(30, 30);
+  for (let y = 3; y <= 26; y += 1) for (let x = 3; x <= 26; x += 1) flower.paint(x, y, [30, 90, 40, 255]);
+  for (let y = 5; y <= 15; y += 1) for (let x = 8; x <= 20; x += 1) flower.paint(x, y, [248, 246, 238, 255]);
+  const protectedResult = refineEdgeRgba(flower.data, flower.info, options);
+  assert.deepEqual(flower.at(protectedResult, 10, 10), [248, 246, 238, 255]);
+  const outerHighlight = canvas(100, 100);
+  for (let y = 5; y <= 94; y += 1) for (let x = 5; x <= 94; x += 1) outerHighlight.paint(x, y, [30, 90, 40, 255]);
+  for (let y = 22; y <= 45; y += 1) outerHighlight.paint(5, y, [255, 255, 255, 255]);
+  const guarded = refineEdgeRgba(outerHighlight.data, outerHighlight.info, options);
+  assert.equal(outerHighlight.at(guarded, 5, 30)[3], 255, "an outer highlight is not a trapped pocket");
+});

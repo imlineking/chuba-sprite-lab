@@ -77,6 +77,22 @@ test("image-only batch includes RGBA review of the actual cleaned PNG", async t 
   assert.deepEqual(await fs.readFile(file), original);
 });
 
+test("image-only batch writes colour adjustments into PNG and reports changed pixels", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "cslab-colour-batch-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = await fixture(root, "leaf.png", true);
+  const source = await fs.readFile(file);
+  const result = await processImageBatch({ paths: [file], outputDir: path.join(root, "out"), outputKind: "images",
+    options: { keyMode: "alpha", colorAdjust: { brightness: 12, contrast: 10, warmth: 25 } }, appRoot: path.resolve(".") });
+  assert.equal(result.failed, 0);
+  assert.ok(result.results[0].changeReport.changed > 0);
+  const inputPixel = await sharp(file).ensureAlpha().extract({ left: 10, top: 10, width: 1, height: 1 }).raw().toBuffer();
+  const outputPixel = await sharp(result.results[0].imagePath).ensureAlpha().extract({ left: 10, top: 10, width: 1, height: 1 }).raw().toBuffer();
+  assert.equal(outputPixel[3], inputPixel[3]);
+  assert.notDeepEqual(outputPixel.subarray(0, 3), inputPixel.subarray(0, 3));
+  assert.deepEqual(await fs.readFile(file), source);
+});
+
 test("background-only cleaning starts at isolated transparency while preserving closed opaque details", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-transparent-hole-"));
   try {

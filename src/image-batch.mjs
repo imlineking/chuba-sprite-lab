@@ -9,6 +9,18 @@ import { findWhiteRemainders } from "./white-remainders.mjs";
 import { healImage } from "./healing-bridge.mjs";
 import { reviewMatteFile } from "./matte-review.mjs";
 
+async function compareImagePixels(beforePath, afterPath) {
+  const [before, after] = await Promise.all([beforePath, afterPath].map(file => sharp(file).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true })));
+  if (before.info.width !== after.info.width || before.info.height !== after.info.height) return { changed: null, resized: true };
+  let changed = 0;
+  for (let offset = 0; offset < before.data.length; offset += 4) {
+    if (before.data[offset + 3] !== after.data[offset + 3]
+      || (after.data[offset + 3] && (before.data[offset] !== after.data[offset]
+        || before.data[offset + 1] !== after.data[offset + 1] || before.data[offset + 2] !== after.data[offset + 2]))) changed += 1;
+  }
+  return { changed, resized: false };
+}
+
 export async function inspectCleanupQuality(preview, measurements) {
   const issues=[];
   let white=preview.whiteRemainders;
@@ -87,6 +99,13 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
           const matting = plan.steps.find(step => step.stage === "matting");
           if (matting?.status === "blocked") throw new Error(`Нужна локальная модель ${matting.modelId}. Откройте каталог моделей.`);
           settings = { ...settings, keyMode: matting ? "ai" : plan.steps.find(step => step.stage === "key")?.tool === "alpha" ? "alpha" : "auto", aiModel: matting?.modelId || settings.aiModel, aiQuality: plan.settings.quality, aiForceModel: Boolean(matting) };
+          // An already transparent sprite can still contain pale holes and a
+          // light fringe. The planner's fringe stage must actually run.
+          if (!healing && measurements.hasTransparency && plan.steps.some(step => step.stage === "fringe")
+            && (!settings.edgeRefine || settings.edgeRefine.mode === "none")) {
+            settings.edgeRefine = { mode: "recolor", width: 2, depth: 3, whiteOnly: true,
+              whiteThreshold: 175, neutralTolerance: 45, autoPaleCleanup: true };
+          }
           if (plan.steps.some(step => step.stage === "checker")) settings.aiEdits = [...(settings.aiEdits || []), { type: "checker", frameIndex: sourceIndex }];
         }
         signal?.throwIfAborted();
@@ -96,6 +115,7 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
         const qualityIssues=await inspectCleanupQuality(preview,measurements);
         const qualityWarnings=qualityIssues.map(issue=>issue.message);
         const matteReview=await reviewMatteFile(preview.afterPath);
+        const changeReport = await compareImagePixels(file, preview.afterPath);
         if (healing?.report.lightDetailGuard?.enabled && (!settings.edgeRefine || settings.edgeRefine.mode === "none")) qualityWarnings.push("Светлые детали защищены: перекраска кромки оставлена для ручной проверки.");
         let imagePath = path.join(outputDir, `${name}.png`), version = 2;
         // Exclusive copy prevents overwriting sources or previous results, even on collision.
@@ -112,7 +132,7 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
             catch (error) { if (error.code !== "EEXIST") throw error; healingPath = path.join(outputDir, `${name}-healed-${healingVersion++}.png`); }
           }
         }
-        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, fallback, qualityIssues, qualityWarnings, matteReview, healingPath, healingReport: healing?.report || null });
+        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, fallback, qualityIssues, qualityWarnings, matteReview, healingPath, healingReport: healing?.report || null, cleanupReport: preview.edgeRefineReport || null, changeReport });
         onProgress?.({ stage: "batch", value: (index + 1) / inputs.length, message: `Сохранено ${index + 1}/${inputs.length} · ${name}.png` });
         continue;
       }

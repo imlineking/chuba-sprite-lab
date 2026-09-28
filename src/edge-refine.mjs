@@ -1,10 +1,92 @@
 // Conservative pixel-level cleanup. Everything works on a copy so the same options
 // can be previewed, undone and applied to every frame without touching source files.
+function removeSmallPalePockets(output, width, height) {
+  const source = Buffer.from(output);
+  const count = width * height;
+  const pale = new Uint8Array(count);
+  const core = new Uint8Array(count);
+  let visible = 0;
+  let bright = 0;
+  for (let index = 0; index < count; index += 1) {
+    const offset = index * 4;
+    if (source[offset + 3] < 8) continue;
+    visible += 1;
+    const minimum = Math.min(source[offset], source[offset + 1], source[offset + 2]);
+    const spread = Math.max(source[offset], source[offset + 1], source[offset + 2]) - minimum;
+    pale[index] = Number(minimum >= 190 && spread <= 35);
+    core[index] = Number(minimum >= 235 && spread <= 25);
+    bright += core[index];
+  }
+  // Cream petals and white markings are artwork. On such images even a small
+  // bright component at the silhouette must not be guessed away.
+  if (!visible || bright / visible >= .008) return false;
+  const visited = new Uint8Array(count);
+  const queue = new Int32Array(count);
+  let found = false;
+  for (let seed = 0; seed < count; seed += 1) {
+    if (!pale[seed] || visited[seed]) continue;
+    let head = 0; let tail = 0; let brightPixels = 0; let openEdges = 0;
+    let minX = width; let minY = height; let maxX = 0; let maxY = 0;
+    visited[seed] = 1; queue[tail++] = seed;
+    while (head < tail) {
+      const at = queue[head++]; const x = at % width; const y = Math.floor(at / width);
+      brightPixels += core[at];
+      minX = Math.min(minX, x); minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+      for (const next of [x > 0 ? at - 1 : -1, x + 1 < width ? at + 1 : -1, y > 0 ? at - width : -1, y + 1 < height ? at + width : -1]) {
+        if (next < 0) continue;
+        if (source[next * 4 + 3] < 8) openEdges += 1;
+        if (!pale[next] || visited[next]) continue;
+        visited[next] = 1; queue[tail++] = next;
+      }
+    }
+    const shortSide = Math.min(maxX - minX + 1, maxY - minY + 1);
+    const longSide = Math.max(maxX - minX + 1, maxY - minY + 1);
+    if (brightPixels < 12 || openEdges < 2 || longSide < shortSide * 1.5
+      || tail > Math.max(192, Math.ceil(count * .006)) || tail > brightPixels * 4.5) continue;
+    // A highlight on the outside of a leaf has artwork on one side only.
+    // A trapped background slit is bordered by artwork on both sides of
+    // several rows (or columns), even if one part opens into transparency.
+    const rows = new Map(); const columns = new Map();
+    for (let i = 0; i < tail; i += 1) {
+      const at = queue[i], x = at % width, y = Math.floor(at / width);
+      const row = rows.get(y) || [x, x]; row[0] = Math.min(row[0], x); row[1] = Math.max(row[1], x); rows.set(y, row);
+      const column = columns.get(x) || [y, y]; column[0] = Math.min(column[0], y); column[1] = Math.max(column[1], y); columns.set(x, column);
+    }
+    let enclosedRows = 0; let enclosedColumns = 0;
+    for (const [y, [left, right]] of rows) if (left > 0 && right + 1 < width) {
+      const a = y * width + left - 1, b = y * width + right + 1;
+      if (source[a * 4 + 3] >= 8 && source[b * 4 + 3] >= 8 && !pale[a] && !pale[b]) enclosedRows += 1;
+    }
+    for (const [x, [top, bottom]] of columns) if (top > 0 && bottom + 1 < height) {
+      const a = (top - 1) * width + x, b = (bottom + 1) * width + x;
+      if (source[a * 4 + 3] >= 8 && source[b * 4 + 3] >= 8 && !pale[a] && !pale[b]) enclosedColumns += 1;
+    }
+    if (Math.max(enclosedRows, enclosedColumns) < 3) continue;
+    found = true;
+    for (let i = 0; i < tail; i += 1) output[queue[i] * 4 + 3] = 0;
+  }
+  return found;
+}
+
 export function refineEdgeRgba(input, info, options = {}) {
   const { width, height, channels } = info;
   if (channels !== 4) throw new Error("Очистка кромки требует RGBA-кадр.");
   const output = Buffer.from(input);
   const count = width * height;
+  if (options.autoPaleCleanup && !removeSmallPalePockets(output, width, height)) {
+    // Even without a larger pocket, the next pass may repair a pale contour.
+    // It is skipped when coherent white artwork dominates the image.
+    let visible = 0; let bright = 0;
+    for (let index = 0; index < count; index += 1) {
+      const offset = index * 4;
+      if (input[offset + 3] < 8) continue;
+      visible += 1;
+      const minimum = Math.min(input[offset], input[offset + 1], input[offset + 2]);
+      if (minimum >= 235 && Math.max(input[offset], input[offset + 1], input[offset + 2]) - minimum <= 25) bright += 1;
+    }
+    if (visible && bright / visible >= .008) return output;
+  }
   const threshold = Math.max(64, Math.min(255, Math.round(Number(options.whiteThreshold) || 235)));
   const neutralTolerance = Math.max(0, Math.min(96, Math.round(Number(options.neutralTolerance) || 32)));
   const isWhite = (index) => {

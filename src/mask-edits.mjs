@@ -117,6 +117,23 @@ function selectTrackedComponent(components, queue, edit, width, height, frameInd
 function applyBrushEdit(data, original, width, height, channels, edit) {
   const centerX = clamp(Number(edit.x) || 0, 0, 1) * (width - 1);
   const centerY = clamp(Number(edit.y) || 0, 0, 1) * (height - 1);
+  if (edit.sizePx != null) {
+    const size = Math.max(1, Math.min(160, Math.round(Number(edit.sizePx) || 1)));
+    const left = Math.round(centerX - (size - 1) / 2);
+    const top = Math.round(centerY - (size - 1) / 2);
+    const radius = size === 2 ? .72 : (size - 1) / 2 + .01;
+    for (let y = Math.max(0, top); y < Math.min(height, top + size); y += 1) {
+      for (let x = Math.max(0, left); x < Math.min(width, left + size); x += 1) {
+        if (edit.shape !== "square" && Math.hypot(x - left - (size - 1) / 2, y - top - (size - 1) / 2) > radius) continue;
+        const offset = (y * width + x) * channels;
+        if (edit.mode === "keep") {
+          data[offset + 3] = original[offset + 3];
+          for (let channel = 0; channel < 3; channel += 1) data[offset + channel] = original[offset + channel];
+        } else data[offset + 3] = 0;
+      }
+    }
+    return;
+  }
   const radius = Math.max(1, clamp(Number(edit.radius) || 0.03, 0.002, 0.35) * Math.max(width, height));
   const minX = Math.max(0, Math.floor(centerX - radius));
   const maxX = Math.min(width - 1, Math.ceil(centerX + radius));

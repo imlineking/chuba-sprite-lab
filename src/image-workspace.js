@@ -52,9 +52,14 @@ $("#regionEditImage").addEventListener("click", () => openMaskEditor({ tool: "se
 $("#saveImagePng").addEventListener("click", () => window.saveIndependentImages());
 $("#saveAllImagePng").addEventListener("click", () => window.saveIndependentImages({ all: true }));
 $("#imageAutoCleanup").addEventListener("click", () => window.openImageBatchPreview());
+$("#imageHealBatch").addEventListener("click", () => window.openImageBatchPreview({ healFirst: true, automatic: true }));
 $("#imageScenarioChoices").addEventListener("click", event => {
   const button = event.target.closest("button[data-image-task]");
-  if (button) window.taskChoose(button.dataset.imageTask, button.dataset.imageTask === "healing" ? "auto" : "manual");
+  if (!button) return;
+  if (button.dataset.imageTask === "pixels") { window.startImageEditing(); setTab("process"); $("#openPixelEditor").click(); return; }
+  if (button.dataset.imageTask === "background") { window.openImageBatchPreview(); return; }
+  if (button.dataset.imageTask === "healing") { window.openImageBatchPreview({ healFirst: true, automatic: true }); return; }
+  window.taskChoose(button.dataset.imageTask, "manual");
 });
 // History belongs beside Apply/Cancel and must stay visible when tools scroll.
 const maskHistoryButtons = $(".mask-history-actions");
@@ -102,7 +107,8 @@ function renderImageBatchMatteReview() {
   $("#imageBatchMatteSummary").textContent = `${notes.join(" · ")}. Жёсткую альфу применяйте только для пиксельной графики после просмотра.`;
   if (!showGameSize) return;
   const [widthText, zoomText] = scale.split("-");
-  const targetWidth = Number(widthText), zoom = zoomText === "2" ? 2 : 1;
+  const targetWidth = widthText === "zoom" ? review.width : Number(widthText);
+  const zoom = widthText === "zoom" ? Number(zoomText) : zoomText === "2" ? 2 : 1;
   for (const [image, canvas] of [[before, beforeCanvas], [after, afterCanvas]]) {
     if (!image.complete || !image.naturalWidth) continue;
     const targetHeight = Math.max(1, Math.round(targetWidth * image.naturalHeight / image.naturalWidth));
@@ -137,7 +143,12 @@ function renderImageBatchDraft() {
     const title = document.createElement("span"); title.textContent = `${index + 1} · ${baseName(file)}`;
     const detail = document.createElement("small"), item = imageBatchDraft.results[index];
     const model = item?.fallback?.model || item?.plan?.steps?.find(step => step.stage === "matting")?.modelId;
-    detail.textContent = imageBatchDraft.exportFailures?.[index] ? `Ошибка сохранения: ${imageBatchDraft.exportFailures[index]}` : imageBatchDraft.failures[index] ? `Ошибка: ${imageBatchDraft.failures[index]}` : imageBatchDraft.exported?.[index] ? "Сохранено · PNG + JSON" : item ? `Готово · ${item.healingPath ? "Подорожник → " : ""}${model || "локальная очистка"}${item.fallback ? " · CPU fallback" : ""}${item.qualityWarnings?.length ? " · " + item.qualityWarnings.join(" ") : ""}` : "Ещё не обработано";
+    const cleanup = item?.cleanupReport;
+    const cleanupText = cleanup ? cleanup.removed || cleanup.recolored
+      ? ` · удалено ${cleanup.removed} пикс. остатков · перекрашено ${cleanup.recolored} пикс. кромки`
+      : " · светлая кромка не изменилась" : "";
+    const changeText = item?.changeReport?.changed === 0 ? " · пиксели не изменились" : item?.changeReport?.changed != null ? ` · всего изменено ${item.changeReport.changed} пикс.` : "";
+    detail.textContent = imageBatchDraft.exportFailures?.[index] ? `Ошибка сохранения: ${imageBatchDraft.exportFailures[index]}` : imageBatchDraft.failures[index] ? `Ошибка: ${imageBatchDraft.failures[index]}` : imageBatchDraft.exported?.[index] ? "Сохранено · PNG + JSON" : item ? `Готово · ${item.healingPath ? "Подорожник → " : ""}${model || "локальная очистка"}${cleanupText}${changeText}${item.fallback ? " · CPU fallback" : ""}${item.qualityWarnings?.length ? " · " + item.qualityWarnings.join(" ") : ""}` : "Ещё не обработано";
     button.append(title, detail); button.addEventListener("click", () => showImageBatchPair(index)); row.append(checkbox, button); list.append(row);
   });
   const ready = scope.filter(index => imageBatchDraft.results[index]).length;
@@ -148,17 +159,28 @@ function renderImageBatchDraft() {
   $("#cancelImageBatchJob").disabled = !state.busy;
   $("#applyImageBatch").disabled = state.busy || !scope.length || ready !== scope.length;
   $("#imageBatchScope").disabled = state.busy;
+  $$("#imageBatchTasks button, .batch-color-adjust input, #imageBatchResetColor").forEach(control => { control.disabled = state.busy; });
 }
 window.openImageBatchPreview = function (configuration = {}) {
   if ((!configuration.paths && state.source?.kind !== "frames") || state.busy) return;
   imageBatchReturnFocus = document.activeElement;
   const paths = configuration.paths || state.source.paths;
   const exportAtlases = Boolean(configuration.exportAtlases);
-  const configurationKey = JSON.stringify({exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst});
+  const configurationKey = JSON.stringify({version:2, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst});
   let saved; try { saved = JSON.parse(localStorage.getItem("spriteLab.pendingImageBatch")); } catch { /* No prior job. */ }
   if (!imageBatchDraft || JSON.stringify(imageBatchDraft.paths) !== JSON.stringify(paths) || imageBatchDraft.configurationKey !== configurationKey) {
-    imageBatchDraft = saved && JSON.stringify(saved.paths) === JSON.stringify(paths) && saved.configurationKey === configurationKey && saved.results && saved.failures && saved.selected ? saved : { paths: [...paths], selected: [Math.min(state.selectedFrameIndex,paths.length-1)], results: {}, failures: {}, settings: {}, directory: null, configurationKey, configuration };
+    const adjustments = imageBatchDraft?.adjustments || { brightness: 0, contrast: 0, warmth: 0 };
+    imageBatchDraft = saved && JSON.stringify(saved.paths) === JSON.stringify(paths) && saved.configurationKey === configurationKey && saved.results && saved.failures && saved.selected ? saved : { paths: [...paths], selected: [Math.min(state.selectedFrameIndex,paths.length-1)], results: {}, failures: {}, settings: {}, directory: null, configurationKey, configuration, adjustments };
   }
+  imageBatchDraft.adjustments ||= { brightness: 0, contrast: 0, warmth: 0 };
+  for (const key of ["brightness", "contrast", "warmth"]) {
+    document.getElementById("imageBatch" + key[0].toUpperCase() + key.slice(1)).value = String(imageBatchDraft.adjustments[key] || 0);
+    document.getElementById("imageBatch" + key[0].toUpperCase() + key.slice(1) + "Value").textContent = String(imageBatchDraft.adjustments[key] || 0);
+  }
+  $$("#imageBatchTasks button").forEach(button => {
+    const active = (button.dataset.batchTask === "healing") === Boolean(configuration.healFirst);
+    button.classList.toggle("selected", active); button.setAttribute("aria-pressed", String(active));
+  });
   $('#imageBatchTitle').textContent = configuration.healFirst ? 'Восстановление объекта · Подорожник' : exportAtlases ? 'Пакетная подготовка PNG + JSON' : 'Автоочистка изображений';
   $('.batch-preview-header p').textContent = configuration.healFirst ? 'Сравните исходник, восстановленный объект и результат обычной очистки. Применение можно отменить Ctrl+Z; исходные файлы остаются на месте.' : exportAtlases ? 'Проверьте очистку каждого исходника. После просмотра сохраняются отдельные PNG + JSON. Исходные файлы остаются на месте.' : 'Сравните исходник и результат. Применение можно отменить Ctrl+Z; PNG сохраняются отдельной кнопкой.';
   $('#imageBatchHealingFigure').classList.toggle('hidden', !configuration.healFirst);
@@ -166,6 +188,7 @@ window.openImageBatchPreview = function (configuration = {}) {
   $('#applyImageBatch').textContent = exportAtlases ? 'Сохранить выбранные · PNG + JSON' : 'Применить выбранные';
   $("#imageBatchModal").classList.remove("hidden"); $("#imageBatchScope").value = "all";
   renderImageBatchDraft(); showImageBatchPair(Math.min(state.selectedFrameIndex,paths.length-1)); $("#imageBatchScope").focus();
+  if (!Object.keys(imageBatchDraft.results).length && !Object.keys(imageBatchDraft.failures).length) void prepareImageBatch();
 };
 window.closeImageBatchPreview = function () {
   if (state.busy) { $("#imageBatchSummary").textContent = "Остановите обработку перед закрытием. Готовые результаты сохранятся в просмотре."; return; }
@@ -177,8 +200,9 @@ async function prepareImageBatch(mode = "all") {
   if (!indexes.length) return;
   const configuration = imageBatchDraft.configuration || {};
   const baseline = configuration.options || collectOptions();
-  const settings = { ...baseline, pixelate: configuration.exportAtlases ? baseline.pixelate : null, toning: configuration.exportAtlases ? baseline.toning : null, frameTransforms: {}, attachments: [], attachmentPlacements: null };
+  const settings = { ...baseline, pixelate: configuration.exportAtlases ? baseline.pixelate : null, toning: configuration.exportAtlases ? baseline.toning : null, colorAdjust: { ...imageBatchDraft.adjustments }, frameTransforms: {}, attachments: [], attachmentPlacements: null };
   state.busy = true; updateActionState(); renderImageBatchDraft();
+  $("#prepareImageBatch").textContent = "Обрабатываю…";
   $("#cancelJob").classList.remove("hidden");
   setStatus(`Готовлю просмотр: ${indexes.length} изображений…`, "busy", .02);
   try {
@@ -195,10 +219,34 @@ async function prepareImageBatch(mode = "all") {
     persistImageBatchDraft(); showImageBatchPair(indexes[0]);
     setStatus(result.cancelled || result.stopped ? "Обработка остановлена · готовое осталось в просмотре" : "Предпросмотр готов · сравните и примените", "done", 0);
   } catch (error) { showError(error.message); }
-  finally { state.busy = false; updateActionState(); renderImageBatchDraft(); $("#cancelJob").classList.add("hidden"); }
+  finally { state.busy = false; updateActionState(); renderImageBatchDraft(); $("#prepareImageBatch").textContent = "Обновить просмотр"; $("#cancelJob").classList.add("hidden"); }
 }
 $("#closeImageBatch").addEventListener("click", window.closeImageBatchPreview);
 $("#imageBatchScope").addEventListener("change", renderImageBatchDraft);
+$("#imageBatchTasks").addEventListener("click", event => {
+  const button = event.target.closest("button[data-batch-task]");
+  if (!button || state.busy) return;
+  const healFirst = button.dataset.batchTask === "healing";
+  if (healFirst === Boolean(imageBatchDraft.configuration?.healFirst)) return;
+  window.openImageBatchPreview({ ...imageBatchDraft.configuration, healFirst, automatic: true });
+});
+function imageBatchColorChanged() {
+  if (!imageBatchDraft || state.busy) return;
+  for (const key of ["brightness", "contrast", "warmth"]) {
+    const element = document.getElementById("imageBatch" + key[0].toUpperCase() + key.slice(1));
+    imageBatchDraft.adjustments[key] = Number(element.value);
+    document.getElementById("imageBatch" + key[0].toUpperCase() + key.slice(1) + "Value").textContent = element.value;
+  }
+  imageBatchDraft.results = {}; imageBatchDraft.failures = {}; imageBatchDraft.settings = {}; imageBatchDraft.exported = {}; imageBatchDraft.exportFailures = {};
+  persistImageBatchDraft(); renderImageBatchDraft(); showImageBatchPair(imageBatchReviewIndex);
+  $("#imageBatchSummary").textContent = "Цвет изменён · обновите просмотр, затем примените PNG";
+  $("#prepareImageBatch").textContent = "Обновить просмотр";
+}
+for (const key of ["Brightness", "Contrast", "Warmth"]) document.getElementById("imageBatch" + key).addEventListener("input", imageBatchColorChanged);
+$("#imageBatchResetColor").addEventListener("click", () => {
+  for (const key of ["Brightness", "Contrast", "Warmth"]) document.getElementById("imageBatch" + key).value = "0";
+  imageBatchColorChanged();
+});
 $("#prepareImageBatch").addEventListener("click", () => prepareImageBatch());
 $("#retryImageBatch").addEventListener("click", () => prepareImageBatch("failed"));
 $("#continueImageBatch").addEventListener("click", () => prepareImageBatch("remaining"));

@@ -61,6 +61,16 @@ test("the brush covers a square and the eraser clears it back", () => {
   assert.deepEqual(readPixel(doc, layer, 0, 4, 4), [0, 0, 0, 0]);
 });
 
+test("even-sized square and round pixel brushes paint the requested native footprint", () => {
+  const doc = document(); const layer = doc.layers[0].id;
+  const square = paintStroke(doc, layer, 0, [4, 4], [4, 4], { color: RED, size: 2, shape: "square" });
+  assert.deepEqual(square, { x: 4, y: 4, width: 2, height: 2 });
+  const round = paintStroke(doc, layer, 0, [4, 4], [4, 4], { size: 3, shape: "round", erase: true });
+  assert.deepEqual(round, { x: 3, y: 3, width: 3, height: 3 });
+  assert.deepEqual(readPixel(doc, layer, 0, 4, 4), [0, 0, 0, 0]);
+  assert.deepEqual(readPixel(doc, layer, 0, 5, 5), RED);
+});
+
 test("a fill stays inside its region and cannot leak through a one-pixel wall", () => {
   const doc = document({ width: 5, height: 5 });
   const layer = doc.layers[0].id;
