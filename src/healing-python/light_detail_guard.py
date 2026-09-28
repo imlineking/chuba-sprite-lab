@@ -287,6 +287,39 @@ def recover_light_details(source: np.ndarray, cutout: np.ndarray, structure: dic
             recolored[y, x] = True
             masks['filled-holes'][y, x] = True
 
+        # Finish isolated pinholes that no longer have a readable source color.
+        # Each round samples only an already opaque adjacent pixel. The closing
+        # and five-neighbor rule keep this inside the recovered object instead
+        # of growing its outer silhouette into genuine transparent gaps.
+        iterative_fill = 0
+        for _ in range(8):
+            opaque = alpha == 255
+            interior = _closed(opaque, 9) & ~opaque & around_restoration & near_petal
+            padded = np.pad(opaque, 1)
+            neighbors = sum(padded[1 + dy:1 + dy + h, 1 + dx:1 + dx + w]
+                            for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dx or dy)
+            holes = interior & (neighbors >= 5)
+            if not holes.any():
+                break
+            for y, x in np.argwhere(holes):
+                donors = []
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        ny, nx = y + dy, x + dx
+                        if (dy or dx) and 0 <= ny < h and 0 <= nx < w and opaque[ny, nx]:
+                            distance = int(np.square(result[ny, nx, :3].astype(np.int16) - rgb[y, x]).sum())
+                            donors.append((distance, ny, nx))
+                if not donors:
+                    continue
+                _, ny, nx = min(donors)
+                result[y, x, :3] = result[ny, nx, :3]
+                alpha[y, x] = 255
+                recolored[y, x] = True
+                masks['filled-holes'][y, x] = True
+                iterative_fill += 1
+    else:
+        iterative_fill = 0
+
     masks['recolored-seams'] = recolored
     assert np.array_equal(result[:, :, :3][~recolored], source[:, :, :3][~recolored])
     report = {'enabled': True, 'seedPixels': count, 'hiddenSeedFraction': round(hidden_seed_fraction, 4),
@@ -296,6 +329,7 @@ def recover_light_details(source: np.ndarray, cutout: np.ndarray, structure: dic
               'preservedVisible': int(preserved.sum()),
               'restoredHidden': int(masks['restored-hidden'].sum()),
               'filledHolePixels': int(masks['filled-holes'].sum()),
+              'iterativeFillPixels': iterative_fill,
               'rgbUnchangedOutsideSeams': True,
               'recoloredSeamPixels': int(recolored.sum())}
     return result, masks, report
