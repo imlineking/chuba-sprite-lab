@@ -4,10 +4,20 @@ import path from "node:path";
 import sharp from "sharp";
 import { keyFrame, processFramePreview, processSprites, supportedImageExtensions } from "./processor.mjs";
 import { sliceSpriteSheet } from "./sheet-slicer.mjs";
-import { measureSource, planAutoPilot } from "./auto-pilot.mjs";
+import { hasConfirmedChecker, hasPreparedAlpha, measureSource, planAutoPilot } from "./auto-pilot.mjs";
 import { findWhiteRemainders } from "./white-remainders.mjs";
 import { healImage } from "./healing-bridge.mjs";
 import { reviewMatteFile } from "./matte-review.mjs";
+import { chooseLightArtworkPolicy } from "./light-artwork-policy.mjs";
+import { backgroundKeyMode } from "./background-analysis.mjs";
+
+const solidBackgroundModes = new Set(["white", "black", "green", "magenta", "blue"]);
+const backgroundNames = { white: "белый", black: "чёрный", green: "зелёный", magenta: "маджента", blue: "синий", auto: "подбор цвета" };
+
+function detectedSolidMode(measurements) {
+  if (!measurements?.solidBackground || Number(measurements.borderSolidRatio) < .92) return null;
+  return backgroundKeyMode({ solid: true, transparentRatio: 0, colour: measurements.borderColour });
+}
 
 async function compareImagePixels(beforePath, afterPath) {
   const [before, after] = await Promise.all([beforePath, afterPath].map(file => sharp(file).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true })));
@@ -21,19 +31,21 @@ async function compareImagePixels(beforePath, afterPath) {
   return { changed, resized: false };
 }
 
-export async function inspectCleanupQuality(preview, measurements) {
+export async function inspectCleanupQuality(preview, measurements, lightDecision) {
   const issues=[];
   let white=preview.whiteRemainders;
   if(!white?.count && measurements?.borderColour?.every(value=>value>=230)) {
     const raw=await sharp(preview.afterPath).toColourspace('srgb').ensureAlpha().raw().toBuffer({resolveWithObject:true});
     white=findWhiteRemainders(raw.data,raw.info,measurements.borderColour);
   }
-  if(white?.count) issues.push({code:'white-regions-to-review',count:white.count,message:`Светлые области: ${white.count}. Это могут быть детали рисунка или остатки фона; проверьте просветы на цветной подложке.`});
+  if(white?.count && !(lightDecision?.policy === 'protect' && lightDecision.confidence === 'high')) issues.push({code:'white-regions-to-review',count:white.count,message:`Светлые области: ${white.count}. Это могут быть детали рисунка или остатки фона; проверьте просветы на цветной подложке.`});
   // ToonOut may replace the checker step entirely. Validate the result against
   // the input measurements, rather than the name of the selected stage.
-  if(measurements?.checkerPixels>=64) {
+  const preparedAlpha = hasPreparedAlpha(measurements);
+  if(hasConfirmedChecker(measurements,{preparedAlpha})) {
     const remaining=await measureSource([preview.afterPath]);
-    if(remaining?.checkerPixels>=64) issues.push({code:'residual-checker',pixels:Math.round(remaining.checkerPixels),message:`Обнаружены области, похожие на остатки клетки (${Math.round(remaining.checkerPixels)} пикселей). Проверьте их на цветной подложке; детали рисунка могут выглядеть похоже.`});
+    const remainingPrepared = hasPreparedAlpha(remaining);
+    if(hasConfirmedChecker(remaining,{preparedAlpha:remainingPrepared})) issues.push({code:'residual-checker',pixels:Math.round(remaining.checkerPixels),message:`Обнаружены области, похожие на остатки клетки (${Math.round(remaining.checkerPixels)} пикселей). Проверьте их на цветной подложке; детали рисунка могут выглядеть похоже.`});
   }
   return issues;
 }
@@ -58,7 +70,7 @@ export async function previewWithModelFallback({ inputPath, options, appRoot, au
   }
 }
 
-export async function processImageBatch({ paths, outputDir, options = {}, splitObjects = true, outputKind = "atlas", automatic = false, healFirst = false, installed = [], sourceIndexes = [], appRoot, signal, onProgress, shouldStop }) {
+export async function processImageBatch({ paths, outputDir, options = {}, splitObjects = true, outputKind = "atlas", automatic = false, healFirst = false, installed = [], sourceIndexes = [], appRoot, signal, onProgress, shouldStop, previewFrame = processFramePreview }) {
   const inputs = [...new Set((paths || []).map(file => path.resolve(file)))];
   if (!inputs.length || inputs.length > 256) throw new Error("Выберите от 1 до 256 изображений.");
   if (!outputDir) throw new Error("Выберите папку результатов.");
@@ -82,6 +94,8 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
           inputPath = healing.imagePath;
         }
         let settings = { ...options, previewFrameIndex: sourceIndex, outputBackground: "transparent" };
+        const lightRequest = options.edgeRefine?.noLightArtwork ? "none" : options.edgeRefine?.lightArtworkPolicy || "protect";
+        let lightDecision = chooseLightArtworkPolicy(null, lightRequest);
         if (healing && (!settings.edgeRefine || settings.edgeRefine.mode === "none")) {
           // Repaint a confirmed pale fringe on dark/coloured sprites. Cream
           // petals and mushroom spots are material, so their boundary stays
@@ -90,15 +104,49 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
         }
         let plan = null;
         let measurements=null;
+        let forcedBackground = null;
+        if (!automatic && solidBackgroundModes.has(options.batchBackgroundMode)) {
+          settings = { ...settings, keyMode: options.batchBackgroundMode, keyScope: "exterior",
+            blackOutline: options.batchBackgroundMode === "black" && options.batchBlackContour === "remove" ? 0 : (Number(settings.blackOutline) || 3),
+            edgeDecontaminate: options.batchBackgroundMode !== "black" };
+        }
         if (automatic) {
           measurements = await measureSource([inputPath]);
+          lightDecision = chooseLightArtworkPolicy(measurements, lightRequest);
           // The repaired alpha is the baseline. Do not replace it with a new
           // whole-object ToonOut mask during the specialist cleanup pass.
           const available = healing ? installed.filter(id => id !== "toonout") : installed;
           plan = planAutoPilot({ measurements, installed: available, source: { kind: "images", frameCount: 1 }, target: { intent: "images", cleanupRequested: true } });
+          const explicitChoice = Object.hasOwn(options, "batchModelOverride");
+          forcedBackground = solidBackgroundModes.has(options.batchBackgroundMode) ? options.batchBackgroundMode : null;
+          const requestedModel = healing || forcedBackground ? null : explicitChoice ? options.batchModelOverride : options.keyMode === "ai" ? options.aiModel : null;
           const matting = plan.steps.find(step => step.stage === "matting");
-          if (matting?.status === "blocked") throw new Error(`Нужна локальная модель ${matting.modelId}. Откройте каталог моделей.`);
-          settings = { ...settings, keyMode: matting ? "ai" : plan.steps.find(step => step.stage === "key")?.tool === "alpha" ? "alpha" : "auto", aiModel: matting?.modelId || settings.aiModel, aiQuality: plan.settings.quality, aiForceModel: Boolean(matting) };
+          if (forcedBackground) {
+            settings = { ...settings, keyMode: forcedBackground, keyScope: "exterior", aiForceModel: false };
+            plan = { ...plan, steps: [
+              { stage: "key", kind: "builtin", tool: forcedBackground, title: `Удалить ${forcedBackground} фон`, why: "Цвет фона выбран пользователем.", confidence: "high", status: "ready" },
+              ...plan.steps.filter(step => !["matting", "key", "checker"].includes(step.stage)),
+            ] };
+          } else if (requestedModel) {
+            if (!installed.includes(requestedModel)) throw new Error(`Выбранная модель ${requestedModel} не установлена. Выберите другую модель или автовыбор.`);
+            // A model selected by the user must not disappear behind the automatic
+            // alpha shortcut, even when the source is already partly transparent.
+            settings = { ...settings, keyMode: "ai", aiModel: requestedModel, aiForceModel: true };
+            plan = { ...plan, steps: [
+              { stage: "matting", kind: "model", modelId: requestedModel, title: `Выделение · ${requestedModel}`, why: "Модель выбрана пользователем.", confidence: "high", status: "ready" },
+              ...plan.steps.filter(step => !["matting", "key", "checker"].includes(step.stage)),
+            ], settings: { ...plan.settings, modelId: requestedModel, provider: settings.aiProvider, quality: settings.aiQuality },
+            summary: `Выбрана модель ${requestedModel}. Сравните контур и белые детали перед применением.` };
+          } else {
+            if (matting?.status === "blocked") throw new Error(`Нужна локальная модель ${matting.modelId}. Откройте каталог моделей.`);
+            const keyStep = plan.steps.find(step => step.stage === "key");
+            const solidMode = keyStep?.tool === "key" ? detectedSolidMode(measurements) : null;
+            settings = { ...settings, keyMode: matting ? "ai" : keyStep?.tool === "alpha" ? "alpha" : solidMode || "auto",
+              keyScope: solidMode ? "exterior" : settings.keyScope,
+              aiModel: matting?.modelId || settings.aiModel, aiQuality: plan.settings.quality, aiForceModel: Boolean(matting) };
+          }
+          if (settings.keyMode === "black") settings.blackOutline = options.batchBlackContour === "remove" ? 0 : (Number(settings.blackOutline) || 3);
+          if (solidBackgroundModes.has(settings.keyMode) && settings.keyMode !== "black") settings.edgeDecontaminate = true;
           // An already transparent sprite can still contain pale holes and a
           // light fringe. The planner's fringe stage must actually run.
           if (!healing && measurements.hasTransparency && plan.steps.some(step => step.stage === "fringe")
@@ -106,16 +154,33 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
             settings.edgeRefine = { mode: "recolor", width: 2, depth: 3, whiteOnly: true,
               whiteThreshold: 175, neutralTolerance: 45, autoPaleCleanup: true };
           }
-          if (plan.steps.some(step => step.stage === "checker")) settings.aiEdits = [...(settings.aiEdits || []), { type: "checker", frameIndex: sourceIndex }];
+          if (!requestedModel && lightDecision.policy !== "none" && plan.steps.some(step => step.stage === "checker")) settings.aiEdits = [...(settings.aiEdits || []), { type: "checker", frameIndex: sourceIndex }];
+        }
+        if (lightDecision.policy === "none") {
+          // An explicit palette choice wins over the planner's conservative
+          // pale-detail guard, including when Podorozhnik ran first.
+          settings.edgeRefine = { mode: "none", width: 1, depth: 2, whiteOnly: true,
+            ...settings.edgeRefine, mode: "none", noLightArtwork: true, autoPaleCleanup: false };
+          settings.aiEdits = (settings.aiEdits || []).filter(edit => edit.type !== "checker" || edit.frameIndex !== sourceIndex);
+          // On a partly transparent sprite this is a residual-cleanup task.
+          // Keep the existing silhouette unless the user selected a model.
+          if (automatic && measurements?.hasTransparency && !options.batchModelOverride && !forcedBackground && !healing) {
+            settings.keyMode = "alpha";
+            settings.aiForceModel = false;
+            plan = { ...plan, steps: plan.steps.filter(step => step.stage !== "matting" && step.stage !== "checker"),
+              summary: "Сохраняем существующий контур и удаляем светлые остатки по выбранной палитре." };
+          }
         }
         signal?.throwIfAborted();
-        const { result: preview, fallback } = await previewWithModelFallback({ inputPath, options: settings, appRoot, automatic, installed, signal });
+        const { result: preview, fallback } = await previewWithModelFallback({ inputPath, options: settings, appRoot, automatic, installed, signal, preview: previewFrame });
         signal?.throwIfAborted();
         if (!preview.bounds?.width || !preview.bounds?.height) throw new Error("После очистки не осталось объекта. Попробуйте другой профиль или защитите детали маской.");
-        const qualityIssues=await inspectCleanupQuality(preview,measurements);
+        const qualityIssues=await inspectCleanupQuality(preview,measurements,lightDecision);
         const qualityWarnings=qualityIssues.map(issue=>issue.message);
         const matteReview=await reviewMatteFile(preview.afterPath);
         const changeReport = await compareImagePixels(file, preview.afterPath);
+        if (automatic && changeReport.changed === 0 && qualityIssues.length) qualityWarnings.push("Автоматическая очистка не изменила этот файл; проверьте отмеченные области.");
+        if (automatic && changeReport.changed === 0 && settings.keyMode === "ai" && settings.aiForceModel) qualityWarnings.push("Результат выбранной модели совпадает с исходником; проверьте фон или попробуйте другой способ.");
         if (healing?.report.lightDetailGuard?.enabled && (!settings.edgeRefine || settings.edgeRefine.mode === "none")) qualityWarnings.push("Светлые детали защищены: перекраска кромки оставлена для ручной проверки.");
         let imagePath = path.join(outputDir, `${name}.png`), version = 2;
         // Exclusive copy prevents overwriting sources or previous results, even on collision.
@@ -132,7 +197,14 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
             catch (error) { if (error.code !== "EEXIST") throw error; healingPath = path.join(outputDir, `${name}-healed-${healingVersion++}.png`); }
           }
         }
-        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, fallback, qualityIssues, qualityWarnings, matteReview, healingPath, healingReport: healing?.report || null, cleanupReport: preview.edgeRefineReport || null, changeReport });
+        const route = [
+          ...(healing ? ["Восстановление"] : []),
+          settings.keyMode === "ai" ? `Выделение · ${settings.aiModel}` : settings.keyMode === "alpha" ? "Сохранена прозрачность" : settings.keyMode === "black" ? `Чёрный фон · ${settings.blackOutline ? "контур сохранён" : "без сохранения контура"}` : `Очистка фона · ${backgroundNames[settings.keyMode] || settings.keyMode}`,
+          ...((settings.aiEdits || []).some(edit => edit.type === "checker" && edit.frameIndex === sourceIndex) ? ["Удаление шахматки"] : []),
+          ...(preview.edgeRefineReport?.removed || preview.edgeRefineReport?.recolored ? [settings.edgeRefine?.noLightArtwork ? "Очистка светлых остатков и края" : "Очистка края"] : []),
+          "Проверка результата",
+        ];
+        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, route, fallback, qualityIssues, qualityWarnings, matteReview, healingPath, healingReport: healing?.report || null, cleanupReport: preview.edgeRefineReport || null, lightDecision, changeReport });
         onProgress?.({ stage: "batch", value: (index + 1) / inputs.length, message: `Сохранено ${index + 1}/${inputs.length} · ${name}.png` });
         continue;
       }

@@ -96,3 +96,95 @@ test("automatic pale cleanup removes a narrow background pocket and protects whi
   const guarded = refineEdgeRgba(outerHighlight.data, outerHighlight.info, options);
   assert.equal(outerHighlight.at(guarded, 5, 30)[3], 255, "an outer highlight is not a trapped pocket");
 });
+
+test("explicit no-light-artwork profile removes neutral matte without changing green, brown or black", () => {
+  const frame = canvas(13, 13);
+  for (let y = 2; y <= 10; y += 1) for (let x = 2; x <= 10; x += 1) frame.paint(x, y, [27, 92, 38, 255]);
+  frame.paint(5, 5, [249, 249, 248, 255]);
+  frame.paint(6, 5, [134, 134, 132, 255]);
+  frame.paint(7, 5, [96, 96, 96, 255]);
+  frame.paint(8, 5, [119, 82, 44, 255]);
+  frame.paint(9, 5, [12, 15, 13, 255]);
+  frame.paint(5, 6, [184, 202, 143, 255]);
+  const original = Buffer.from(frame.data);
+  const safe = refineEdgeRgba(frame.data, frame.info, { mode: "none" });
+  assert.equal(frame.at(safe, 5, 5)[3], 255, "without the explicit choice, white artwork is preserved");
+  const result = refineEdgeRgba(frame.data, frame.info, { mode: "none", noLightArtwork: true });
+  for (const x of [5, 6, 7]) assert.equal(frame.at(result, x, 5)[3], 0);
+  for (const [x, y] of [[4, 5], [8, 5], [9, 5], [5, 6]]) {
+    assert.equal(frame.at(result, x, y)[3], 255, "contour repaint must not cut coloured artwork");
+  }
+  assert.deepEqual(frame.data, original, "the source must not change");
+});
+
+test("no-light-artwork profile repaints a warm pale branch rim from its own interior", () => {
+  const frame = canvas(32, 18);
+  for (let y = 5; y <= 12; y += 1) for (let x = 3; x <= 28; x += 1) frame.paint(x, y, [130, 100, 65, 255]);
+  for (let x = 8; x <= 18; x += 1) frame.paint(x, 5, [190, 175, 139, 255]);
+  frame.paint(21, 5, [184, 202, 143, 255]);
+  const result = refineEdgeRgba(frame.data, frame.info, { mode: "none", noLightArtwork: true });
+  const rim = frame.at(result, 12, 5);
+  assert.ok(rim[0] < 190 && rim[1] < 175 && rim[2] < 139, "the beige fringe is sampled from the branch, not left bright");
+  assert.equal(rim[3], 255, "recolouring keeps the branch silhouette");
+  assert.deepEqual(frame.at(result, 12, 8), [130, 100, 65, 255]);
+  assert.equal(frame.at(result, 21, 5)[3], 255, "a green edge pixel stays in the silhouette");
+});
+
+test("contour pixels take separate colours from their own inward detail", () => {
+  const frame = canvas(34, 18);
+  for (let y = 3; y <= 14; y += 1) for (let x = 2; x <= 31; x += 1) {
+    frame.paint(x, y, x < 17 ? [32, 104, 46, 255] : [126, 74, 32, 255]);
+  }
+  frame.paint(5, 3, [204, 179, 117, 255]);
+  frame.paint(27, 3, [204, 179, 117, 255]);
+  const result = refineEdgeRgba(frame.data, frame.info,
+    { mode: "none", noLightArtwork: true, contourWidth: 2 });
+  assert.deepEqual(frame.at(result, 5, 3), [32, 104, 46, 255]);
+  assert.deepEqual(frame.at(result, 27, 3), [126, 74, 32, 255]);
+  assert.deepEqual(frame.at(result, 5, 9), [32, 104, 46, 255], "the interior is not flattened");
+});
+
+test("thin line borrows from two pixels along the same line", () => {
+  const frame = canvas(12, 9);
+  for (let x = 2; x <= 9; x += 1) frame.paint(x, 4, [40, 100, 50, 255]);
+  frame.paint(2, 4, [208, 177, 116, 255]);
+  frame.paint(3, 4, [70, 120, 60, 255]);
+  frame.paint(4, 4, [28, 88, 44, 255]);
+  frame.paint(5, 4, [52, 108, 56, 255]);
+  const result = refineEdgeRgba(frame.data, frame.info,
+    { mode: "none", noLightArtwork: true, contourWidth: 2 });
+  assert.deepEqual(frame.at(result, 2, 4), [28, 88, 44, 255]);
+  assert.equal(frame.at(result, 2, 4)[3], 255);
+});
+
+test("broad contour samples five pixels inside without a shared outline colour", () => {
+  const frame = canvas(15, 17);
+  for (let y = 2; y <= 14; y += 1) for (let x = 2; x <= 12; x += 1) {
+    frame.paint(x, y, [44, 99, 55, 255]);
+  }
+  frame.paint(7, 2, [190, 165, 112, 255]);
+  frame.paint(7, 4, [36, 91, 48, 255]);
+  frame.paint(7, 6, [31, 82, 45, 255]);
+  frame.paint(7, 7, [24, 75, 42, 255]);
+  frame.paint(7, 8, [17, 68, 39, 255]);
+  const result = refineEdgeRgba(frame.data, frame.info,
+    { mode: "none", noLightArtwork: true, contourWidth: 2 });
+  assert.deepEqual(frame.at(result, 7, 2), [24, 75, 42, 255]);
+});
+
+test("explicit no-light palette repairs small warm-white flecks behind the contour", () => {
+  const frame = canvas(21, 21);
+  for (let y = 2; y <= 18; y += 1) for (let x = 2; x <= 18; x += 1) {
+    frame.paint(x, y, [75, 118, 42, 255]);
+  }
+  for (let y = 9; y <= 11; y += 1) for (let x = 9; x <= 11; x += 1) {
+    frame.paint(x, y, [232, 216, 180, 255]);
+  }
+  frame.paint(15, 15, [186, 164, 72, 255]);
+  const before = Buffer.from(frame.data);
+  const result = refineEdgeRgba(frame.data, frame.info,
+    { mode: "none", noLightArtwork: true, contourWidth: 2 });
+  assert.deepEqual(frame.at(result, 10, 10), [75, 118, 42, 255]);
+  assert.deepEqual(frame.at(result, 15, 15), [186, 164, 72, 255], "yellow-green artwork remains");
+  assert.deepEqual(frame.data, before, "the original sprite remains untouched");
+});

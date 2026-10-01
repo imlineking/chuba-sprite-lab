@@ -848,7 +848,7 @@ function confidenceLabel(value) {
 }
 
 function modeLabel(mode) {
-  return ({ auto: "авто", alpha: "готовая прозрачность", white: "белый", black: "чёрный", green: "зелёный", blue: "синий", ai: "локальный ИИ" })[mode] || mode;
+  return ({ auto: "авто", alpha: "готовая прозрачность", white: "белый", black: "чёрный", green: "зелёный", blue: "синий", magenta: "маджента", ai: "локальный ИИ" })[mode] || mode;
 }
 
 function renderRecommendations(source) {
@@ -1045,9 +1045,9 @@ function hexToRgb(value) {
 
 function setKeyMode(mode) {
   if (mode === "solid") state.keyMode = hexToRgb(state.solidKeyMode) ? "custom" : (state.solidKeyMode || "black");
-  else if (["white", "black", "green", "blue"].includes(mode)) { state.solidKeyMode = mode; state.keyMode = mode; }
+  else if (["white", "black", "green", "blue", "magenta"].includes(mode)) { state.solidKeyMode = mode; state.keyMode = mode; }
   else state.keyMode = mode;
-  const displayMode = ["white", "black", "green", "blue", "custom"].includes(state.keyMode) ? "solid" : state.keyMode;
+  const displayMode = ["white", "black", "green", "blue", "magenta", "custom"].includes(state.keyMode) ? "solid" : state.keyMode;
   $$("#keyMode button").forEach((item) => {
     const selected = item.dataset.value === displayMode;
     item.classList.toggle("selected", selected);

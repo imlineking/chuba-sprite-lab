@@ -1,5 +1,5 @@
 // Build a single offline Windows executable without NSIS' large-archive limit.
-// Run after electron-builder has produced a verified .nsis.7z archive.
+// Always archive the freshly built portable directory; never reuse an old bundle.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
@@ -13,18 +13,26 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
 const version = JSON.parse(await fsp.readFile(path.join(root, "package.json"), "utf8")).version;
 const archive = path.join(root, ".build", "one-file", `chuba-sprite-lab-${version}-x64.nsis.7z`);
+const portable = path.join(root, "portable");
 const csc = "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe";
 const stub = path.join(root, ".build", "one-file", "single-exe-launcher.exe");
 const output = process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, `.build/one-file/Chuba-Sprite-Lab-${version}-offline.exe`);
 const partial = `${output}.partial`;
 const license = path.join(here, "7zip-LICENSE.txt");
 if (path.dirname(output) === path.parse(output).root) throw new Error("Output must not be a filesystem root");
-await fsp.access(archive);
+await fsp.access(path.join(portable, "Chuba Sprite Lab.exe"));
 await fsp.access(license);
 await fsp.mkdir(path.dirname(output), { recursive: true });
+if (fs.existsSync(output)) throw new Error(`Output already exists: ${output}`);
+if (fs.existsSync(partial)) throw new Error(`Unfinished output exists: ${partial}`);
+const extractor = await getPath7za();
+await fsp.rm(archive, { force: true });
+const packed = spawnSync(extractor, ["a", "-t7z", "-mx=1", "-bd", archive, "*"], { cwd: portable, stdio: "inherit", windowsHide: true });
+if (packed.status !== 0) throw new Error(`Portable archiving failed: ${packed.status ?? "unknown"}`);
+const verified = spawnSync(extractor, ["t", "-bd", archive], { stdio: "inherit", windowsHide: true });
+if (verified.status !== 0) throw new Error(`Portable archive verification failed: ${verified.status ?? "unknown"}`);
 const compile = spawnSync(csc, ["/nologo", "/target:winexe", "/platform:x64", "/r:System.Windows.Forms.dll", `/out:${stub}`, path.join(here, "single-exe-launcher.cs")], { stdio: "inherit", windowsHide: true });
 if (compile.status !== 0) throw new Error(`C# launcher compilation failed: ${compile.status}`);
-const extractor = await getPath7za();
 const writer = fs.createWriteStream(partial, { flags: "wx" });
 let offset = 0n;
 const hash = crypto.createHash("sha256");
@@ -48,7 +56,6 @@ try {
   hash.digest().copy(footer, 56);
   writer.end(footer);
   await once(writer, "finish");
-  if (fs.existsSync(output)) throw new Error(`Output already exists: ${output}`);
   await fsp.rename(partial, output);
   console.log(JSON.stringify({ output, bytes: (offset + BigInt(footer.length)).toString(), archiveBytes: arc[1].toString() }));
 } catch (error) {

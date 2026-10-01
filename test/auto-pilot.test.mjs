@@ -138,6 +138,17 @@ test("a solid background is cut by the contour and no model is required", () => 
   assert.match(plan.summary, /без модели|однотонный/i);
 });
 
+test("a verified black, green or magenta flat background keeps exact colour keying even on detailed art", () => {
+  for (const colour of [[0, 0, 0], [0, 255, 0], [255, 0, 255]]) {
+    const plan = planAutoPilot({ measurements: measure({ width: 1024, height: 1024, borderColour: colour,
+      solidBackground: true, borderSolidRatio: 1, borderOpaqueRatio: 1, transparentShare: 0,
+      detailDensity: .2, flatShare: .2, colourCount: 600, edgeMeasurement: "native" }),
+      target: { intent: "images", cleanupRequested: true }, source: { kind: "images", frameCount: 1 }, installed: ["toonout", "u2netp"] });
+    assert.equal(plan.steps[0].stage, "key", `exact colour key should win for ${colour}`);
+    assert.equal(plan.steps[0].tool, "key");
+  }
+});
+
 test("an existing transparent border keeps its alpha instead of asking for matting", () => {
   const { data, info } = fringedFrame();
   const plan = planAutoPilot({

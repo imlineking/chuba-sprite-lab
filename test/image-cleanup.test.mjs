@@ -94,6 +94,58 @@ test("standalone PNG export preserves canvas, names, source and frame-specific m
   } finally {await fs.rm(root,{recursive:true,force:true});}
 });
 
+test("batch preview runs the model explicitly selected by the user instead of the automatic alpha shortcut", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-batch-model-choice-"));
+  try {
+    const source = path.join(root, "sprite.png");
+    const pixels = Buffer.alloc(48 * 48 * 4);
+    for (let y = 10; y < 38; y++) for (let x = 10; x < 38; x++) pixels.set([40, 150, 50, 255], (y * 48 + x) * 4);
+    await sharp(pixels, { raw: { width: 48, height: 48, channels: 4 } }).png().toFile(source);
+    const seen = [];
+    const previewFrame = async ({ inputPath, options }) => {
+      seen.push(options);
+      return { afterPath: inputPath, bounds: { left: 0, top: 0, width: 48, height: 48 } };
+    };
+    const result = await processImageBatch({ paths: [source], outputDir: path.join(root, "out"), outputKind: "images", automatic: true,
+      installed: ["toonout"], options: { keyMode: "alpha", aiModel: "toonout", batchModelOverride: "toonout" }, previewFrame });
+    assert.equal(result.completed, 1);
+    assert.equal(seen[0].keyMode, "ai");
+    assert.equal(seen[0].aiModel, "toonout");
+    assert.equal(seen[0].aiForceModel, true);
+    assert.equal(result.results[0].plan.steps[0].modelId, "toonout");
+    assert.equal(result.results[0].changeReport.changed, 0);
+    assert.ok(result.results[0].qualityWarnings.some(message => message.includes("совпадает с исходником")));
+    const automatic = await processImageBatch({ paths: [source], outputDir: path.join(root, "auto"), outputKind: "images", automatic: true,
+      installed: ["toonout"], options: { keyMode: "ai", aiModel: "toonout", batchModelOverride: "" }, previewFrame });
+    assert.equal(automatic.completed, 1);
+    assert.equal(seen[1].keyMode, "alpha");
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test("batch preview applies the explicit no-light-artwork cleanup to an already transparent sprite", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-batch-no-light-"));
+  try {
+    const source = path.join(root, "pine.png");
+    const pixels = Buffer.alloc(64 * 64 * 4);
+    for (let y = 8; y < 56; y++) for (let x = 8; x < 56; x++) pixels.set([30, 100, 40, 255], (y * 64 + x) * 4);
+    pixels.set([244, 244, 243, 255], (31 * 64 + 31) * 4);
+    pixels.set([145, 145, 142, 255], (31 * 64 + 32) * 4);
+    await sharp(pixels, { raw: { width: 64, height: 64, channels: 4 } }).png().toFile(source);
+    const result = await processImageBatch({ paths: [source], outputDir: path.join(root, "out"), outputKind: "images", automatic: true,
+      options: { keyMode: "alpha", batchModelOverride: "", edgeRefine: { mode: "none", width: 1, depth: 2, whiteOnly: true, noLightArtwork: true } } });
+    assert.equal(result.completed, 1);
+    const { data } = await sharp(result.results[0].imagePath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    assert.equal(data[(31 * 64 + 31) * 4 + 3], 0);
+    assert.equal(data[(31 * 64 + 32) * 4 + 3], 0);
+    assert.deepEqual([...data.subarray((30 * 64 + 30) * 4, (30 * 64 + 30) * 4 + 4)], [30, 100, 40, 255]);
+    assert.ok(result.results[0].changeReport.changed >= 2);
+    const protectedResult = await processImageBatch({ paths: [source], outputDir: path.join(root, "protected"), outputKind: "images", automatic: true,
+      options: { keyMode: "alpha", batchModelOverride: "", edgeRefine: { mode: "none", width: 1, depth: 2, whiteOnly: true, noLightArtwork: false } } });
+    const protectedPixels = await sharp(protectedResult.results[0].imagePath).ensureAlpha().raw().toBuffer();
+    assert.equal(protectedPixels[(31 * 64 + 31) * 4 + 3], 255, "the default path keeps intentional white artwork");
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
 test("image intent offers three paths and never inherits animation warnings or unrequested AI resize", () => {
   const scenarios=planTaskScenarios({source:{kind:"frames",frameCount:50,mixedSizes:true}});
   assert.deepEqual(scenarios.slice(0,3).map(item=>item.task),["edit","combine","animation"]);

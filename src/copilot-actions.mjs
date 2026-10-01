@@ -2,7 +2,7 @@ const choices = {
   atlasOverflow: ["warn", "scale", "columns", "split"], atlasPacking: ["grid", "tight"],
 };
 const toggles = new Set(["sheetFitEach", "auxEsrgan", "auxRife", "auxDepth"]);
-const enums = { keyMode: ["auto", "alpha", "white", "black", "green", "blue", "ai", "custom"], anchor: ["center", "bottom", "body"], loopMode: ["loop", "range", "pingpong"], tab: ["source", "process", "export"] };
+const enums = { keyMode: ["auto", "alpha", "white", "black", "green", "blue", "magenta", "ai", "custom"], anchor: ["center", "bottom", "body"], loopMode: ["loop", "range", "pingpong"], tab: ["source", "process", "export"] };
 const navigation = new Set(["openConsistency", "openLoopEditor", "chooseOutput", "openModels", "rebuild"]);
 
 export function validateAdvice(steps) {

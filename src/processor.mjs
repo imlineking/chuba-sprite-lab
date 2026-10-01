@@ -511,6 +511,7 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
     black: [0, 0, 0],
     green: [0, 255, 0],
     blue: [0, 0, 255],
+    magenta: [255, 0, 255],
   };
   const customKey = Array.isArray(context.keyColor) && context.keyColor.length >= 3
     ? context.keyColor.slice(0, 3).map((value) => clamp(Math.round(Number(value) || 0), 0, 255))
@@ -846,7 +847,7 @@ async function applyToning(frame, options) {
 }
 
 async function applyEdgeRefine(frame, options) {
-  if (!options || (options.mode === "none" && !options.removeWhiteExterior && !options.autoPaleCleanup)) return frame;
+  if (!options || (options.mode === "none" && !options.removeWhiteExterior && !options.autoPaleCleanup && !options.noLightArtwork)) return frame;
   const { data, info } = await sharp(frame.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const refined = refineEdgeRgba(data, info, options);
   const edgeRefineReport = { removed: 0, recolored: 0 };

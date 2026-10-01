@@ -7,6 +7,7 @@ import sharp from "sharp";
 import { processImageBatch, inspectCleanupQuality } from "../src/image-batch.mjs";
 import { keyFrame } from "../src/processor.mjs";
 import { sliceSpriteSheet } from "../src/sheet-slicer.mjs";
+import { backgroundKeyMode } from "../src/background-analysis.mjs";
 
 const options = { keyMode: "custom", keyColor: [210, 30, 170], keyScope: "all", tolerance: 1, autoSize: true, autoColumns: true, padding: 4, anchor: "body", pixelPerfect: true, maxFrames: 1000 };
 
@@ -75,6 +76,57 @@ test("image-only batch includes RGBA review of the actual cleaned PNG", async t 
   assert.ok(review.clear > 0);
   assert.equal(review.opaque + review.partial + review.clear, 64 * 48);
   assert.deepEqual(await fs.readFile(file), original);
+});
+
+test("automatic image cleanup removes each flat background colour and keeps enclosed matching details", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "cslab-flat-key-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const colours = { white: [255, 255, 255], black: [0, 0, 0], green: [0, 255, 0], magenta: [255, 0, 255] };
+  const paths = [];
+  for (const [name, colour] of Object.entries(colours)) {
+    const pixels = Buffer.alloc(80 * 80 * 4);
+    for (let offset = 0; offset < pixels.length; offset += 4) pixels.set([...colour, 255], offset);
+    for (let y = 20; y < 60; y++) for (let x = 20; x < 60; x++) pixels.set([128, 75, 30, 255], (y * 80 + x) * 4);
+    pixels.set([...colour, 255], (40 * 80 + 40) * 4);
+    const file = path.join(root, `${name}.png`);
+    await sharp(pixels, { raw: { width: 80, height: 80, channels: 4 } }).png().toFile(file);
+    paths.push(file);
+    assert.equal(backgroundKeyMode({ solid: true, transparentRatio: 0, colour }), name);
+  }
+  const result = await processImageBatch({ paths, outputDir: path.join(root, "out"), outputKind: "images",
+    automatic: true, options: { keyMode: "auto", tolerance: 20, keyScope: "exterior", blackOutline: 3, batchBlackContour: "preserve", edgeRefine: { mode: "none" } }, appRoot: path.resolve(".") });
+  assert.equal(result.failed, 0);
+  for (const item of result.results) {
+    const data = await sharp(item.imagePath).ensureAlpha().raw().toBuffer();
+    const alpha = (x, y) => data[(y * 80 + x) * 4 + 3];
+    assert.equal(alpha(0, 0), 0, `${item.name}: flat background removed`);
+    assert.equal(alpha(40, 40), 255, `${item.name}: enclosed matching detail kept`);
+    assert.equal(alpha(30, 30), 255, `${item.name}: object kept`);
+    assert.ok(item.changeReport.changed > 0, `${item.name}: output differs from input`);
+    assert.ok(item.route.some(step => step.includes(({ black: "Чёрный", white: "белый", green: "зелёный", magenta: "маджента" })[item.name])), `${item.name}: route reports the selected key`);
+  }
+});
+
+test("black flat-background batch offers contour protection and complete removal", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "cslab-black-outline-batch-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const pixels = Buffer.alloc(64 * 64 * 4);
+  for (let offset = 0; offset < pixels.length; offset += 4) pixels.set([0, 0, 0, 255], offset);
+  for (let y = 20; y < 44; y++) for (let x = 20; x < 44; x++) pixels.set([230, 90, 30, 255], (y * 64 + x) * 4);
+  const file = path.join(root, "black.png");
+  await sharp(pixels, { raw: { width: 64, height: 64, channels: 4 } }).png().toFile(file);
+  const run = mode => processImageBatch({ paths: [file], outputDir: path.join(root, mode), outputKind: "images", automatic: true,
+    options: { keyMode: "auto", batchBackgroundMode: "black", batchBlackContour: mode, blackOutline: 3, tolerance: 20, edgeRefine: { mode: "none" } }, appRoot: path.resolve(".") });
+  const preserved = await run("preserve");
+  const removed = await run("remove");
+  assert.equal(preserved.failed, 0); assert.equal(removed.failed, 0);
+  const before = await sharp(preserved.results[0].imagePath).ensureAlpha().raw().toBuffer();
+  const after = await sharp(removed.results[0].imagePath).ensureAlpha().raw().toBuffer();
+  const at = (data, x, y) => data[(y * 64 + x) * 4 + 3];
+  assert.equal(at(before, 17, 30), 255, "protected outline remains");
+  assert.equal(at(after, 17, 30), 0, "no-contour variant clears the same background pixel");
+  assert.equal(at(before, 30, 30), 255); assert.equal(at(after, 30, 30), 255);
+  assert.match(removed.results[0].route.join(" "), /без сохранения контура/);
 });
 
 test("image-only batch writes colour adjustments into PNG and reports changed pixels", async t => {

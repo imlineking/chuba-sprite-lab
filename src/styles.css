@@ -691,6 +691,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .source-next { margin-top: 16px; }
 
 .segmented.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.segmented.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .solid-key-panel { margin-top: 10px; padding: 10px; border: 1px solid #2d343d; border-radius: 9px; background: #0e1216; }
 .solid-key-panel .section-label { margin-bottom: 8px; }
 
@@ -1043,6 +1044,9 @@ body[data-intent="images"] .filmstrip-actions { grid-template-columns: repeat(au
 .batch-task-choices button { min-height: 62px; padding: 10px 14px; border: 1px solid var(--line-bright); border-radius: 10px; background: var(--shell-field); color: var(--text); text-align: left; font: inherit; font-weight: 700; cursor: pointer; }
 .batch-task-choices button.selected { border: 2px solid var(--text); background: var(--panel); }
 .batch-task-choices small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 400; line-height: 1.35; }
+.batch-model-choice { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; color: var(--text); }
+.batch-model-choice select { min-width: 220px; max-width: 100%; flex: 1; }
+.batch-model-choice small { flex-basis: 100%; color: var(--muted); line-height: 1.4; }
 .batch-color-adjust { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 .batch-color-adjust strong { font-size: 12px; white-space: nowrap; }
 .batch-color-adjust label { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }

@@ -28,7 +28,7 @@ export const profileOptionKeys = new Set([
 
 const sourceKinds = ["video", "frames", "sheet"];
 const enumValues = {
-  keyMode: ["auto", "alpha", "ai", "white", "black", "green", "blue", "custom"],
+  keyMode: ["auto", "alpha", "ai", "white", "black", "green", "blue", "magenta", "custom"],
   keyScope: ["exterior", "all"],
   aiProvider: ["auto", "cpu", "dml"],
   aiQuality: ["fast", "balanced", "max"],
@@ -75,12 +75,15 @@ function normalizeOptions(value, problem, label, baseDir) {
     if (!isPlainObject(options.edgeRefine)) problem(`${label}.edgeRefine: ожидался объект.`);
     else {
       for (const key of Object.keys(options.edgeRefine)) {
-        if (!["mode", "width", "depth", "whiteOnly", "whiteThreshold", "neutralTolerance"].includes(key)) problem(`${label}.edgeRefine.${key}: неизвестная настройка.`);
+        if (!["mode", "width", "depth", "whiteOnly", "whiteThreshold", "neutralTolerance", "noLightArtwork", "lightArtworkPolicy", "contourWidth"].includes(key)) problem(`${label}.edgeRefine.${key}: неизвестная настройка.`);
       }
       if (!["none", "trim", "recolor"].includes(options.edgeRefine.mode)) problem(`${label}.edgeRefine.mode: ожидается none, trim или recolor.`);
       if (boundedInteger(options.edgeRefine.width, 1, 3) === null) problem(`${label}.edgeRefine.width: ожидалось целое 1…3.`);
       if (boundedInteger(options.edgeRefine.depth, 1, 5) === null) problem(`${label}.edgeRefine.depth: ожидалось целое 1…5.`);
       if (typeof options.edgeRefine.whiteOnly !== "boolean") problem(`${label}.edgeRefine.whiteOnly: ожидалось true или false.`);
+      if (options.edgeRefine.noLightArtwork !== undefined && typeof options.edgeRefine.noLightArtwork !== "boolean") problem(`${label}.edgeRefine.noLightArtwork: ожидалось true или false.`);
+      if (options.edgeRefine.lightArtworkPolicy !== undefined && !["auto", "protect", "none"].includes(options.edgeRefine.lightArtworkPolicy)) problem(`${label}.edgeRefine.lightArtworkPolicy: ожидалось auto, protect или none.`);
+      if (options.edgeRefine.contourWidth !== undefined && ![2, 4].includes(options.edgeRefine.contourWidth)) problem(`${label}.edgeRefine.contourWidth: ожидалось 2 или 4.`);
       if (options.edgeRefine.whiteThreshold !== undefined && boundedInteger(options.edgeRefine.whiteThreshold, 64, 255) === null) problem(`${label}.edgeRefine.whiteThreshold: ожидалось целое 64…255.`);
       if (options.edgeRefine.neutralTolerance !== undefined && boundedInteger(options.edgeRefine.neutralTolerance, 0, 96) === null) problem(`${label}.edgeRefine.neutralTolerance: ожидалось целое 0…96.`);
     }

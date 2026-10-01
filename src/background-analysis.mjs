@@ -29,5 +29,6 @@ export function backgroundKeyMode(border) {
   if (Math.min(r, g, b) > 235) return "white";
   if (Math.hypot(r, g - 255, b) < 60) return "green";
   if (Math.hypot(r, g, b - 255) < 60) return "blue";
+  if (Math.hypot(r - 255, g, b - 255) < 60) return "magenta";
   return "auto";
 }

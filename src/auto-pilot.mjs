@@ -12,10 +12,22 @@
 import sharp from "sharp";
 import { aiModelCatalog, modelById, modelTotalBytes } from "./ai-models.mjs";
 import { checkerMask } from "./region-color.mjs";
-import { analyseBorderBackground } from "./background-analysis.mjs";
+import { analyseBorderBackground, backgroundKeyMode } from "./background-analysis.mjs";
+import { measureLightArtworkRgba } from "./light-artwork-policy.mjs";
 
 export const SOFT_ALPHA_LOW = 6;
 export const SOFT_ALPHA_HIGH = 249;
+
+export function hasPreparedAlpha(measurements, source = {}) {
+  return source.maskPrepared === true || (Number(measurements?.transparentShare) > .25 && Number(measurements?.borderOpaqueRatio) < .25)
+    || (Number(measurements?.transparentShare) > .15 && Number(measurements?.borderOpaqueRatio) < .2);
+}
+
+export function hasConfirmedChecker(measurements, { preparedAlpha = false } = {}) {
+  if (!measurements) return false;
+  const area = Math.max(1, Number(measurements.width) * Number(measurements.height));
+  return Number(measurements.checkerPixels) >= Math.max(64, preparedAlpha ? area * .02 : 64);
+}
 
 // A frame is a photo-like gradient when neighbouring pixels differ a little almost everywhere, and
 // drawn art when large areas are exactly equal. Fine detail — fur, hair, thin straps — shows up as a
@@ -189,6 +201,10 @@ export async function measureSource(paths, { limit = 3, sampleSize = 192 } = {})
       if (metadata.width * metadata.height <= 16000000) {
         const raw = await sharp(file).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
         analyses.at(-1).checkerPixels = checkerMask(raw.data, raw.info).count;
+        const light = measureLightArtworkRgba(raw.data, raw.info);
+        analyses.at(-1).lightLargestShare = light.largestShare;
+        analyses.at(-1).lightPaleShare = light.paleShare;
+        analyses.at(-1).lightFragments = light.fragments;
         const native = analyseFrame(raw.data, raw.info);
         // Edge decisions use native pixels. Thumbnail resampling creates artificial soft/detail edges.
         for (const metric of ["thinStructure", "outlineComplexity", "softShare", "detailDensity", "fringeScore", "borderSolidRatio", "borderNoise", "borderColour", "solidBackground"]) analyses.at(-1)[metric] = native[metric];
@@ -315,18 +331,24 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
   };
 
   /* 1. Preserve an existing alpha channel before considering background removal. */
-  const alreadyTransparent = source.maskPrepared === true || (measurements.transparentShare > 0.15 && measurements.borderOpaqueRatio < 0.2);
+  const alreadyTransparent = hasPreparedAlpha(measurements, source);
   const independent = target.intent === "images" || (source.kind === "images" && !target.cellWidth);
-  const checkerCandidate = Number(measurements.checkerPixels) >= 64;
+  // A few false-positive checker pixels can occur around damaged needles and
+  // leaf edges. A prepared alpha needs a substantial repeated field before
+  // the checker tool is allowed to alter it automatically.
+  const checkerCandidate = hasConfirmedChecker(measurements, { preparedAlpha: alreadyTransparent });
   const solid = measurements.solidBackground !== undefined
     ? measurements.solidBackground && Number(measurements.borderSolidRatio) >= 0.92
     : measurements.borderOpaqueRatio > SOLID_BORDER_RATIO && measurements.borderColourCount <= SOLID_BORDER_COLOURS;
+  const flatKeyMode = solid && Array.isArray(measurements.borderColour)
+    ? backgroundKeyMode({ solid: true, transparentRatio: 0, colour: measurements.borderColour }) : null;
   // Only promote the verified complex cases, never a prepared mask or a simple flower/photo.
   const checker = checkerCandidate && !solid && !source.maskPrepared;
   const complexArt = measurements.edgeMeasurement === "native"
     && measurements.width * measurements.height > 400000
     && measurements.detailDensity >= 0.085;
-  const toonout = !source.maskPrepared && installed.includes("toonout") && complexArt
+  const toonout = !source.maskPrepared && !["black", "green", "magenta"].includes(flatKeyMode)
+    && installed.includes("toonout") && complexArt
     && (checker || (solid && measurements.colourCount >= 512 && measurements.flatShare >= 0.1));
   if (toonout) {
     steps.push(modelStep(modelById("toonout"), { installed, confidence: "medium",
