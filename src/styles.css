@@ -1040,7 +1040,7 @@ body[data-intent="images"] .filmstrip-actions { grid-template-columns: repeat(au
 .batch-preview-header h2 { margin: 0 0 8px; font-size: 22px; }
 .batch-preview-header p { margin: 0; line-height: 1.5; }
 .batch-preview-header button { flex: 0 0 36px; height: 36px; border: 1px solid var(--line); border-radius: 10px; background: var(--shell-field); color: var(--text); cursor: pointer; font-size: 20px; }
-.batch-task-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.batch-task-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
 .batch-task-choices button { min-height: 62px; padding: 10px 14px; border: 1px solid var(--line-bright); border-radius: 10px; background: var(--shell-field); color: var(--text); text-align: left; font: inherit; font-weight: 700; cursor: pointer; }
 .batch-task-choices button.selected { border: 2px solid var(--text); background: var(--panel); }
 .batch-task-choices small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; font-weight: 400; line-height: 1.35; }
@@ -1115,3 +1115,12 @@ body[data-intent="images"] .filmstrip-actions { grid-template-columns: repeat(au
 .batch-preview-footer .button { min-height: 40px; height: auto; padding: 10px 14px; }
 html[data-theme="light"] .batch-preview-dialog { background: #f8f9fb; color: #252c35; border-color: #d2d7de; }
 @media (max-width: 760px) { .batch-task-choices, .batch-preview-settings { grid-template-columns: 1fr; } .batch-preview-dialog { padding: 12px; } }
+
+.frame-metadata-fields { position: relative; }
+.frame-metadata-fields[open] { flex: 1 1 100%; max-height: 260px; overflow: auto; padding: 12px; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; }
+.frame-metadata-fields .form-grid { grid-template-columns: repeat(3, minmax(80px, 1fr)); }
+
+.frame-metadata-fields { grid-column: 1 / -1; min-width: 0; max-width: 100%; }
+.pixel-selection-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.pixel-selection-actions label { display: grid; gap: 4px; min-width: 0; }
+.pixel-selection-actions input { width: 100%; min-width: 0; }

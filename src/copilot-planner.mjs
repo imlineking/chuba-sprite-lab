@@ -3,6 +3,8 @@ import { planTaskScenarios, planSuggestions } from "./copilot-rules.mjs";
 
 export const plannerModels = { qwen: "qwen3-vl:4b-instruct", gemma: "gemma3:4b" };
 export const taskVocabulary = {
+  readySheet: "Assemble ready files unchanged into a regular sprite sheet PNG+JSON, optionally on a solid background; do not clean",
+  readyAtlas: "Pack ready files unchanged into an atlas PNG+JSON without background cleanup",
   healing: "Restore damaged sprite details and remove baked checkerboard first, then run the usual background and edge cleanup on the repaired image",
   edit: "Edit independent images, remove colours/checkerboard in a selection, preserve source dimensions; export separate PNGs",
   batch: "Clean several unrelated files individually with one profile",

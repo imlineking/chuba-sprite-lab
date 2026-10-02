@@ -13,6 +13,7 @@ const pixelEditor = {
   name: "frame",
   width: 0,
   height: 0,
+  selection: null, selectionStart: null, selectionPoints: [],
   tool: "pencil",
   color: [17, 17, 17, 255],
   brush: 1,
@@ -89,6 +90,7 @@ function pixelEditorRenderCanvas() {
   if (pixelEditor.composite) {
     pixelEditor.imageData.data.set((pixelEditor.preview || pixelEditor.composite).subarray(0, pixelEditor.imageData.data.length));
     context.putImageData(pixelEditor.imageData, 0, 0);
+  if (pixelEditor.selection) { context.fillStyle = "rgba(255,0,255,.35)"; for (let i = 0; i < pixelEditor.selection.length; i++) if (pixelEditor.selection[i]) context.fillRect(i % pixelEditor.width, Math.floor(i / pixelEditor.width), 1, 1); }
   }
   const wrap = $("#pixelCanvasWrap");
   wrap.style.setProperty("--pixel-cell", `${pixelEditor.zoom}px`);
@@ -195,6 +197,7 @@ async function pixelEditorFlush() {
 }
 
 function pixelEditorApplyState(answer) {
+  pixelEditor.selection = answer.selection;
   pixelEditor.sessionId = answer.sessionId;
   pixelEditor.frameIndex = answer.frameIndex;
   pixelEditor.name = answer.name;
@@ -228,9 +231,9 @@ function pixelEditorFitZoom() {
 
 function pixelEditorSetTool(tool) {
   pixelEditor.tool = tool;
-  const tools = { pencil: "#pixelToolPencil", eraser: "#pixelToolEraser", fill: "#pixelToolFill", picker: "#pixelToolPicker" };
+  const tools = { select: "#pixelToolSelect", wand: "#pixelToolWand", lasso: "#pixelToolLasso", pencil: "#pixelToolPencil", eraser: "#pixelToolEraser", fill: "#pixelToolFill", picker: "#pixelToolPicker" };
   for (const [name, selector] of Object.entries(tools)) $(selector).classList.toggle("active", name === tool);
-  const hints = {
+  const hints = { select: "Выделите прямоугольник. Перенос и удаление работают с пикселями активного слоя и отменяются Ctrl+Z.", wand: "Палочка: связанная область похожего цвета; допуск — «Разброс». Можно отделить часть слипшегося объекта.", lasso: "Обведите часть объекта, затем перенесите или удалите выделенные пиксели.",
     pencil: "Карандаш: рисует основным цветом. Удерживайте кнопку мыши, чтобы вести линию.",
     eraser: "Ластик: стирает пиксели выбранного слоя до прозрачности.",
     fill: "Заливка: заливает связанную область под курсором. «Разброс» задаёт, какие цвета считать одинаковыми, а «Стереть кайму» убирает почти прозрачный ореол вокруг спрайта.",
@@ -368,6 +371,12 @@ function pixelEditorPointerDown(event) {
   }
   const point = pixelEditorPointFromEvent(event);
   if (!point.inside) return;
+  if (["select", "wand", "lasso"].includes(pixelEditor.tool)) {
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    if (pixelEditor.tool === "wand") pixelEditorSend({ op: "selectPixels", mode: "wand", from: [point.x, point.y], tolerance: pixelEditor.tolerance });
+    else { pixelEditor.selectionStart = point; pixelEditor.selectionPoints = [[point.x, point.y]]; }
+    return;
+  }
   if (pixelEditor.tool === "picker") {
     window.spriteLab.pixelEditorOp({ op: "pick", sessionId: pixelEditor.sessionId, x: point.x, y: point.y })
       .then((answer) => {
@@ -396,11 +405,17 @@ function pixelEditorPointerDown(event) {
 function pixelEditorPointerMove(event) {
   const point = pixelEditorPointFromEvent(event);
   pixelEditorSampleCursor(point);
+  if (pixelEditor.selectionStart && point.inside) { pixelEditor.selectionPoints.push([point.x, point.y]); return; }
   if (!pixelEditor.drawing || !point.inside) return;
   pixelEditorPaintTo(point);
 }
 
 function pixelEditorPointerUp(event) {
+  if (pixelEditor.selectionStart) {
+    const point = pixelEditorPointFromEvent(event), start = pixelEditor.selectionStart; pixelEditor.selectionStart = null;
+    pixelEditorSend({ op: "selectPixels", mode: pixelEditor.tool === "lasso" ? "lasso" : "rect", from: [start.x, start.y], to: [point.x, point.y], points: pixelEditor.selectionPoints });
+    return;
+  }
   if (!pixelEditor.drawing) return;
   pixelEditor.drawing = false;
   pixelEditor.lastPoint = null;
@@ -503,6 +518,10 @@ document.addEventListener("keydown", (event) => {
   else if (key === "e") pixelEditorSetTool("eraser");
   else if (key === "g" || key === "f") pixelEditorSetTool("fill");
   else if (key === "i") pixelEditorSetTool("picker");
+  else if (key === "m") pixelEditorSetTool("select");
+  else if (key === "w") pixelEditorSetTool("wand");
+  else if (key === "l") pixelEditorSetTool("lasso");
+  else if (key === "delete" && pixelEditor.selection) pixelEditorSend({ op: "movePixels", erase: true });
   else if (key === "[" || key === "]") {
     $("#pixelBrushSize").value = String(Math.max(1, Math.min(16, pixelEditor.brush + (key === "]" ? 1 : -1))));
     pixelEditorSyncBrush();
@@ -514,3 +533,10 @@ pixelEditorSyncBrush();
 pixelEditorSyncTolerance();
 pixelEditorSetTool("pencil");
 pixelEditorStatus("Откройте кадр из полосы кадров.", "ready");
+
+for (const [id, tool] of [["pixelToolSelect", "select"], ["pixelToolWand", "wand"], ["pixelToolLasso", "lasso"]]) $("#" + id).addEventListener("click", () => pixelEditorSetTool(tool));
+$("#pixelMoveSelection").addEventListener("click", () => pixelEditorSend({ op: "movePixels", dx: Number($("#pixelSelectionX").value), dy: Number($("#pixelSelectionY").value) }));
+$("#pixelCutSelection").addEventListener("click", () => pixelEditorSend({ op: "movePixels", erase: true }));
+$("#pixelClearSelection").addEventListener("click", () => pixelEditorSend({ op: "selectPixels", clear: true }));
+
+$("#pixelSeparateSelection").addEventListener("click", () => pixelEditorSend({ op: "movePixels", newLayer: true, dx: Number($("#pixelSelectionX").value), dy: Number($("#pixelSelectionY").value) }));

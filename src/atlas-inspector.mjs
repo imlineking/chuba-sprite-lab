@@ -76,7 +76,7 @@ export function inspectAtlas(manifest, { maxSize = 0 } = {}) {
         if (!box || box.x < 0 || box.y < 0 || box.x + box.w > source.w || box.y + box.h > source.h) {
           add("error", "frame-trim-box", `Кадр ${label}: обрезанная область выходит за пределы ячейки ${source.w}×${source.h}.`, { frameIndex: index });
         }
-      } else if (frame.width !== source.w || frame.height !== source.h) {
+      } else if ((frame.rotated ? frame.height : frame.width) !== source.w || (frame.rotated ? frame.width : frame.height) !== source.h) {
         add("warning", "frame-cell-mismatch", `Кадр ${label}: размер ${frame.width}×${frame.height} не совпадает с ячейкой ${source.w}×${source.h}.`, { frameIndex: index });
       }
       const hitbox = frame.hitbox;

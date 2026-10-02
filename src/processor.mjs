@@ -9,6 +9,8 @@ import { currentAIProvider, segmentSubject } from "./ai-segmentation.mjs";
 import { applyMaskEdits } from "./mask-edits.mjs";
 import { cleanMagentaFringe } from "./edge-cleanup.mjs";
 import { pixelate } from "./pixelate.mjs";
+import { reviewSeries } from "./series-review.mjs";
+import { buildSeriesPalette } from "./series-palette.mjs";
 import { applyImageGeometry } from "./image-geometry.mjs";
 import { toneRgba } from "./toning.mjs";
 import { decontaminateEdges } from "./edge-decontaminate.mjs";
@@ -16,6 +18,9 @@ import { refineEdgeRgba } from "./edge-refine.mjs";
 import { adjustImageRgba } from "./color-adjust.mjs";
 import { findBodyAnchor } from "./body-anchor.mjs";
 import { compositeAttachments, trackAttachmentPlacements } from "./attachment-tracker.mjs";
+import { planAtlas } from "./atlas-packing.mjs";
+export { planAtlas } from "./atlas-packing.mjs";
+import { extrudeSprite } from "./atlas-packing.mjs";
 import { inspectAtlas } from "./atlas-inspector.mjs";
 import { findWhiteRemainders } from "./white-remainders.mjs";
 import { makeTempWorkspace, finishQuickPreview } from "./temp-workspace.mjs";
@@ -27,13 +32,16 @@ import { summarizeIssues } from "./diagnostics.mjs";
 
 export const supportedImageExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".avif"]);
 const naturalCompare = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare;
-const frameKeyCache = new Map();
+import { StageCache } from "./stage-cache.mjs";
+const preparedStageCache = new StageCache();
+const frameKeyCache = new StageCache();
+export function processingCacheStats() { return { prepared: preparedStageCache.stats(), key: frameKeyCache.stats() }; }
 const videoFrameCache = new Map();
 sharp.cache({ memory: 32, files: 0, items: 32 });
 
 function rememberFrameKey(cacheKey, result) {
   frameKeyCache.set(cacheKey, result);
-  while (frameKeyCache.size > 12) frameKeyCache.delete(frameKeyCache.keys().next().value);
+
   return result;
 }
 
@@ -440,6 +448,7 @@ async function applyCorrectionsToResult(result, inputPath, context = {}) {
 export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, blackFeather = 0, context = {}) {
   if (mode === "auto" && context.maskPrepared) mode = "alpha";
   const fileStats = await fs.stat(inputPath);
+  context = { ...context, aiEdits: (context.aiEdits || []).filter(edit => edit.applyAll || Number(edit.frameIndex) === Number(context.frameIndex)) };
   const correctionSignature = JSON.stringify([
     context.fringeCleanup, context.fringeStrength,
     context.edgeDecontaminate,
@@ -457,7 +466,8 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
     context.aiEdits || [],
   ]);
   const cacheKey = `${inputPath}|${fileStats.mtimeMs}|${mode}|${tolerance}|${blackOutline}|${blackFeather}|${correctionSignature}`;
-  if (frameKeyCache.has(cacheKey)) return frameKeyCache.get(cacheKey);
+  const cachedKey = frameKeyCache.get(cacheKey);
+  if (cachedKey) return cachedKey;
 
   if (mode === "ai") {
     const edits = context.aiEdits || [];
@@ -866,21 +876,60 @@ async function applyImageColorAdjust(frame, options) {
   return { ...frame, buffer: await sharp(adjusted, { raw: info }).png().toBuffer() };
 }
 
+async function scalePixelFrame(frame, value = 1) {
+  const scale = Number(value);
+  if (![1, 2, 4].includes(scale)) throw new Error("Масштаб пикселей: только 1×, 2× или 4×.");
+  if (scale === 1) return frame;
+  if (frame.info.width * frame.info.height * scale * scale > 16777216) throw new Error("После масштабирования кадр превышает 16 млн пикселей.");
+  const buffer = await sharp(frame.buffer).resize(frame.info.width * scale, frame.info.height * scale, { kernel: sharp.kernel.nearest }).png().toBuffer();
+  const bounds = frame.bounds ? Object.fromEntries(Object.entries(frame.bounds).map(([k, v]) => [k, v * scale])) : null;
+  return { ...frame, buffer, info: { ...frame.info, width: frame.info.width * scale, height: frame.info.height * scale }, bounds };
+}
+
 async function renderFrames(frames, options) {
+  const result = await renderBaseFrames(frames, options);
+  const scale = Number(options.pixelScale || 1);
+  if (![1, 2, 4].includes(scale)) throw new Error("Масштаб пикселей: только 1×, 2× или 4×.");
+  if (scale === 1) return result;
+  result.rendered = await runPooled(result.rendered, parallelismFor(options), async frame => { const scaled = await scalePixelFrame({ ...frame, info: { width: result.cellWidth, height: result.cellHeight } }, scale); return { ...frame, buffer: scaled.buffer, left: frame.left * scale, top: frame.top * scale, width: frame.width * scale, height: frame.height * scale }; });
+  result.cellWidth *= scale; result.cellHeight *= scale; result.padding *= scale;
+  if (result.bodyAlignment) result.bodyAlignment = { ...result.bodyAlignment, x: result.bodyAlignment.x * scale, y: result.bodyAlignment.y * scale, referenceDiameter: result.bodyAlignment.referenceDiameter * scale };
+  return result;
+}
+
+async function renderBaseFrames(frames, options) {
+  const geometry = options.imageGeometry;
+  if (options.anchor !== "manual" && (options.preserveFrameCanvas || geometry && ["contain", "cover", "stretch"].includes(geometry.mode))) {
+    const cellWidth = geometry?.width || Math.max(...frames.map(f => f.info.width));
+    const cellHeight = geometry?.height || Math.max(...frames.map(f => f.info.height));
+    const rendered = await runPooled(frames, parallelismFor(options), async frame => ({
+      buffer: await sharp(frame.buffer).resize({ width: cellWidth, height: cellHeight, fit: "contain", kernel: sharp.kernel.nearest, background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer(),
+      left: 0, top: 0, width: cellWidth, height: cellHeight,
+    }));
+    return { rendered, cellWidth, cellHeight, padding: 0, anchor: "center", bodyAlignment: null };
+  }
   const maxWidth = Math.ceil(Math.max(...frames.map((frame) => frame.bounds.width * (resolveFrameTransform(options, frame.sourceIndex)?.scaleX || 1))));
   const maxHeight = Math.ceil(Math.max(...frames.map((frame) => frame.bounds.height * (resolveFrameTransform(options, frame.sourceIndex)?.scaleY || 1))));
-  const anchor = ["ground", "center", "motion", "body"].includes(options.anchor) ? options.anchor : "ground";
+  const anchor = ["ground", "center", "motion", "body", "manual"].includes(options.anchor) ? options.anchor : "ground";
   // A long, thin appendage may extend the full bounds without moving the body.
   // Locate the dense core independently of thin tails. Full bounds still determine
   // the cell size, so no pixel of a thread is discarded.
-  const bodyPoints = anchor === "body" ? await Promise.all(frames.map(async (frame) => {
+  const pointSets = frames.map(f => (options.frameMetadata?.[f.sourceIndex]?.anchorPoints || []).map(p => f.geometryReport?.pointTransform ? { x: p.x * f.geometryReport.pointTransform.scaleX + f.geometryReport.pointTransform.offsetX, y: p.y * f.geometryReport.pointTransform.scaleY + f.geometryReport.pointTransform.offsetY } : p));
+  const reference = pointSets[frames.findIndex(f => f.sourceIndex === Number(options.anchorReference || 0))] || pointSets[0];
+  const distance = points => points.length > 1 ? Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y) : 0;
+  const manualPoints = anchor === "manual" ? pointSets.map((points, i) => {
+    if (!points.length || points.length > 2 || !points.every(p => Number.isFinite(p.x) && Number.isFinite(p.y) && p.x >= 0 && p.y >= 0 && p.x < frames[i].info.width && p.y < frames[i].info.height)) throw new Error(`Кадр ${frames[i].sourceIndex + 1}: задайте первую опорную точку внутри кадра.`);
+    if (points.length > 1 && !distance(points)) throw new Error("Опорные точки должны различаться.");
+    return { ...points[0], radius: 0, scale: distance(reference) && distance(points) ? distance(reference) / distance(points) : 1 };
+  }) : [];
+  const bodyPoints = anchor === "manual" ? manualPoints : anchor === "body" ? await Promise.all(frames.map(async (frame) => {
     const { data, info } = await sharp(frame.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     return findBodyAnchor(data, info);
   })) : [];
-  const bodyExtents = anchor === "body" ? frames.reduce((extent, frame, index) => {
+  const bodyExtents = ["body", "manual"].includes(anchor) ? frames.reduce((extent, frame, index) => {
     const transform = resolveFrameTransform(options, frame.sourceIndex);
     const point = bodyPoints[index];
-    const sx = transform?.scaleX || 1; const sy = transform?.scaleY || 1;
+    const sx = (transform?.scaleX || 1) * (point.scale || 1); const sy = (transform?.scaleY || 1) * (point.scale || 1);
     return {
       left: Math.max(extent.left, (point.x - frame.bounds.left) * sx),
       right: Math.max(extent.right, (frame.bounds.left + frame.bounds.width - point.x) * sx),
@@ -888,17 +937,17 @@ async function renderFrames(frames, options) {
       bottom: Math.max(extent.bottom, (frame.bounds.top + frame.bounds.height - point.y) * sy),
     };
   }, { left: 0, right: 0, top: 0, bottom: 0 }) : null;
-  const requestedPadding = clamp(Math.round(Number(options.padding) || 20), 0, 512);
+  const requestedPadding = clamp(Math.round(Number(options.padding ?? 20)), 0, 512);
   // The pixel grid has to divide the cell exactly: otherwise the blocks along the far edge come out
   // one pixel wider than the rest and the sprite looks uneven.
   const pixelSize = Math.max(1, Math.round(Number(options.pixelate?.size) || 1));
   const snapToGrid = (value) => (pixelSize > 1 ? Math.ceil(value / pixelSize) * pixelSize : Math.ceil(value));
   const cellWidth = options.autoSize
-    ? clamp(snapToGrid((bodyExtents ? Math.max(maxWidth, 2 * Math.max(bodyExtents.left, bodyExtents.right)) : maxWidth) + requestedPadding * 2), 64, 4096)
-    : clamp(snapToGrid(Math.round(Number(options.cellWidth) || 600)), 64, 4096);
+    ? clamp(snapToGrid((bodyExtents ? Math.max(maxWidth, 2 * Math.max(bodyExtents.left, bodyExtents.right)) : maxWidth) + requestedPadding * 2), 1, 4096)
+    : clamp(snapToGrid(Math.round(Number(options.cellWidth) || 600)), 1, 4096);
   const cellHeight = options.autoSize
-    ? clamp(snapToGrid((bodyExtents ? Math.max(maxHeight, 2 * Math.max(bodyExtents.top, bodyExtents.bottom)) : maxHeight) + requestedPadding * 2), 64, 4096)
-    : clamp(snapToGrid(Math.round(Number(options.cellHeight) || 400)), 64, 4096);
+    ? clamp(snapToGrid((bodyExtents ? Math.max(maxHeight, 2 * Math.max(bodyExtents.top, bodyExtents.bottom)) : maxHeight) + requestedPadding * 2), 1, 4096)
+    : clamp(snapToGrid(Math.round(Number(options.cellHeight) || 400)), 1, 4096);
   const padding = clamp(requestedPadding, 0, Math.floor(Math.min(cellWidth, cellHeight) / 3));
   const background = options.outputBackground === "white"
     ? { r: 255, g: 255, b: 255, alpha: 1 }
@@ -928,9 +977,9 @@ async function renderFrames(frames, options) {
       left = padding;
       top = padding;
     } else {
-      const frameScale = options.fitEachFrame && anchor !== "body"
+      const frameScale = options.fitEachFrame && !["body", "manual"].includes(anchor)
         ? Math.min((cellWidth - padding * 2) / Math.max(1, frame.bounds.width), (cellHeight - padding * 2) / Math.max(1, frame.bounds.height))
-        : scale;
+        : scale * (bodyPoints[frameIndex]?.scale || 1);
       spriteWidth = Math.max(1, Math.round(frame.bounds.width * frameScale));
       spriteHeight = Math.max(1, Math.round(frame.bounds.height * frameScale));
       sprite = await sharp(frame.buffer)
@@ -941,7 +990,7 @@ async function renderFrames(frames, options) {
       top = anchor === "ground"
         ? cellHeight - padding - spriteHeight
         : Math.round((cellHeight - spriteHeight) / 2);
-      if (anchor === "body") {
+      if (["body", "manual"].includes(anchor)) {
         const point = bodyPoints[frameIndex];
         left = Math.round(cellWidth / 2 - (point.x - frame.bounds.left) * frameScale);
         top = Math.round(cellHeight / 2 - (point.y - frame.bounds.top) * frameScale);
@@ -963,7 +1012,7 @@ async function renderFrames(frames, options) {
 
   // Placing frames is pure sharp work with no shared state.
   const rendered = await runPooled(frames, parallelismFor(options), renderOne);
-  const bodyAlignment = anchor === "body" ? { method: "dense-core", x: cellWidth / 2, y: cellHeight / 2, referenceDiameter: Math.max(...bodyPoints.map(point => point.radius * 2)) * scale, frames: bodyPoints } : null;
+  const bodyAlignment = ["body", "manual"].includes(anchor) ? { method: anchor === "manual" ? "manual-points" : "dense-core", x: cellWidth / 2, y: cellHeight / 2, referenceDiameter: Math.max(...bodyPoints.map(point => point.radius * 2)) * scale, frames: bodyPoints } : null;
   return { rendered, cellWidth, cellHeight, padding, anchor, bodyAlignment };
 }
 
@@ -996,7 +1045,7 @@ const RENDER_CACHE_LIMIT = 4;
 const RENDER_CACHE_MAX_BYTES = 700 * 1024 * 1024;
 const postRenderOptionKeys = new Set([
   "exports", "cleanOutput", "previewFrameIndex", "attachmentPlacements", "columns", "autoColumns",
-  "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo", "packing", "exportFormat", "timeline", "loopMode", "loopRange", "animationName",
+  "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo", "atlasExtrude", "atlasGap", "atlasRotate", "atlasBackground", "atlasBackgroundColor", "packing", "exportFormat", "timeline", "loopMode", "loopRange", "animationName",
   // Scheduling only: the pool width changes nothing about the produced atlas.
   "frameParallelism",
 ]);
@@ -1016,7 +1065,7 @@ function stableStringify(value) {
 async function fileSignature(filePath) {
   try {
     const stats = await fs.stat(filePath);
-    return `${filePath}|${stats.size}|${Math.round(stats.mtimeMs)}`;
+    return `${filePath}|${stats.size}|${stats.mtimeMs}|${stats.ctimeMs}`;
   } catch {
     return `${filePath}|missing`;
   }
@@ -1027,6 +1076,7 @@ async function renderCacheKey(source, options = {}) {
   if (source.kind !== "video") delete relevant.fps;
   const files = await Promise.all([
     ...(source.paths || []),
+    ...(options.attachments || []).map(a => a.path).filter(Boolean),
     ...Object.values(options.frameOverrides || {}),
     ...(options.auxAI?.inpaintMaskPath ? [options.auxAI.inpaintMaskPath] : []),
   ].map((item) => fileSignature(String(item))));
@@ -1048,7 +1098,7 @@ function rememberRender(key, built) {
 // the keyed frames and the extracted video frames are reused and a comparison measures nothing.
 export function clearRenderCache() {
   renderCache.clear();
-  frameKeyCache.clear();
+  frameKeyCache.clear(); preparedStageCache.clear();
   videoFrameCache.clear();
 }
 
@@ -1111,6 +1161,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
   const skipped = { empty: 0, duplicates: 0, excluded: 0, emptyIndexes: [], duplicateIndexes: [] };
   const excludedFrames = new Set((options.excludedFrames || []).map(Number));
   const pixelateOptions = options.pixelate && Number(options.pixelate.size) > 1 ? options.pixelate : null;
+  const sharedPalette = pixelateOptions?.paletteScope === "series" && (pixelateOptions.palette || "auto") === "auto";
   let previousHash = null;
   // Keep at most `parallelism` frames in flight: order is preserved and memory stays bounded.
   // Neural inference shares one session and stays serial, because running it concurrently is
@@ -1120,6 +1171,10 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
   let nextToSchedule = 0;
   const prepareFrame = async (index) => {
     const frameOptions = resolvePreparedCleanup(options, index, inputFrames[index]);
+    const stageOptions = Object.fromEntries(["keyMode", "tolerance", "blackOutline", "blackFeather", "keyScope", "keyColor", "fringeCleanup", "fringeStrength", "edgeDecontaminate", "edgeRefine", "imageGeometry", "pixelate", "toning", "auxAI", "aiModel", "aiProvider", "aiQuality", "aiForceModel", "aiCutoff", "aiSoftness", "aiModelDirs"].map(k => [k, frameOptions[k]]));
+    const stageKey = stableStringify({ file: await fileSignature(inputFrames[index]), options: stageOptions, edits: (frameOptions.aiEdits || []).filter(e => e.applyAll || Number(e.frameIndex) === index), assets: await Promise.all([auxiliary.inpaintMaskPath, ...(attachmentPlacements[index] || []).map(p => p.path || p.imagePath)].filter(Boolean).map(fileSignature)), autoKeyColor, placement: attachmentPlacements[index], maskPrepared: source.maskPrepared });
+    const cachedStage = preparedStageCache.get(stageKey);
+    if (cachedStage) return cachedStage;
     let framePath = inputFrames[index];
     if (lama) {
       throwIfAborted(signal);
@@ -1145,9 +1200,9 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
     if (options.imageGeometry) keyed = await applyImageGeometry(keyed, options.imageGeometry);
     // Pixel art runs after the background is gone, otherwise the palette would repaint the
     // background instead of the sprite. Per frame, so it stays inside the same pool.
-    if (pixelateOptions) keyed = await applyPixelation(keyed, pixelateOptions);
-    if (options.toning) keyed = await applyToning(keyed, options.toning);
-    return keyed;
+    if (pixelateOptions && !sharedPalette) keyed = await applyPixelation(keyed, pixelateOptions);
+    if (options.toning && !sharedPalette) keyed = await applyToning(keyed, options.toning);
+    return preparedStageCache.set(stageKey, keyed);
   };
   for (let index = 0; index < inputFrames.length; index += 1) {
     throwIfAborted(signal);
@@ -1237,10 +1292,20 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
   }
   Object.assign(report, summarizeIssues(issues));
   onProgress?.({ stage: "normalize", value: 0.55, message: "Выравниваю кадры…" });
+  if (sharedPalette) {
+    const sharedColors = await buildSeriesPalette(prepared.map(f => f.buffer), pixelateOptions.colors);
+    for (let i = 0; i < prepared.length; i++) { throwIfAborted(signal); prepared[i] = await applyPixelation(prepared[i], { ...pixelateOptions, sharedColors }); if (options.toning) prepared[i] = await applyToning(prepared[i], options.toning); }
+    report.sharedPalette = sharedColors;
+  }
   const normalized = await renderFrames(prepared, options);
   const seamWarning = await warnLoopSeam(normalized.rendered, prepared, options);
   if (seamWarning) Object.assign(report, summarizeIssues([...report.issues, { code: "loop-seam", message: seamWarning }]));
   const normalizedAt = performance.now();
+  if ((source.kind === "video" || options.seriesReview === true) && prepared.length >= 3) {
+    report.seriesReview = await reviewSeries(prepared, signal);
+    Object.assign(report, summarizeIssues([...report.issues, ...report.seriesReview.issues]));
+  }
+  report.stageCache = processingCacheStats();
   report.timingsMs = { extract: Math.round(extractedAt - startedAt), tracking: Math.round(trackedAt - extractedAt), key: Math.round(keyedAt - trackedAt), normalize: Math.round(normalizedAt - keyedAt) };
   // Which accelerator actually ran belongs in the report: DirectML and the processor can differ
   // by a hair on soft edges, so two machines reproducing the same recipe need to know.
@@ -1290,13 +1355,13 @@ export function buildSequence(prepared, options = {}) {
       const image = byIndex.get(Number(entry?.src));
       if (image == null) continue;
       used.add(image);
-      const custom = Number(entry.durationMs);
+      const custom = Number(entry.durationMs ?? options.frameMetadata?.[Number(entry.src)]?.durationMs);
       const hasCustom = Number.isFinite(custom) && custom > 0;
       sequence.push({ image, durationMs: hasCustom ? clamp(Math.round(custom), 10, 10000) : baseDurationMs, custom: hasCustom });
     }
   }
   prepared.forEach((_frame, image) => {
-    if (!used.has(image)) sequence.push({ image, durationMs: baseDurationMs, custom: false });
+    if (!used.has(image)) sequence.push({ image, durationMs: Number(options.frameMetadata?.[_frame.sourceIndex]?.durationMs) || baseDurationMs, custom: Boolean(options.frameMetadata?.[_frame.sourceIndex]?.durationMs) });
   });
   return { sequence, fps, baseDurationMs };
 }
@@ -1319,121 +1384,6 @@ export function playbackOrder(length, loop) {
   for (let index = loop.from; index <= loop.to && index < length; index += 1) range.push(index);
   if (loop.mode === "pingpong" && range.length > 2) return [...range, ...range.slice(1, -1).reverse()];
   return range;
-}
-
-function layoutAtlas(groups, { packing, limitW = 0, limitH = 0, columnsOverride = null, gap = 2 }) {
-  const pages = [];
-  let page = { width: 0, height: 0, rects: [] };
-  const pushPage = () => { if (page.rects.length) pages.push(page); page = { width: 0, height: 0, rects: [] }; };
-  if (packing === "tight") {
-    const items = groups.flatMap((group) => group.items);
-    const totalArea = items.reduce((sum, item) => sum + (item.width + gap) * (item.height + gap), 0);
-    const widest = Math.max(1, ...items.map((item) => item.width));
-    const pageWidth = limitW || Math.max(widest, Math.ceil(Math.sqrt(totalArea * 1.15)));
-    const ordered = [...items].sort((a, b) => b.height - a.height || b.width - a.width);
-    let x = 0; let y = 0; let shelf = 0;
-    for (const item of ordered) {
-      if (x > 0 && x + item.width > pageWidth) { y += shelf + gap; x = 0; shelf = 0; }
-      if (limitH && y + item.height > limitH && page.rects.length) { pushPage(); x = 0; y = 0; shelf = 0; }
-      page.rects.push({ item, x, y });
-      x += item.width + gap;
-      shelf = Math.max(shelf, item.height);
-      page.width = Math.max(page.width, x - gap);
-      page.height = Math.max(page.height, y + item.height);
-    }
-    pushPage();
-    return pages;
-  }
-  let y = 0;
-  for (const group of groups) {
-    let columns = columnsOverride?.(group) ?? group.columns;
-    if (limitW) columns = Math.max(1, Math.min(columns, Math.floor(limitW / group.cellWidth)));
-    for (let start = 0; start < group.items.length; start += columns) {
-      if (limitH && y + group.cellHeight > limitH && page.rects.length) { pushPage(); y = 0; }
-      group.items.slice(start, start + columns).forEach((item, column) => {
-        page.rects.push({ item, x: column * group.cellWidth, y });
-        page.width = Math.max(page.width, (column + 1) * group.cellWidth);
-      });
-      y += group.cellHeight;
-      page.height = Math.max(page.height, y);
-    }
-    group.layoutColumns = columns;
-  }
-  pushPage();
-  return pages;
-}
-
-function scaleHitbox(hitbox, scale) {
-  if (!hitbox) return null;
-  return { x: Math.round(hitbox.x * scale), y: Math.round(hitbox.y * scale), width: Math.max(1, Math.round(hitbox.width * scale)), height: Math.max(1, Math.round(hitbox.height * scale)) };
-}
-
-function scaleGroups(groups, scale) {
-  return groups.map((group) => ({
-    ...group,
-    cellWidth: Math.max(1, Math.floor(group.cellWidth * scale)),
-    cellHeight: Math.max(1, Math.floor(group.cellHeight * scale)),
-    items: group.items.map((item) => ({ ...item, width: Math.max(1, Math.floor(item.width * scale)), height: Math.max(1, Math.floor(item.height * scale)), hitbox: scaleHitbox(item.hitbox, scale) })),
-  }));
-}
-
-function pagesExceed(pages, limit) {
-  return Boolean(limit) && pages.some((page) => page.width > limit || page.height > limit);
-}
-
-function floorPowerOfTwo(value) {
-  let size = 1;
-  while (size * 2 <= value) size *= 2;
-  return size;
-}
-
-function padAtlasPages(pages, powerOfTwo) {
-  if (!powerOfTwo) return pages;
-  const ceilPowerOfTwo = (value) => {
-    let size = 1;
-    while (size < value) size *= 2;
-    return size;
-  };
-  return pages.map((page) => ({ ...page, width: ceilPowerOfTwo(page.width), height: ceilPowerOfTwo(page.height) }));
-}
-
-export function planAtlas(groups, { packing = "grid", maxSize = 0, overflow = "warn", powerOfTwo = false } = {}) {
-  const limit = Number(maxSize) > 0 ? Number(maxSize) : 0;
-  // A non-power-of-two CLI limit (for example 3000) can only fit a 2048 page.
-  const layoutLimit = limit && powerOfTwo ? floorPowerOfTwo(limit) : limit;
-  const tight = packing === "tight";
-  const layout = (plannedGroups, settings) => padAtlasPages(layoutAtlas(plannedGroups, settings), powerOfTwo);
-  const natural = layout(groups, { packing, limitW: tight ? layoutLimit : 0 });
-  const naturalWidth = Math.max(...natural.map((page) => page.width));
-  const naturalHeight = natural.reduce((sum, page) => Math.max(sum, page.height), 0);
-  const exceeds = pagesExceed(natural, limit);
-  const base = { exceeds, limit, naturalWidth, naturalHeight, requested: overflow, powerOfTwo: Boolean(powerOfTwo) };
-  if (!exceeds || !limit || overflow === "warn") {
-    return { ...base, pages: natural, groups, scale: 1, applied: exceeds ? "warn" : "none", note: exceeds ? `Лист ${naturalWidth}×${naturalHeight} больше ${limit} px` : "" };
-  }
-  const largestItem = Math.max(...groups.flatMap((group) => group.items.map((item) => Math.max(item.width, item.height))));
-  if (overflow === "columns" && !tight) {
-    const pages = layout(groups, { packing, columnsOverride: (group) => Math.max(1, Math.floor(layoutLimit / group.cellWidth)) });
-    if (!pagesExceed(pages, limit)) return { ...base, pages, groups, scale: 1, applied: "columns", note: "Столбцы пересчитаны под лимит" };
-  }
-  if (overflow === "scale") {
-    let scale = Math.min(1, layoutLimit / Math.max(1, naturalWidth), layoutLimit / Math.max(1, naturalHeight));
-    if (tight) scale = Math.min(1, Math.sqrt((layoutLimit * layoutLimit) / Math.max(1, naturalWidth * naturalHeight)));
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      const scaledGroups = scaleGroups(groups, scale);
-      const pages = layout(scaledGroups, { packing, limitW: tight ? layoutLimit : 0 });
-      if (!pagesExceed(pages, limit) && pages.length === 1) {
-        return { ...base, pages, groups: scaledGroups, scale, applied: "scale", note: `Кадры уменьшены до ${Math.round(scale * 100)}%` };
-      }
-      scale *= 0.94;
-    }
-  }
-  // Split into several pages; a single frame larger than the limit is scaled down first.
-  const scale = largestItem > layoutLimit ? layoutLimit / largestItem : 1;
-  const scaledGroups = scale < 1 ? scaleGroups(groups, scale) : groups;
-  const pages = layout(scaledGroups, { packing, limitW: layoutLimit, limitH: layoutLimit });
-  const note = overflow === "columns" && !tight ? "Столбцы не помогли — лист разбит на страницы" : `Разбито на листов: ${pages.length}`;
-  return { ...base, pages, groups: scaledGroups, scale, applied: "split", note: scale < 1 ? `${note} · кадры уменьшены до ${Math.round(scale * 100)}%` : note };
 }
 
 // A pixel belongs to the sprite hitbox above this alpha. Trimming uses a lower
@@ -1511,21 +1461,25 @@ function describeFrames(animations, atlas, pageFiles) {
     animation.sequence.forEach((entry, position) => {
       const item = group.items[entry.image];
       const rect = rectByItem.get(item);
+      const metadata = animation.options.frameMetadata?.[animation.prepared[entry.image].sourceIndex] || animation.source.frameMetadata?.[animation.prepared[entry.image].sourceIndex] || {};
       frames.push({
-        name: frameName(animation.prefix, position),
-        animation: animation.name,
+        ...metadata.extra,
+        name: metadata.name ? safeName(metadata.name) + (animation.sequence.filter(e => e.image === entry.image).length > 1 ? "_" + position : "") : frameName(animation.prefix, position),
+        animation: metadata.tag || animation.name,
+        anchorPoints: metadata.anchorPoints || [],
         position,
         sourceFrameIndex: animation.prepared[entry.image].sourceIndex,
         sourceName: animation.source.sheetFrameNames?.[animation.prepared[entry.image].sourceIndex] || null,
         sourceRect: animation.source.sheetCells?.[animation.prepared[entry.image].sourceIndex] || null,
         page: rect.page,
         image: pageFiles[rect.page],
-        x: rect.x, y: rect.y, width: item.width, height: item.height,
+        x: rect.x, y: rect.y, width: rect.rotated ? item.height : item.width, height: rect.rotated ? item.width : item.height,
+        rotated: Boolean(rect.rotated),
         trimmed: Boolean(item.trimmed),
         spriteSourceSize: { x: item.offsetX, y: item.offsetY, w: item.width, h: item.height },
         sourceSize: { w: group.cellWidth, h: group.cellHeight },
         durationMs: entry.durationMs,
-        pivot: animation.pivot,
+        pivot: metadata.pivot || animation.pivot,
         hitbox: item.hitbox || null,
         // The hitbox lives in cell coordinates, the same space as sourceSize.
         hitboxSpace: "cell",
@@ -1546,6 +1500,20 @@ function describeFrames(animations, atlas, pageFiles) {
       anchor: animation.anchor,
     });
   }
+  const names = new Set();
+  for (const frame of frames) { if (names.has(frame.name)) throw new Error("Имена кадров совпали после нормализации: " + frame.name); names.add(frame.name); }
+  if (animations.some(a => a.source.importedAnimations?.length) || frames.some(f => !tags.some(t => t.name === f.animation))) {
+    const runs = []; const used = new Map();
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i]; const previous = runs.at(-1);
+      if (previous?.tagName === frame.animation) { previous.to = i; previous.frameCount++; continue; }
+      const template = animations.flatMap(a => a.source.importedAnimations || []).find(t => t.name === frame.animation) || tags.find(t => i >= t.from && i <= t.to) || tags[0];
+      const count = (used.get(frame.animation) || 0) + 1; used.set(frame.animation, count);
+      runs.push({ ...template, name: frame.animation + (count > 1 ? "_" + count : ""), tagName: frame.animation, from: i, to: i, frameCount: 1, loop: { mode: template.direction === "pingpong" ? "pingpong" : "loop", from: 0, to: 0 } });
+    }
+    for (const run of runs) { run.loop.to = run.frameCount - 1; run.fps ||= animations[0].fps; }
+    return { frames, tags: runs };
+  }
   return { frames, tags };
 }
 
@@ -1563,12 +1531,12 @@ function phaserFiles(spriteName, frames, tags, atlas, pageFiles) {
     scale: 1,
     frames: frames.filter((frame) => frame.page === pageIndex).map((frame) => ({
       filename: frame.name,
-      rotated: false,
+      rotated: Boolean(frame.rotated),
       trimmed: frame.trimmed,
       sourceSize: frame.sourceSize,
       spriteSourceSize: frame.spriteSourceSize,
       frame: { x: frame.x, y: frame.y, w: frame.width, h: frame.height },
-      pivot: frame.pivot,
+      pivot: frame.pivot, durationMs: frame.durationMs, animation: frame.animation, anchorPoints: frame.anchorPoints,
     })),
   }));
   const anims = tags.map((tag) => {
@@ -1594,11 +1562,12 @@ function texturePackerFiles(spriteName, frames, tags, atlas, pageFiles) {
     frames.filter((frame) => frame.page === pageIndex).forEach((frame) => {
       pageFrames[`${frame.name}.png`] = {
         frame: { x: frame.x, y: frame.y, w: frame.width, h: frame.height },
-        rotated: false,
+        rotated: Boolean(frame.rotated),
         trimmed: frame.trimmed,
         spriteSourceSize: frame.spriteSourceSize,
         sourceSize: frame.sourceSize,
         duration: frame.durationMs,
+        animation: frame.animation, anchorPoints: frame.anchorPoints,
         pivot: frame.pivot,
       };
     });
@@ -1881,7 +1850,7 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
   const animations = [];
   const usedNames = new Set();
   for (const [animationIndex, input] of animationInputs.entries()) {
-    const animOptions = input.options || options;
+    const animOptions = { ...options, ...(input.options || {}), frameMetadata: { ...(input.source.frameMetadata || {}), ...(options.frameMetadata || {}), ...(input.options?.frameMetadata || {}) }, preserveFrameCanvas: (input.options || options).preserveFrameCanvas ?? Boolean(input.source.frameMetadata) };
     const scaleProgress = (progress) => onProgress?.({
       ...progress,
       value: ((animationIndex + Math.max(0, Math.min(1, Number(progress.value) || 0)) * 0.8) / animationInputs.length),
@@ -1969,7 +1938,11 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
   const imagesAt = performance.now();
 
   // Atlas items.
-  const packing = options.packing === "tight" ? "tight" : "grid";
+  const packing = ["tight", "maxrects"].includes(options.packing) ? options.packing : "grid";
+  const extrude = Number(options.atlasExtrude || 0);
+  const gap = Number(options.atlasGap ?? 2);
+  const rotate = options.atlasRotate === true;
+  if (rotate && !["chuba", "phaser3", "texturepacker"].includes(exportFormat)) throw new Error("Поворот поддерживается только Chuba, Phaser и TexturePacker.");
   const groups = [];
   for (const animation of animations) {
     const count = animation.normalized.rendered.length;
@@ -1984,7 +1957,7 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
       async (index) => {
         const rendered = animation.normalized.rendered[index];
         const cell = await inspectRenderedCell(rendered.buffer);
-        if (packing === "tight") {
+        if (packing !== "grid") {
           const trimmed = await trimRendered(rendered.buffer, cell.trimBounds);
           return {
             buffer: trimmed.buffer, width: trimmed.bounds.width, height: trimmed.bounds.height,
@@ -2009,7 +1982,7 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
   }
   const itemsAt = performance.now();
   const maxSize = Number(options.atlasMaxSize) || 0;
-  const atlas = planAtlas(groups.map((group) => ({ ...group, items: group.items })), { packing, maxSize, overflow: options.atlasOverflow || "warn", powerOfTwo: options.atlasPowerOfTwo === true });
+  const atlas = planAtlas(groups.map((group) => ({ ...group, items: group.items })), { packing, maxSize, overflow: options.atlasOverflow || "warn", powerOfTwo: options.atlasPowerOfTwo === true, gap, extrude, rotate });
   // Map scaled items back to per-image lists in the same order.
   atlas.groups.forEach((group, groupIndex) => {
     const original = groups[groupIndex];
@@ -2030,7 +2003,10 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
   });
 
   onProgress?.({ stage: "sheet", value: 0.86, message: atlas.pages.length > 1 ? `Собираю ${atlas.pages.length} листа…` : "Собираю спрайт-лист…" });
-  const sheetBackground = options.outputBackground === "white" ? { r: 255, g: 255, b: 255, alpha: 1 } : { r: 0, g: 0, b: 0, alpha: 0 };
+  const bgMode = options.atlasBackground || options.outputBackground;
+  const bgHex = options.atlasBackgroundColor || "#ffffff";
+  if (bgMode === "custom" && !/^#[0-9a-f]{6}$/i.test(bgHex)) throw new Error("Фон листа: укажите цвет #RRGGBB.");
+  const sheetBackground = bgMode === "white" ? { r: 255, g: 255, b: 255, alpha: 1 } : bgMode === "black" ? { r: 0, g: 0, b: 0, alpha: 1 } : bgMode === "custom" ? { r: parseInt(bgHex.slice(1, 3), 16), g: parseInt(bgHex.slice(3, 5), 16), b: parseInt(bgHex.slice(5, 7), 16), alpha: 1 } : { r: 0, g: 0, b: 0, alpha: 0 };
   const pixelKernel = animations.some((animation) => animation.options.pixelPerfect) ? sharp.kernel.nearest : sharp.kernel.lanczos3;
   const pageFiles = atlas.pages.map((_page, index) => (atlas.pages.length === 1 ? `${spriteName}.sheet.png` : `${spriteName}.sheet-${index}.png`));
   const sheetDir = previewOnly || exportSheet ? outputRoot : workingRoot;
@@ -2047,7 +2023,9 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
       if (meta.width !== rect.item.width || meta.height !== rect.item.height) {
         input = await sharp(input).resize({ width: rect.item.width, height: rect.item.height, fit: "fill", kernel: pixelKernel }).png().toBuffer();
       }
-      composites.push({ input, left: rect.x, top: rect.y });
+      if (rect.rotated) input = await sharp(input).rotate(90).png().toBuffer();
+      if (extrude) input = await extrudeSprite(input, extrude);
+      composites.push({ input, left: rect.x - extrude, top: rect.y - extrude });
     }
     sheetPrepMs += performance.now() - prepStarted;
     const sheetPath = path.join(sheetDir, pageFiles[pageIndex]);
@@ -2085,6 +2063,7 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
   const columns = gridLayout ? (primaryGroup.layoutColumns || primaryGroup.columns) : primaryGroup.columns;
   const rows = gridLayout ? Math.ceil(groups[primary.groupIndex].items.length / Math.max(1, columns)) : Math.ceil(primary.sequence.length / Math.max(1, primaryGroup.columns));
   const manifest = {
+    ...(firstSource.importedMetadata || {}),
     name: spriteName,
     image: pageFiles[0],
     frameWidth: primaryGroup.cellWidth,
@@ -2097,9 +2076,10 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
     anchor: primary.anchor,
     pivot: primary.pivot,
     ...(primary.normalized.bodyAlignment ? { bodyAlignment: { ...primary.normalized.bodyAlignment, x: primaryGroup.cellWidth / 2, y: primaryGroup.cellHeight / 2, referenceDiameter: primary.normalized.bodyAlignment.referenceDiameter * atlas.scale } } : {}),
-    transparent: options.outputBackground !== "white",
+    transparent: sheetBackground.alpha === 0,
     formatVersion: 2,
     packing,
+    extrude, gap, rotation: rotate,
     powerOfTwo: atlas.powerOfTwo,
     scale: atlas.scale,
     pages: atlas.pages.map((page, index) => ({ image: pageFiles[index], width: page.width, height: page.height })),
@@ -2107,6 +2087,7 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
     animations: tags,
     ...(animations.some((animation) => animation.depthFiles.length) ? { depthMaps: animations.map((animation) => ({ animation: animation.name, images: animation.depthFiles })) } : {}),
     frames: frames.map((frame, index) => ({
+      ...Object.fromEntries(Object.entries(frame).filter(([key]) => !["image", "position"].includes(key))),
       index,
       name: frame.name,
       animation: frame.animation,
@@ -2119,12 +2100,14 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
       width: frame.width,
       height: frame.height,
       trimmed: frame.trimmed,
+      rotated: frame.rotated,
       spriteSourceSize: frame.spriteSourceSize,
       sourceSize: frame.sourceSize,
       durationMs: frame.durationMs,
       pivot: frame.pivot,
       hitbox: frame.hitbox,
       hitboxSpace: frame.hitboxSpace,
+      anchorPoints: frame.anchorPoints,
       transform: frame.transform,
     })),
   };
@@ -2400,6 +2383,7 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
   if (options.pixelate && Number(options.pixelate.size) > 1) keyed = await applyPixelation(keyed, options.pixelate);
   if (options.toning) keyed = await applyToning(keyed, options.toning);
   if (options.colorAdjust) keyed = await applyImageColorAdjust(keyed, options.colorAdjust);
+  keyed = await scalePixelFrame(keyed, options.pixelScale || 1);
   const transform = resolveFrameTransform(options, previewFrameIndex);
   if (transform && keyed.bounds) {
     const sprite = await sharp(keyed.buffer).extract(keyed.bounds).png().toBuffer();

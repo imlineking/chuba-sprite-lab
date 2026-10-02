@@ -66,6 +66,7 @@ try {
     await pause(100);
   }
   const initial = await evaluate("({modal:!$('#imageBatchModal').classList.contains('hidden'), report:imageBatchDraft?.results?.[0]?.cleanupReport, changed:imageBatchDraft?.results?.[0]?.changeReport?.changed, healingButton:!$('#imageBatchTasks button[data-batch-task=healing]').disabled, text:$('#imageBatchList').innerText})");
+  if (!initial.report) console.log(JSON.stringify({exceptions, detail: await evaluate("({failures:imageBatchDraft?.failures,busy:state.busy,body:document.body.innerText.slice(-8000)})")},null,2));
   assert.ok(initial.modal && initial.changed > 0 && initial.report?.removed > 0, JSON.stringify(initial));
   await screenshot("cleanup.png");
   const layoutChecks = [];
@@ -334,8 +335,55 @@ try {
     assert.equal(await evaluate("Object.keys(state.frameOverrides).length"), 0);
     batchGeometry = { all: true, size: [32, 24], combinedWithPixelation: true, savedPixelsMatch: true, originalUnchanged: true, undo: true };
   }
+  const readyAssembly = [];
+  await evaluate("$('#atlasMaxSize').add(new Option('80','80'));$('#atlasMaxSize').value='80';$('#atlasOverflow').value='split'");
+  await evaluate("window.taskChoose('readyAtlas','auto')");
+  assert.equal(await evaluate("document.querySelector('.copilot-tasks article[data-task=readyAtlas] strong').textContent"), "Собрать атлас");
+  for (const kind of ["sheet", "atlas"]) {
+    await evaluate("window.openImageBatchPreview({readyOnly:true,automatic:false,outputKind:"+JSON.stringify(kind)+"});$('#imageBatchScope').value='all';$('#spriteName').value='ready-ui-"+kind+"';$('#imageBatchAtlasBackground').value='white';$('#imageBatchAtlasBackground').dispatchEvent(new Event('change'));$('#imageBatchAssembly').open=true");
+    assert.equal(await evaluate("Object.values(imageBatchDraft.results).every(r=>r.route[0]==='готовый файл · без очистки')"), true);
+    assert.equal(await evaluate("$('#applyImageBatch').disabled"), true);
+    await evaluate("$('#prepareImageBatch').click()");
+    for(let n=0;n<400;n++) { if(await evaluate("!state.busy && !$('#applyImageBatch').disabled")) break; await pause(100); }
+    const preview = await evaluate("imageBatchDraft.assembly?.result"); assert.ok(preview?.sheetPath, "Нет просмотра готового листа");
+    assert.ok(preview.sheetPaths.length > 1, "Не проверены страницы");
+    await evaluate("$('#imageBatchPage').value='1';$('#imageBatchPage').dispatchEvent(new Event('change'))");
+    assert.equal(await evaluate("$('#imageBatchAfter').src"), preview.sheetUrls[1]);
+    const previewManifest = JSON.parse(await fs.readFile(preview.manifestPath,"utf8")); assert.equal(previewManifest.transparent,false);
+    const sheet = await sharp(preview.sheetPath).ensureAlpha().raw().toBuffer();
+    for(let i=3;i<sheet.length;i+=4) assert.equal(sheet[i],255);
+    for(const frame of previewManifest.frames) assert.deepEqual(frame.sourceSize, {w:64,h:48});
+    await screenshot("ready-"+kind+"-white.png");
+    await evaluate("state.outputFolder="+JSON.stringify(path.join(output,"ready-exports"))+";$('#applyImageBatch').click()");
+    for(let n=0;n<400;n++) { if(await evaluate("!state.busy && $('#imageBatchModal').classList.contains('hidden')")) break; await pause(100); }
+    const exported = await evaluate("state.lastRevealPath"); assert.ok(exported && exported.includes('ready-ui-'+kind));
+    assert.deepEqual(await sharp(exported).ensureAlpha().raw().toBuffer(),await sharp(preview.sheetPath).ensureAlpha().raw().toBuffer());
+    readyAssembly.push({kind,whiteBackground:true,noCleanup:true,savedMatchesPreview:true});
+  }
+  await evaluate("(async()=>{window.startImageEditing(); await pixelEditorOpen(); pixelEditorSetTool('select'); await pixelEditorSend({op:'selectPixels',from:[8,8],to:[15,15]}); $('#pixelSelectionX').value='2'; $('#pixelSeparateSelection').click();})()");
+  for(let n=0;n<100;n++) { if(await evaluate("pixelEditor.layers.length===2")) break; await pause(100); }
+  assert.equal(await evaluate("pixelEditor.layers.length"),2);
+  await evaluate("$('#pixelUndo').click()");
+  for(let n=0;n<100;n++) { if(await evaluate("pixelEditor.layers.length===1")) break; await pause(100); }
+  assert.equal(await evaluate("pixelEditor.layers.length"),1); await screenshot("pixel-selection-new-layer.png");
+  await evaluate("(async()=>{const closing=pixelEditorClose();await new Promise(r=>setTimeout(r,50));if(pixelEditorCloseDecision)pixelEditorAnswerClose('discard');await closing; document.querySelector('.frame-metadata-fields').open=true; $('#frameMetaName').value='game-flower'; $('#frameMetaTag').value='idle'; $('#framePivotX').value='0.3'; $('#applyFrameMetadata').click();})()");
+  assert.equal(await evaluate("state.frameMetadata[state.selectedFrameIndex].name"), 'game-flower');
+  for(const theme of ['light','dark']) {
+    await evaluate("document.documentElement.dataset.theme="+JSON.stringify(theme));
+    const fields = await evaluate("(()=>{const e=document.querySelector('.frame-metadata-fields');return {width:e.clientWidth,overflow:e.scrollWidth>e.clientWidth}})()");
+    assert.ok(fields.width>500 && !fields.overflow, JSON.stringify(fields)); await screenshot("frame-metadata-"+theme+".png");
+  }
+  const added = path.join(output,'added-frame.png'); await fs.copyFile(input, added);
+  await evaluate("(async()=>{const source=await spriteLab.restoreProject({source:{kind:'frames',paths:[...state.source.paths,"+JSON.stringify(added)+"]}});window.mergeAddedSpriteFiles(source);})()");
+  assert.equal(await evaluate("state.source.paths.length"),3);
+  assert.equal(await evaluate("Object.values(state.frameMetadata).some(m=>m.name==='game-flower')"),true);
+  await evaluate("undoWorkspace()");assert.equal(await evaluate("state.source.paths.length"),2);
+  await evaluate("redoWorkspace()");assert.equal(await evaluate("state.source.paths.length"),3);
+  const metaBuild = await evaluate("(async()=>{return spriteLab.build({source:state.source,previewOnly:true,name:'metadata-ui',options:{...collectOptions(),keyMode:'alpha',edgeRefine:{mode:'none'},aiEdits:[],pixelate:null,toning:null,packing:'grid',atlasRotate:false,atlasExtrude:0,atlasMaxSize:0,removeDuplicates:false,preserveFrameCanvas:true,exports:{sheet:true,metadata:true,frames:false,preview:false}}});})()");
+  const metaJson = JSON.parse(await fs.readFile(metaBuild.manifestPath,'utf8')); const named = metaJson.frames.find(f=>f.name==='game-flower');
+  assert.ok(named);assert.equal(named.animation,'idle');assert.deepEqual(named.pivot,{x:.3,y:.5});
   assert.deepEqual(exceptions, []);
-  const report = { executable, originalHash, initial, layoutChecks, manual, cleanupDecisions, engines, pixelOptions, pixelationChanged:true, batchPixelation, batchGeometry, saved: saved.results[0].imagePath, savedPixelsMatch: true, originalUnchanged: true, exceptions };
+  const report = { executable, originalHash, initial, layoutChecks, manual, cleanupDecisions, engines, pixelOptions, pixelationChanged:true, batchPixelation, batchGeometry, readyAssembly, saved: saved.results[0].imagePath, savedPixelsMatch: true, originalUnchanged: true, exceptions };
   await fs.writeFile(path.join(output, "report.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } finally {

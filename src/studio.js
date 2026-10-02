@@ -28,6 +28,7 @@ function baseDurationMs() {
 function saveStudioPreferences() {
   try {
     localStorage.setItem("spriteLab.studio", JSON.stringify({
+      atlasGap: Number($("#atlasGap").value), atlasExtrude: Number($("#atlasExtrude").value), atlasRotate: $("#atlasRotate").checked,
       packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
       atlasMaxSize: $("#atlasMaxSize").value, atlasOverflow: $("#atlasOverflow").value, atlasPowerOfTwo: $("#atlasPowerOfTwo").checked,
       onionOpacity: studio.onionOpacity, gameScale: studio.gameScale, hitbox: studio.hitbox,
@@ -39,6 +40,9 @@ function loadStudioPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem("spriteLab.studio") || "null");
     if (!saved) return;
+    if (saved.atlasGap != null) $("#atlasGap").value = String(saved.atlasGap);
+    if (saved.atlasExtrude != null) $("#atlasExtrude").value = String(saved.atlasExtrude);
+    $("#atlasRotate").checked = saved.atlasRotate === true;
     if (saved.packing) $("#atlasPacking").value = saved.packing;
     if (saved.exportFormat) $("#exportFormat").value = saved.exportFormat;
     if (saved.atlasMaxSize != null) $("#atlasMaxSize").value = String(saved.atlasMaxSize);
@@ -192,6 +196,7 @@ function setSelectedDuration(value) {
   if (!entry) return;
   const ms = Number(value);
   entry.d = Number.isFinite(ms) && ms > 0 ? Math.max(10, Math.min(10000, Math.round(ms))) : null;
+  if (!entry.d && state.frameMetadata[entry.src]?.durationMs) state.frameMetadata[entry.src] = { ...state.frameMetadata[entry.src], durationMs: undefined };
   timelineChanged("Длительность кадра");
   setStatus(entry.d ? `Кадр ${entry.src + 1}: ${entry.d} мс (попадёт в JSON durationMs)` : `Кадр ${entry.src + 1}: длительность по FPS`, "done", 0);
 }
@@ -596,6 +601,11 @@ function renderAtlasInspection(result) {
 
 function updateExportFormatHint() {
   const format = $("#exportFormat").value;
+  const dense = $("#atlasPacking").value !== "grid";
+  $("#atlasExtrude").disabled = !dense;
+  $("#atlasRotate").disabled = !dense || !["chuba", "phaser3", "texturepacker"].includes(format);
+  if (!dense) $("#atlasExtrude").value = "0";
+  if ($("#atlasRotate").disabled) $("#atlasRotate").checked = false;
   const hints = {
     chuba: "Chuba JSON: лист, кадры, durationMs, теги анимаций.",
     phaser3: "Phaser 3: NAME.phaser.json (multiatlas) + NAME.phaser-anims.json.",
@@ -603,7 +613,7 @@ function updateExportFormatHint() {
     texturepacker: "TexturePacker JSON-hash: NAME.texturepacker.json (на каждый лист).",
   };
   const metadataOff = !$("#exportMetadata").checked;
-  $("#exportFormatHint").textContent = `${hints[format] || ""}${format !== "chuba" && metadataOff ? " Включите «Manifest + отчёт», чтобы файл движка был создан." : ""}${$("#atlasPacking").value === "tight" ? " Плотная упаковка обрезает пустые поля и хранит смещения в JSON." : ""}`;
+  $("#exportFormatHint").textContent = `${hints[format] || ""}${format !== "chuba" && metadataOff ? " Включите «Manifest + отчёт», чтобы файл движка был создан." : ""}${$("#atlasPacking").value !== "grid" ? " Плотная упаковка обрезает пустые поля и хранит смещения в JSON." : ""}`;
 }
 
 /* ------------------------------------------------------- named animations */
@@ -994,7 +1004,7 @@ $("#fps").addEventListener("input", () => { syncFrameDurationControl(selectedEnt
 $("#maskOnion").addEventListener("change", syncMaskOnion);
 $("#maskOnionOpacity").addEventListener("input", syncMaskOnion);
 
-for (const id of ["atlasPacking", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo"]) {
+for (const id of ["atlasPacking", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo", "atlasGap", "atlasExtrude", "atlasRotate"]) {
   $(`#${id}`).addEventListener("change", () => {
     state.lastExportDir = null; updateExportFormatHint(); saveStudioPreferences(); updateActionState();
     if (id !== "exportFormat") markPreviewDirty();

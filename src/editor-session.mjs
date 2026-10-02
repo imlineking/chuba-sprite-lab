@@ -29,6 +29,7 @@ import {
 
 import { frameColorPatch, frameAdjustmentPatch } from "./frame-color.mjs";
 
+import { makePixelSelection, moveSelectedPixels } from "./pixel-selection.mjs";
 const sessions = new Map();
 
 export const maxEditorSessions = 4;
@@ -66,6 +67,7 @@ function sessionState(session, extra = {}) {
     height: session.document.height,
     layers: describeLayers(session.document),
     activeLayerId: session.activeLayerId,
+    selection: session.selection || null,
     canUndo: session.history.undoStack.length > 0,
     canRedo: session.history.redoStack.length > 0,
     composite: compositeFrame(session.document, session.frameIndex),
@@ -111,15 +113,23 @@ function normalizeTolerance(value) {
 
 // Runs one drawing command and records the difference it made as a single undo step. The snapshot is
 // taken before the command, so a whole mouse stroke collapses into one patch.
-function applyCommand(session, label, command) {
+function applyCommand(session, label, command, constrain = true) {
   const layer = activeLayer(session);
   if (!layer) return sessionState(session);
   if (layer.locked) return sessionState(session, { blocked: `Слой «${layer.name}» заблокирован.` });
   const before = snapshotCel(session.document, layer.id, session.frameIndex);
+  const selectionBefore = session.selection ? Uint8Array.from(session.selection) : null;
   const touched = command(layer);
+  if (constrain && selectionBefore) {
+    const cel = ensureCel(session.document, layer.id, session.frameIndex);
+    for (let i = 0; i < selectionBefore.length; i++) if (!selectionBefore[i]) cel.set(before.subarray(i * 4, i * 4 + 4), i * 4);
+  }
   if (!touched) return sessionState(session);
   const patch = patchFromSnapshot(session.document, layer.id, session.frameIndex, before, label);
-  if (patch) pushPatch(session.history, session.document, patch);
+  if (patch) {
+    patch.selectionBefore = selectionBefore; patch.selectionAfter = session.selection ? Uint8Array.from(session.selection) : null;
+    pushPatch(session.history, session.document, patch);
+  }
   return sessionState(session, { label });
 }
 
@@ -238,6 +248,7 @@ export function stepHistory(sessionId, direction = "undo") {
   const patch = direction === "redo"
     ? redoPatch(session.history, session.document)
     : undoPatch(session.history, session.document);
+  if (patch && Object.hasOwn(patch, "selectionBefore")) session.selection = direction === "redo" ? patch.selectionAfter : patch.selectionBefore;
   if (patch?.activeLayerBefore) session.activeLayerId = direction === "redo" ? patch.activeLayerAfter : patch.activeLayerBefore;
   if (!findLayer(session.document, session.activeLayerId)) session.activeLayerId = session.document.layers.at(-1).id;
   return sessionState(session, { label: patch ? patch.label || null : null, empty: !patch });
@@ -311,4 +322,38 @@ export function openSessionCount() {
 
 export function resetSessionsForTests() {
   sessions.clear();
+}
+
+export function selectPixels(sessionId, options = {}) {
+  const session = requireSession(sessionId);
+  session.selection = options.clear ? null : makePixelSelection(compositeFrame(session.document, session.frameIndex), session.document.width, session.document.height, options);
+  return sessionState(session);
+}
+export function transformSelection(sessionId, options = {}) {
+  const session = requireSession(sessionId);
+  if (!session.selection?.some(Boolean)) return sessionState(session, { blocked: "Сначала выделите пиксели." });
+  if (options.newLayer) {
+    const source = activeLayer(session);
+    if (source.locked) return sessionState(session, { blocked: "Слой заблокирован." });
+    const before = snapshotCel(session.document, source.id, session.frameIndex);
+    const moved = moveSelectedPixels(before, session.document.width, session.document.height, session.selection, options);
+    const selected = Buffer.alloc(before.length);
+    for (let i = 0; i < session.selection.length; i++) if (session.selection[i]) selected.set(before.subarray(i * 4, i * 4 + 4), i * 4);
+    const target = moveSelectedPixels(selected, session.document.width, session.document.height, session.selection, { ...options, copy: false });
+    // Validate before creating a layer: an out-of-bounds move has no side effects.
+    const layer = addLayer(session.document, "Выделенный объект");
+    ensureCel(session.document, layer.id, session.frameIndex).set(target.data);
+    const sourceCel = ensureCel(session.document, source.id, session.frameIndex);
+    for (let i = 0; i < session.selection.length; i++) if (session.selection[i]) sourceCel.fill(0, i * 4, i * 4 + 4);
+    const parts = [patchFromSnapshot(session.document, source.id, session.frameIndex, before), patchFromSnapshot(session.document, layer.id, session.frameIndex, new Uint8ClampedArray(before.length))].filter(Boolean);
+    if (!parts.length) { removeLayer(session.document, layer.id); return sessionState(session); }
+    const patch = { label: "Объект вынесен на новый слой", parts, addedLayer: { ...layer }, layerIndex: session.document.layers.length - 1, activeLayerBefore: source.id, activeLayerAfter: layer.id, selectionBefore: Uint8Array.from(session.selection), selectionAfter: moved.mask };
+    pushPatch(session.history, session.document, patch); session.selection = moved.mask; session.activeLayerId = layer.id;
+    return sessionState(session, { label: patch.label });
+  }
+  return applyCommand(session, options.erase ? "Вырезать выделение" : "Перемещение выделенных пикселей", layer => {
+    const cel = ensureCel(session.document, layer.id, session.frameIndex);
+    const moved = moveSelectedPixels(cel, session.document.width, session.document.height, session.selection, options);
+    cel.set(moved.data); session.selection = moved.mask; return true;
+  }, false);
 }

@@ -48,8 +48,11 @@ export async function applyImageGeometry(keyed, value) {
   }
   const buffer = await image.png().toBuffer();
   const { data, info } = await sharp(buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const scale = options.mode === "trim" ? 1 : (options.mode === "cover" ? Math.max : Math.min)(info.width / rect.width, info.height / rect.height);
+  const scaledWidth = options.mode === "stretch" ? info.width : Math.round(rect.width * scale), scaledHeight = options.mode === "stretch" ? info.height : Math.round(rect.height * scale);
   return { ...keyed, buffer, info, bounds: contentBounds(data, info), geometryReport: {
     mode: options.mode, kernel: options.kernel, sourceSize: { width: source.info.width, height: source.info.height },
+    pointTransform: { scaleX: scaledWidth / rect.width, scaleY: scaledHeight / rect.height, offsetX: Math.floor((info.width - scaledWidth) / 2) - rect.left * scaledWidth / rect.width, offsetY: Math.floor((info.height - scaledHeight) / 2) - rect.top * scaledHeight / rect.height },
     sourceRect: rect, outputSize: { width: info.width, height: info.height },
     cropped: options.mode === "cover" && rect.width * options.height !== rect.height * options.width,
     stretched: options.mode === "stretch" && rect.width * options.height !== rect.height * options.width,

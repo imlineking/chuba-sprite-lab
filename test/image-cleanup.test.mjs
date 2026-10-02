@@ -148,7 +148,7 @@ test("batch preview applies the explicit no-light-artwork cleanup to an already 
 
 test("image intent offers three paths and never inherits animation warnings or unrequested AI resize", () => {
   const scenarios=planTaskScenarios({source:{kind:"frames",frameCount:50,mixedSizes:true}});
-  assert.deepEqual(scenarios.slice(0,3).map(item=>item.task),["edit","combine","animation"]);
+  assert.deepEqual(scenarios.slice(0,3).map(item=>item.task),["edit","readySheet","readyAtlas"]);
   assert.deepEqual(planSuggestions({source:{kind:"frames"},ui:{intent:"images"},built:{warnings:["скачок силуэта"]}}),[]);
   const plan=planAutoPilot({measurements:{width:96,height:96,transparentShare:.7,borderOpaqueRatio:0,checkerPixels:300},target:{intent:"images",cellWidth:2048,cleanupRequested:true},source:{kind:"images",frameCount:50},installed:["toonout"]});
   assert.ok(plan.steps.some(step=>step.stage==="matting"&&step.modelId==="toonout"));

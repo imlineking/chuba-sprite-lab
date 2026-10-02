@@ -157,6 +157,7 @@
             <label class="sheet-fit-row"><span><strong>Удалить фон</strong><small id="imageBackgroundHint">у JPG нет прозрачности — без удаления фон останется</small></span><input id="imageRemoveBackground" type="checkbox" /><i></i></label>
             <ol id="imageSheetList" class="image-sheet-list"></ol>
             <p class="image-sheet-note">Порядок — по имени файла с учётом чисел (frame2 раньше frame10). После сборки кадры можно перетаскивать в ленте.</p>
+            <button id="assembleReadyImages" class="button secondary" type="button">Файлы готовы — только собрать</button>
             <button id="buildImageSheet" class="button primary" type="button">Собрать лист</button>
           </article>
 
@@ -441,8 +442,8 @@
             <summary><span>Расширенные настройки</span><small>сетка · размеры · оптимизация</small></summary>
             <div class="form-grid advanced-grid">
               <label class="field"><span>Столбцы</span><input id="columns" type="number" min="1" max="64" value="8" /></label>
-              <label class="field manual-size"><span>Ширина</span><input id="cellWidth" type="number" min="64" max="4096" value="600" /></label>
-              <label class="field manual-size"><span>Высота</span><input id="cellHeight" type="number" min="64" max="4096" value="400" /></label>
+              <label class="field manual-size"><span>Ширина</span><input id="cellWidth" type="number" min="1" max="4096" value="600" /></label>
+              <label class="field manual-size"><span>Высота</span><input id="cellHeight" type="number" min="1" max="4096" value="400" /></label>
               <label class="field"><span>Макс. кадров</span><input id="maxFrames" type="number" min="1" max="1000" value="192" /></label>
             </div>
             <div class="toggle-list">
@@ -546,7 +547,8 @@
               <label class="field"><span>Упаковка</span>
                 <select id="atlasPacking">
                   <option value="grid">Сетка</option>
-                  <option value="tight">Плотная (обрезка)</option>
+                  <option value="tight">Плотная: полки</option>
+                  <option value="maxrects">Плотная: MaxRects</option>
                 </select>
               </label>
               <label class="field"><span>Макс. лист</span>
@@ -565,6 +567,11 @@
                   <option value="split">Разбить на листы</option>
                 </select>
               </label>
+            </div>
+            <div class="form-grid atlas-spacing-controls">
+              <label class="field"><span>Зазор атласа, px</span><input id="atlasGap" type="number" min="0" max="64" value="2" title="Пустой зазор между упакованными кадрами; не отступ внутри кадра." /></label>
+              <label class="field"><span>Extrude, px</span><input id="atlasExtrude" type="number" min="0" max="2" value="0" title="Копия края за рамкой кадра против швов при фильтрации. Только плотный атлас." /></label>
+              <label class="field"><span>Поворот 90°</span><input id="atlasRotate" type="checkbox" title="Только плотный атлас и профили Chuba, Phaser, TexturePacker. Метаданные сохраняют исходную ориентацию." /></label>
             </div>
             <label class="toggle-row atlas-power-row"><span><strong>Размер листа: степень двойки</strong><small>Дополнить пустое пространство до 256, 512, 1024… px; кадры не сдвигаются.</small></span><input id="atlasPowerOfTwo" type="checkbox" /><i></i></label>
             <p id="exportFormatHint" class="atlas-hint">Файл движка создаётся вместе с Manifest JSON.</p>
@@ -700,6 +707,7 @@
         <div id="filmstripBar" class="filmstrip-bar hidden">
           <div id="filmstrip" class="filmstrip"></div>
           <div class="filmstrip-actions">
+            <details class="frame-metadata-fields"><summary>Имя, тег и опоры кадра</summary><div class="form-grid"><label class="field"><span>Имя</span><input id="frameMetaName" type="text" maxlength="80" /></label><label class="field"><span>Тег анимации</span><input id="frameMetaTag" type="text" maxlength="80" /></label><label class="field"><span>Pivot X (0–1)</span><input id="framePivotX" type="number" min="0" max="1" step="0.01" value="0.5" /></label><label class="field"><span>Pivot Y (0–1)</span><input id="framePivotY" type="number" min="0" max="1" step="0.01" value="0.5" /></label><label class="field"><span>Точка 1 X, px</span><input id="framePoint1X" type="number" min="0" /></label><label class="field"><span>Точка 1 Y, px</span><input id="framePoint1Y" type="number" min="0" /></label><label class="field"><span>Точка 2 X, px</span><input id="framePoint2X" type="number" min="0" /></label><label class="field"><span>Точка 2 Y, px</span><input id="framePoint2Y" type="number" min="0" /></label><label class="field"><span>Эталонный кадр №</span><input id="frameAnchorReference" type="number" min="1" value="1" /></label></div><p>Pivot идёт в JSON. Ручные точки задаются в пикселях исходника: одна удерживает положение, две также выравнивают масштаб без растяжения.</p><button id="applyFrameMetadata" class="button secondary" type="button">Применить к кадру</button><button id="alignManualPoints" class="button secondary" type="button">Выравнивать серию по точкам</button></details>
             <label class="frame-duration" title="Длительность выбранного кадра; пусто — по FPS"><span>Длительность</span><input id="frameDuration" type="number" min="10" max="10000" step="10" placeholder="по FPS" /><small>мс</small></label>
             <div id="filmstripNote" class="filmstrip-note hidden"></div>
             <button id="imageAutoCleanup" class="filmstrip-action image-only" type="button" title="Найдёт фон, уберёт белые остатки и перекрасит светлую кромку; покажет до и после для всех файлов">Очистить фон и край</button>
@@ -919,6 +927,7 @@
             <button id="pixelToolPencil" class="pixel-tool" type="button" title="Карандаш (P)">✎</button>
             <button id="pixelToolEraser" class="pixel-tool" type="button" title="Ластик (E)">⌫</button>
             <button id="pixelToolFill" class="pixel-tool" type="button" title="Заливка (G)">▨</button>
+            <button id="pixelToolSelect" class="pixel-tool" type="button" title="Прямоугольное выделение (M)">▣</button><button id="pixelToolWand" class="pixel-tool" type="button" title="Волшебная палочка (W)">✦</button><button id="pixelToolLasso" class="pixel-tool" type="button" title="Лассо (L)">◌</button>
             <button id="pixelToolPicker" class="pixel-tool" type="button" title="Пипетка (I)">⌖</button>
             <label class="pixel-tool-group">Кисть
               <input id="pixelBrushSize" type="range" min="1" max="16" step="1" value="1" />
@@ -1001,6 +1010,7 @@
           </section>
           <section class="pixel-panel">
             <header>Подсказка</header>
+            <div class="pixel-selection-actions"><label>Сдвиг X <input id="pixelSelectionX" type="number" value="0" /></label><label>Y <input id="pixelSelectionY" type="number" value="0" /></label><button id="pixelMoveSelection" type="button">Перенести</button><button id="pixelSeparateSelection" type="button" title="Перенести выбранные пиксели на отдельный слой с заданным сдвигом">На новый слой</button><button id="pixelCutSelection" type="button">Удалить выделенное</button><button id="pixelClearSelection" type="button">Снять выделение</button></div>
             <p id="pixelEditorHint" class="pixel-editor-hint">Откройте кадр из полосы кадров.</p>
             <p class="pixel-editor-hint">Ctrl+Z — отменить, Ctrl+Shift+Z — вернуть, Ctrl+S — применить к проекту, Esc — закрыть.</p>
           </section>
@@ -1172,6 +1182,8 @@
         <article data-task="background"><strong>Удалить фон</strong><small>Прозрачность и чистый край</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="healing"><strong>Восстановить повреждённый объект</strong><small>Подорожник: восстановить детали → удалить псевдопрозрачность → передать в очистку фона и края</small><div><button data-approach="auto" type="button">Начать</button></div></article>
         <article data-task="animation"><strong>Собрать анимацию</strong><small>Видео или кадры → атлас</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="readySheet"><strong>Собрать спрайт-лист</strong><small>Готовые PNG → одинаковые ячейки + JSON, фон на выбор; без очистки</small><div><button data-approach="auto" type="button">Собрать</button><button data-approach="manual" type="button">Настроить</button></div></article>
+        <article data-task="readyAtlas"><strong>Собрать атлас</strong><small>Готовые PNG → MaxRects + JSON, без восстановления и удаления фона</small><div><button data-approach="auto" type="button">Собрать</button><button data-approach="manual" type="button">Настроить</button></div></article>
         <article data-task="combine"><strong>Собрать общий атлас объектов</strong><small>Несколько PNG/JPG/WebP → один лист + JSON координат</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="extract"><strong>Вырезать один объект из листа</strong><small>PNG/JPG/WebP с объектами → отдельный PNG</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="objectEdit"><strong>Изменить объект и вернуть в лист</strong><small>Лист → выбранный объект → редактор → новый лист + JSON</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
@@ -1189,6 +1201,7 @@
     <script src="./renderer.js"></script>
     <script src="./studio.js"></script>
     <script src="./sheet-editor.js"></script>
+    <script src="./frame-metadata.js"></script>
     <script src="./frame-consistency.js"></script>
     <script src="./copilot.js"></script>
     <script src="./pixel-colors.js"></script>
@@ -1199,7 +1212,7 @@
     <div id="imageBatchModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="imageBatchTitle">
       <article class="batch-preview-dialog">
         <header class="batch-preview-header"><div><h2 id="imageBatchTitle">Автоочистка изображений</h2><p>Сравните исходник и результат. Применение можно отменить Ctrl+Z; PNG сохраняются отдельной кнопкой.</p></div><button id="closeImageBatch" type="button" aria-label="Закрыть предпросмотр">×</button></header>
-        <div id="imageBatchTasks" class="batch-task-choices" aria-label="Выберите задачу"><button type="button" data-batch-task="cleanup">Очистить фон и край <small>Обычные PNG, светлые остатки и кайма</small></button><button type="button" data-batch-task="healing">Восстановить · Подорожник <small>Повреждённые детали и запечённые шахматы</small></button></div>
+        <div id="imageBatchTasks" class="batch-task-choices" aria-label="Выберите задачу"><button type="button" data-batch-task="ready">Файлы готовы — только сборка <small>Без восстановления и очистки</small></button><button type="button" data-batch-task="cleanup">Очистить фон и край <small>Обычные PNG, светлые остатки и кайма</small></button><button type="button" data-batch-task="healing">Восстановить · Подорожник <small>Повреждённые детали и запечённые шахматы</small></button></div>
         <div class="batch-preview-settings" role="region" aria-label="Настройки очистки и цвета" tabindex="0">
         <details class="batch-color-removal"><summary>Удалить конкретный цвет · пипетка</summary><div class="batch-color-removal-controls"><label>Цвет <input id="imageBatchRemoveColor" type="color" value="#ffffff" /></label><button id="imageBatchColorPipette" type="button" aria-pressed="false">Пипетка с исходника</button><label>Допуск <input id="imageBatchColorTolerance" type="number" min="0" max="255" value="18" /></label><label>Где убрать <select id="imageBatchColorScope"><option value="all">Во всём рисунке</option><option value="exterior">Только фон и просветы</option></select></label><button id="imageBatchRemovePickedColor" type="button">Удалить цвет…</button><span id="imageBatchPipetteHint" role="status">Действие относится к текущему, выбранным или всем файлам — по области действия ниже.</span></div></details>
         <label class="batch-model-choice"><strong>Цвет ровного фона</strong><select id="imageBatchBackground"><option value="auto">Определять для каждого файла</option><option value="white">Белый</option><option value="black">Чёрный</option><option value="green">Зелёный</option><option value="magenta">Маджента</option></select><small>Если автоматический выбор ошибся, укажите цвет. Удаляется фон от края изображения; похожие детали внутри остаются.</small></label>
@@ -1208,8 +1221,9 @@
         <label class="batch-model-choice"><strong>Светлые детали рисунка</strong><select id="imageBatchLightArtwork"><option value="auto">Определять отдельно для каждого файла</option><option value="protect">Сохранить белое и серое</option><option value="none">Белого нет — убрать светлые остатки</option></select><small>Если результат неоднозначен, автоматический режим сохранит светлые детали. Для веток без белого можно явно выбрать удаление.</small></label>
         <label id="imageBatchContourChoice" class="batch-model-choice hidden"><strong>Полоса перекраски контура</strong><select id="imageBatchContourWidth"><option value="2">2 пикселя</option><option value="4">4 пикселя</option></select><small>Для файлов без белых деталей: каждый пиксель получает свой цвет с глубины 5 px, на тонкой линии — 2 px. Форма сохраняется.</small></label>
         <div class="batch-color-adjust" aria-label="Свет и цвет для выбранных изображений"><strong>Цвет результата</strong><label>Яркость <input id="imageBatchBrightness" type="range" min="-100" max="100" value="0" /><output id="imageBatchBrightnessValue">0</output></label><label>Контраст <input id="imageBatchContrast" type="range" min="-100" max="100" value="0" /><output id="imageBatchContrastValue">0</output></label><label>Тепло <input id="imageBatchWarmth" type="range" min="-100" max="100" value="0" /><output id="imageBatchWarmthValue">0</output></label><button id="imageBatchResetColor" type="button">Сбросить цвет</button></div>
+        <details class="batch-color-removal" id="imageBatchAssembly"><summary>Формат результата и фон листа</summary><div class="batch-color-removal-controls"><label>Результат <select id="imageBatchOutput"><option value="png">Отдельные PNG</option><option value="sheet">Один спрайт-лист + JSON</option><option value="atlas">Один атлас MaxRects + JSON</option></select></label><label>Масштаб <select id="imageBatchScale"><option value="1">1×</option><option value="2">2× без сглаживания</option><option value="4">4× без сглаживания</option></select></label><label>Фон сохраняемого листа <select id="imageBatchAtlasBackground"><option value="transparent">Прозрачный</option><option value="white">Белый</option><option value="black">Чёрный</option><option value="custom">Свой цвет</option></select></label><label>Цвет фона <input id="imageBatchAtlasColor" type="color" value="#ff00ff" /></label><label>Просмотр страниц <select id="imageBatchPage"><option value="0">Страница 1</option></select></label></div><p>Сначала «Подготовить просмотр», затем сохранить. Фон просмотра не меняет PNG; фон листа записывается в PNG.</p></details>
         <details class="batch-color-removal" id="imageBatchGeometry"><summary>Размер и обрезка PNG</summary><div class="batch-color-removal-controls"><label>Режим <select id="imageBatchGeometryMode"><option value="original">Исходный размер</option><option value="trim">Убрать прозрачные поля</option><option value="contain">Вписать в кадр</option><option value="cover">Заполнить и обрезать</option><option value="stretch">Растянуть</option></select></label><label>Ширина, px <input id="imageBatchWidth" type="number" min="1" max="4096" value="64" /></label><label>Высота, px <input id="imageBatchHeight" type="number" min="1" max="4096" value="64" /></label><label>Масштабирование <select id="imageBatchGeometryKernel"><option value="nearest">Без сглаживания · пиксели</option><option value="lanczos3">Плавное</option></select></label><label><input id="imageBatchGeometryTrim" type="checkbox" checked /> Сначала убрать прозрачные поля</label><span id="imageBatchGeometryHint">Сохраняется исходное разрешение каждого PNG.</span></div></details>
-        <details class="batch-color-removal" id="imageBatchPixelation"><summary>Пикселизация после очистки</summary><p>Применяется к выбранным файлам. Размер холста сохраняется; результат можно сравнить и отменить.</p><div class="batch-color-removal-controls"><label><input id="imageBatchPixelateEnabled" type="checkbox" /> Пикселизировать</label><label>Блок, px <input id="imageBatchPixelateSize" type="number" min="2" max="32" value="3" /></label><label>Цветов <select id="imageBatchPixelateColors"><option value="8">8</option><option value="16">16</option><option value="32" selected>32</option><option value="64">64</option><option value="128">128</option></select></label><label>Дизеринг <select id="imageBatchPixelateDither"><option value="none">Без узора</option><option value="bayer4">Упорядоченный 4×4</option><option value="floyd">Флойд — Стейнберг</option></select></label></div></details>
+        <details class="batch-color-removal" id="imageBatchPixelation"><summary>Пикселизация после очистки</summary><p>Применяется к выбранным файлам. Размер холста сохраняется; результат можно сравнить и отменить.</p><div class="batch-color-removal-controls"><label><input id="imageBatchPixelateEnabled" type="checkbox" /> Пикселизировать</label><label><input id="imageBatchSharedPalette" type="checkbox" checked /> Одна палитра для серии</label><label>Блок, px <input id="imageBatchPixelateSize" type="number" min="2" max="32" value="3" /></label><label>Цветов <select id="imageBatchPixelateColors"><option value="8">8</option><option value="16">16</option><option value="32" selected>32</option><option value="64">64</option><option value="128">128</option></select></label><label>Дизеринг <select id="imageBatchPixelateDither"><option value="none">Без узора</option><option value="bayer4">Упорядоченный 4×4</option><option value="floyd">Флойд — Стейнберг</option></select></label></div></details>
         </div>
         <div class="batch-preview-scope"><label>Область действия <select id="imageBatchScope"><option value="current">Текущее изображение</option><option value="selected">Выбранные в списке</option><option value="all" selected>Все изображения</option></select></label><span id="imageBatchSummary" role="status" aria-live="polite">Выберите файлы и запустите предпросмотр.</span></div>
         <div class="batch-matte-review" aria-label="Проверка прозрачности"><strong>ПРОВЕРКА ПРОЗРАЧНОСТИ</strong><label>Фон <select id="imageBatchReviewBackdrop"><option value="magenta-gray">Маджента и серый</option><option value="checker">Светлая клетка</option><option value="black">Чёрный</option><option value="white">Белый</option><option value="green">Зелёный</option></select></label><label>Просмотр <select id="imageBatchReviewScale"><option value="original">Вписать · весь спрайт</option><option value="zoom-2">Пиксели · 2×</option><option value="zoom-4">Пиксели · 4×</option><option value="64">64 px · 1:1</option><option value="64-2">64 px · 2×</option><option value="128">128 px · 1:1</option><option value="128-2">128 px · 2×</option><option value="256">256 px · 1:1</option></select></label><span id="imageBatchMatteSummary" role="status" aria-live="polite">Выберите подготовленный файл.</span></div>

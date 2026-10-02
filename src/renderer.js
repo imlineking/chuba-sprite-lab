@@ -14,7 +14,7 @@ const state = {
   solidKeyMode: "black", projectPath: null, history: [], historyIndex: -1, historyTimer: null, historyApplying: false,
   warnings: [], warningIndex: 0, warningRefs: new Map(), batchItems: [], pendingSession: null, preferredEditor: "photopea",
   viewportPanX: 0, viewportPanY: 0, spaceHand: false, handToolLocked: false, viewportPanning: false, panPointerId: null,
-  frameTransforms: {}, transformScope: "frame", transformPanelOpen: false, sheetDraftCells: [],
+  frameMetadata: {}, anchorReference: 0, frameTransforms: {}, transformScope: "frame", transformPanelOpen: false, sheetDraftCells: [],
   timeline: null, selectedEntryId: null, processPreset: "character", imageAlign: "ground",
   animations: [], activeAnimationId: null, animationSwitching: false, fitScale: 1,
 };
@@ -40,7 +40,8 @@ function sourceDescriptor(source = state.source) {
   if (!source) return null;
   return {
     kind: source.kind,
-    paths: source.kind === "sheet" ? [source.sheetPath] : [...(source.paths || [])],
+    paths: source.kind === "sheet" && source.sheetMode !== "metadata" ? [source.sheetPath] : [...(source.paths || [])],
+    ...(source.frameMetadata || source.importedMetadata || source.sheetMode === "metadata" ? { frameMetadata: source.frameMetadata, importedMetadata: source.importedMetadata, importedAnimations: source.importedAnimations, sheetCells: source.sheetCells, sheetFrameNames: source.sheetFrameNames, maskPrepared: source.maskPrepared === true } : {}),
     sheetPath: source.sheetPath || null,
     sheetMode: source.sheetMode || null,
     sheetOptions: source.kind === "sheet" ? {
@@ -71,6 +72,7 @@ function captureStudioControls() {
   return {
     loopMode: $("#loopMode button.selected")?.dataset.loop || "loop",
     loopFrom: $("#loopFrom").value, loopTo: $("#loopTo").value,
+    atlasGap: Number($("#atlasGap").value), atlasExtrude: Number($("#atlasExtrude").value), atlasRotate: $("#atlasRotate").checked,
     packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
     atlasMaxSize: $("#atlasMaxSize").value, atlasOverflow: $("#atlasOverflow").value, atlasPowerOfTwo: $("#atlasPowerOfTwo").checked,
     imageAlign: state.imageAlign,
@@ -81,6 +83,9 @@ function captureStudioControls() {
 function applyStudioControls(studio = {}) {
   if (studio.intent && state.source?.kind === "frames") window.taskRestore?.(studio.intent === "images" ? "edit" : studio.intent);
   if (studio.imageAlign && typeof setImageAlign === "function") setImageAlign(studio.imageAlign, { silent: true });
+  if (studio.atlasGap != null) $("#atlasGap").value = String(studio.atlasGap);
+  if (studio.atlasExtrude != null) $("#atlasExtrude").value = String(studio.atlasExtrude);
+  $("#atlasRotate").checked = studio.atlasRotate === true;
   if (studio.packing) $("#atlasPacking").value = studio.packing;
   if (studio.exportFormat) $("#exportFormat").value = studio.exportFormat;
   if (studio.atlasMaxSize != null) $("#atlasMaxSize").value = String(studio.atlasMaxSize);
@@ -105,6 +110,7 @@ function buildAnimationDocument() {
     attachments: state.attachments,
     frameOverrides: state.frameOverrides,
     preparedCleanup: state.preparedCleanup,
+    frameMetadata: structuredClone(state.frameMetadata), anchorReference: state.anchorReference,
     frameTransforms: state.frameTransforms,
     timeline: state.timeline ? structuredClone(state.timeline) : null,
     preferredEditor: state.preferredEditor,
@@ -180,6 +186,7 @@ async function applyProjectDocument(project, source, projectPath = null, { keepA
   state.attachments = structuredClone(project.attachments || []);
   state.frameOverrides = { ...(project.frameOverrides || {}) };
   state.preparedCleanup = structuredClone(project.preparedCleanup || {});
+  state.frameMetadata = structuredClone(project.frameMetadata || project.source?.frameMetadata || {}); state.anchorReference = project.anchorReference || 0;
   state.frameTransforms = structuredClone(project.frameTransforms || {});
   state.outputFolder = project.outputFolder || null;
   state.preferredEditor = project.preferredEditor || "photopea";
@@ -202,11 +209,13 @@ function captureHistoryState(label = "Изменение") {
   return {
     label,
     controls: captureControlState(),
+    source: structuredClone(state.source),
     excludedFrames: [...state.excludedFrames],
     maskEdits: structuredClone(state.maskEdits),
     attachments: structuredClone(state.attachments),
     frameOverrides: { ...state.frameOverrides },
     preparedCleanup: structuredClone(state.preparedCleanup),
+    frameMetadata: structuredClone(state.frameMetadata), anchorReference: state.anchorReference,
     frameTransforms: structuredClone(state.frameTransforms),
     timeline: state.timeline ? structuredClone(state.timeline) : null,
     sheetDraftCells: state.sheetDraftCells ? state.sheetDraftCells.map((cell) => ({ ...cell })) : [],
@@ -249,12 +258,17 @@ function scheduleHistory(label) {
 function applyHistorySnapshot(snapshot) {
   if (!snapshot) return;
   state.historyApplying = true;
+  if (snapshot.source && JSON.stringify(snapshot.source.paths) !== JSON.stringify(state.source?.paths)) {
+    const history = state.history, index = state.historyIndex, projectPath = state.projectPath;
+    setSource(structuredClone(snapshot.source)); state.history = history; state.historyIndex = index; state.projectPath = projectPath;
+  }
   applyControlState(snapshot.controls);
   state.excludedFrames = new Set(snapshot.excludedFrames || []);
   state.maskEdits = structuredClone(snapshot.maskEdits || []);
   state.attachments = structuredClone(snapshot.attachments || []);
   state.frameOverrides = { ...(snapshot.frameOverrides || {}) };
   state.preparedCleanup = structuredClone(snapshot.preparedCleanup || {});
+  state.frameMetadata = structuredClone(snapshot.frameMetadata || {}); state.anchorReference = snapshot.anchorReference || 0;
   state.frameTransforms = structuredClone(snapshot.frameTransforms || {});
   state.timeline = snapshot.timeline ? structuredClone(snapshot.timeline) : null;
   state.sheetDraftCells = Array.isArray(snapshot.sheetDraftCells) ? snapshot.sheetDraftCells.map((cell) => ({ ...cell })) : [];
@@ -722,7 +736,8 @@ function setSource(source) {
   state.maskEdits = [];
   state.attachments = [];
   state.frameOverrides = {}; state.preparedCleanup = {};
-  state.frameTransforms = {};
+  state.frameTransforms = {}; state.frameMetadata = structuredClone(source?.frameMetadata || {}); state.anchorReference = 0;
+  if (source?.frameMetadata) { $("#autoSize").checked = true; $("#maxFrames").value = String(Math.min(1000, source.paths.length)); }
   state.timeline = null;
   state.selectedEntryId = null;
   if (!state.animationSwitching) state.projectPath = null;
@@ -960,10 +975,11 @@ function collectOptions() {
     tolerance: Number($("#tolerance").value), blackOutline: Number($("#blackOutline").value), blackFeather: Number($("#blackFeather").value),
     trimStart: isBatch ? 0 : Number($("#trimStart").value) || 0,
     trimEnd: isBatch ? 0 : Number($("#trimEnd").value) || 0,
-    keyMode: state.keyMode === "auto" && state.source?.maskPrepared ? "alpha" : state.keyMode, keyScope: $("#keyScope").value, anchor: state.anchor, autoSize: $("#autoSize").checked, autoColumns: $("#autoColumns").checked,
+    seriesReview: state.intent === "animation", keyMode: state.keyMode === "auto" && state.source?.maskPrepared ? "alpha" : state.keyMode, keyScope: $("#keyScope").value, anchor: state.anchor, autoSize: $("#autoSize").checked, autoColumns: $("#autoColumns").checked,
     pixelPerfect: $("#pixelPerfect").checked, removeDuplicates: $("#removeDuplicates").checked,
     outputBackground: $("#whiteOutput").checked ? "white" : "transparent",
     excludedFrames: [...state.excludedFrames], exports: collectExports(),
+    frameMetadata: structuredClone(state.frameMetadata), anchorReference: state.anchorReference,
     aiCutoff: $("#aiAutoCutoff").checked ? "auto" : Number($("#aiCutoff").value), aiSoftness: Number($("#aiSoftness").value),
     aiQuality: $("#aiQuality").value,
     aiEdits: state.maskEdits, previewFrameIndex: state.result ? state.selectedFrameIndex : 0,
@@ -985,12 +1001,13 @@ function collectOptions() {
     fitEachFrame: (state.source?.kind === "sheet" && $("#sheetFitEach").checked) || (state.source?.kind === "frames" && state.imageAlign === "fit"),
     timeline: timelineOption(state.timeline),
     ...loopOptions(),
+    atlasGap: Number($("#atlasGap").value), atlasExtrude: Number($("#atlasExtrude").value), atlasRotate: $("#atlasRotate").checked,
     packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
     atlasMaxSize: Number($("#atlasMaxSize").value) || 0, atlasOverflow: $("#atlasOverflow").value, atlasPowerOfTwo: $("#atlasPowerOfTwo").checked,
     pixelate: $("#pixelateEnabled").checked ? {
       size: Number($("#pixelateSize").value),
       colors: Number($("#pixelateColors").value),
-      palette: $("#pixelatePalette").value,
+      palette: $("#pixelatePalette").value, paletteScope: "series",
       customColors: $("#pixelatePalette").value === "custom" ? $("#pixelateCustomColors").value : undefined,
       mode: $("#pixelateMode").value,
       dither: $("#pixelateDither").value,
@@ -1238,10 +1255,10 @@ function timelineEntries(result = state.result) {
   if (Array.isArray(state.timeline) && state.timeline.length) {
     const entries = state.timeline.filter((entry) => entry.src < count);
     const present = new Set(entries.map((entry) => entry.src));
-    for (let index = 0; index < count; index += 1) if (!present.has(index)) entries.push({ id: `s${index}`, src: index, d: null });
+    for (let index = 0; index < count; index += 1) if (!present.has(index)) entries.push({ id: `s${index}`, src: index, d: state.frameMetadata[index]?.durationMs || null });
     return entries;
   }
-  return Array.from({ length: count }, (_value, index) => ({ id: `s${index}`, src: index, d: null }));
+  return Array.from({ length: count }, (_value, index) => ({ id: `s${index}`, src: index, d: state.frameMetadata[index]?.durationMs || null }));
 }
 
 function buildFilmstrip(result) {
@@ -1305,6 +1322,7 @@ function markSelectedEntry(entryId) {
     if (selected) button.scrollIntoView({ block: "nearest", inline: "nearest" });
   });
   const entry = timelineEntries().find((item) => item.id === entryId);
+  window.syncFrameMetadataControls?.();
   if (typeof syncFrameDurationControl === "function") syncFrameDurationControl(entry);
 }
 

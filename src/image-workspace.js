@@ -68,10 +68,60 @@ const checkerButton = $("#removeCheckerboard");
 $(".mask-tools").insertBefore(checkerButton, $(".mask-tools").firstChild);
 
 let imageBatchDraft = null;
+
+function batchAssemblySignature() {
+  return JSON.stringify({ indexes: imageBatchIndexes(), paths: imageBatchIndexes().map(i => imageBatchDraft.results[i]?.imagePath), output: imageBatchDraft.outputKind, scale: imageBatchDraft.pixelScale || 1, background: imageBatchDraft.atlasBackground, backgroundColor: imageBatchDraft.atlasBackgroundColor, layout: collectOptions() });
+}
+
+function batchAssemblyRequest(previewOnly, outputDir) {
+  const indexes = imageBatchIndexes(), paths = indexes.map(i => imageBatchDraft.results[i].imagePath);
+  const atlas = imageBatchDraft.outputKind === "atlas", options = collectOptions();
+  return { source: { kind: "frames", paths, title: "Обработанные спрайты", maskPrepared: true }, name: $("#spriteName").value || "sprites", previewOnly, outputDir,
+    options: { ...options, maxFrames: indexes.length, frameMetadata: Object.fromEntries(indexes.map((src, i) => [i, state.frameMetadata[src] || {}])), anchorReference: Math.max(0, indexes.indexOf(state.anchorReference)), keyMode: "alpha", frameOverrides: {}, preparedCleanup: {}, aiEdits: [], edgeRefine: { mode: "none" }, fringeCleanup: false, edgeDecontaminate: false, attachments: [], frameTransforms: {}, pixelate: null, toning: null, imageGeometry: null, preserveFrameCanvas: true, atlasBackground: imageBatchDraft.atlasBackground || "transparent", atlasBackgroundColor: imageBatchDraft.atlasBackgroundColor || "#ff00ff", pixelScale: imageBatchDraft.pixelScale || 1, packing: atlas ? "maxrects" : "grid", atlasExtrude: atlas ? Number($("#atlasExtrude").value) : 0, atlasRotate: atlas && $("#atlasRotate").checked, atlasOverflow: "split", removeDuplicates: false, excludedFrames: [], auxAI: {}, outputBackground: "transparent", timeline: indexes.map((src, i) => ({ src: i, durationMs: state.timeline?.find(e => e.src === src)?.d })), exports: { sheet: true, metadata: true, frames: false, preview: false } } };
+}
+
+async function prepareBatchAssembly() {
+  state.busy = true; renderImageBatchDraft(); updateActionState();
+  try {
+    if (imageBatchDraft.results.length > 1000) throw new Error("Для одной сборки выберите не больше 1000 файлов.");
+    const signature = batchAssemblySignature();
+    const result = await window.spriteLab.build(batchAssemblyRequest(true));
+    imageBatchDraft.assembly = { signature, result };
+    $("#imageBatchAfter").src = result.sheetUrl;
+    $("#imageBatchSummary").textContent = `Готов ${imageBatchDraft.outputKind === "atlas" ? "атлас" : "лист"} · ${result.sheetPaths.length} страниц · ${result.cellWidth}×${result.cellHeight} кадр`;
+  } catch (error) { showError(error.message); }
+  finally { state.busy = false; updateActionState(); renderImageBatchDraft(); persistImageBatchDraft(); }
+}
+
+async function saveBatchAssembly() {
+  if (imageBatchDraft.assembly?.signature !== batchAssemblySignature()) return;
+  const outputDir = state.outputFolder || await window.spriteLab.automaticOutput(imageBatchDraft.paths[0]);
+  state.busy = true; renderImageBatchDraft(); updateActionState();
+  try {
+    const result = await window.spriteLab.build(batchAssemblyRequest(false, outputDir));
+    state.lastExportDir = result.outputDir; state.lastRevealPath = result.sheetPath; state.outputFolder = outputDir;
+    $("#exportSummary").textContent = `Сохранены PNG + JSON: ${result.sheetPaths.length} страниц · ${result.outputDir}`;
+    $("#exportSummary").classList.remove("hidden"); $("#completionActions").classList.remove("hidden");
+    setStatus("Лист и JSON сохранены · исходники сохранены", "done", 1);
+    state.busy = false; window.closeImageBatchPreview();
+  } catch (error) { showError(error.message); }
+  finally { state.busy = false; updateActionState(); renderImageBatchDraft(); }
+}
+
+for (const id of ["imageBatchOutput", "imageBatchScale", "imageBatchAtlasBackground", "imageBatchAtlasColor"]) $("#" + id).addEventListener("change", () => {
+  imageBatchDraft.outputKind = $("#imageBatchOutput").value;
+  imageBatchDraft.pixelScale = Number($("#imageBatchScale").value);
+  imageBatchDraft.atlasBackground = $("#imageBatchAtlasBackground").value;
+  imageBatchDraft.atlasBackgroundColor = $("#imageBatchAtlasColor").value;
+  delete imageBatchDraft.assembly; persistImageBatchDraft(); renderImageBatchDraft();
+  $("#applyImageBatch").textContent = imageBatchDraft.outputKind === "png" ? "Применить выбранные" : "Сохранить лист и JSON";
+});
 let imageBatchReturnFocus = null;
 let imageBatchReviewIndex = 0;
 const imageBatchUrl = file => "file:///" + file.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/");
 function persistImageBatchDraft() {
+  const references = [imageBatchDraft?.directory, ...(state.source?.paths || []), ...state.history.flatMap(h => h.source?.paths || []), ...state.animations.flatMap(a => a.source?.paths || []), ...Object.values(imageBatchDraft?.results || {}).map(r => r.imagePath), ...Object.values(state.frameOverrides || {}), ...state.history.flatMap(h => Object.values(h.frameOverrides || {}))].filter(Boolean);
+  window.spriteLab.retainPreviews?.(references).catch(() => {});
   try { localStorage.setItem("spriteLab.pendingImageBatch", JSON.stringify(imageBatchDraft)); } catch { /* UI still keeps the preview. */ }
 }
 function imageBatchIndexes() {
@@ -160,7 +210,11 @@ function renderImageBatchDraft() {
   $("#retryImageBatch").disabled = state.busy || !scope.some(index => imageBatchDraft.failures[index]);
   $("#continueImageBatch").disabled = state.busy || !scope.some(index => !imageBatchDraft.results[index] && !imageBatchDraft.failures[index]);
   $("#cancelImageBatchJob").disabled = !state.busy;
-  $("#applyImageBatch").disabled = state.busy || !scope.length || ready !== scope.length;
+  const combined = imageBatchDraft.outputKind && imageBatchDraft.outputKind !== "png";
+  $("#applyImageBatch").disabled = state.busy || !scope.length || ready !== scope.length || combined && imageBatchDraft.assembly?.signature !== batchAssemblySignature();
+  if (combined) $("#applyImageBatch").textContent = "Сохранить лист и JSON";
+  $("#imageBatchOutput").disabled = state.busy;
+  $("#imageBatchScale").disabled = state.busy;
   $("#imageBatchScope").disabled = state.busy;
   $("#imageBatchModel").disabled = state.busy || Boolean(imageBatchDraft.configuration?.healFirst);
   $("#imageBatchBackground").disabled = state.busy;
@@ -168,13 +222,27 @@ function renderImageBatchDraft() {
   $("#imageBatchLightArtwork").disabled = state.busy;
   $("#imageBatchContourWidth").disabled = state.busy;
   window.renderBatchCleanupSuggestion?.();
-  $$("#imageBatchTasks button, .batch-color-adjust input, #imageBatchResetColor").forEach(control => { control.disabled = state.busy; });
+  $$("#imageBatchTasks button").forEach(control => { control.disabled = state.busy; });
+  $$(".batch-color-adjust input, #imageBatchResetColor").forEach(control => { control.disabled = state.busy || imageBatchDraft.configuration?.readyOnly; });
   $$("#imageBatchPixelation input, #imageBatchPixelation select").forEach(control => {
-    control.disabled = state.busy || (control.id !== "imageBatchPixelateEnabled" && !imageBatchDraft.pixelate);
+    control.disabled = state.busy || imageBatchDraft.configuration?.readyOnly || (control.id !== "imageBatchPixelateEnabled" && !imageBatchDraft.pixelate);
   });
+  const readyOnly = Boolean(imageBatchDraft.configuration?.readyOnly);
+  $$(".batch-preview-settings > *").forEach(element => element.classList.toggle("hidden", readyOnly && element.id !== "imageBatchAssembly"));
+  $$("#imageBatchTasks button").forEach(button => button.classList.toggle("selected", button.dataset.batchTask === (readyOnly ? "ready" : imageBatchDraft.configuration?.healFirst ? "healing" : "cleanup")));
+  const assemblyValid = combined && imageBatchDraft.assembly?.signature === batchAssemblySignature();
+  const title = $("#imageBatchAfter").closest("figure")?.querySelector("figcaption");
+  if (title) title.textContent = combined ? "Собранный лист · выбранный фон записывается в PNG" : "После обработки · подложка просмотра не меняет PNG";
+  if (assemblyValid) {
+    const urls = imageBatchDraft.assembly.result.sheetUrls;
+    const page = Math.min(Number($("#imageBatchPage").value) || 0, urls.length - 1);
+    if ($("#imageBatchPage").options.length !== urls.length) $("#imageBatchPage").replaceChildren(...urls.map((_, i) => { const option = document.createElement("option"); option.value = i; option.textContent = `Страница ${i + 1}/${urls.length}`; return option; }));
+    $("#imageBatchPage").value = String(page); $("#imageBatchAfter").src = urls[page];
+  }
+  $("#imageBatchPage").disabled = state.busy || !assemblyValid;
   const fitMode = ["contain", "cover", "stretch"].includes(imageBatchDraft.imageGeometry?.mode);
   $$("#imageBatchGeometry input, #imageBatchGeometry select").forEach(control => {
-    control.disabled = state.busy || (control.id !== "imageBatchGeometryMode" && !fitMode);
+    control.disabled = state.busy || imageBatchDraft.configuration?.readyOnly || (control.id !== "imageBatchGeometryMode" && !fitMode);
   });
 }
 window.openImageBatchPreview = function (configuration = {}) {
@@ -185,7 +253,7 @@ window.openImageBatchPreview = function (configuration = {}) {
   imageBatchReturnFocus = document.activeElement;
   const paths = configuration.paths || state.source.paths;
   const exportAtlases = Boolean(configuration.exportAtlases);
-  const configurationKey = JSON.stringify({version:12, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
+  const configurationKey = JSON.stringify({version:13, readyOnly:configuration.readyOnly, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
   let saved; try { saved = JSON.parse(localStorage.getItem("spriteLab.pendingImageBatch")); } catch { /* No prior job. */ }
   if (!imageBatchDraft || JSON.stringify(imageBatchDraft.paths) !== JSON.stringify(paths) || imageBatchDraft.configurationKey !== configurationKey) {
     const adjustments = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths)
@@ -195,8 +263,18 @@ window.openImageBatchPreview = function (configuration = {}) {
     const imageGeometry = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths) ? imageBatchDraft.imageGeometry || null : null;
     imageBatchDraft = saved && JSON.stringify(saved.paths) === JSON.stringify(paths) && saved.configurationKey === configurationKey && saved.results && saved.failures && saved.selected ? saved : { paths: [...paths], selected: [Math.min(state.selectedFrameIndex,paths.length-1)], results: {}, failures: {}, settings: {}, directory: null, configurationKey, configuration, adjustments, pixelate, imageGeometry };
   }
+  $("#imageBatchOutput").value = imageBatchDraft.outputKind || "png";
+  $("#imageBatchScale").value = String(imageBatchDraft.pixelScale || 1);
+  $("#imageBatchAtlasBackground").value = imageBatchDraft.atlasBackground || "transparent";
+  $("#imageBatchAtlasColor").value = imageBatchDraft.atlasBackgroundColor || "#ff00ff";
+  if (configuration.readyOnly) {
+    if (configuration.outputKind) imageBatchDraft.outputKind = configuration.outputKind;
+    imageBatchDraft.outputKind ||= "sheet"; $("#imageBatchOutput").value = imageBatchDraft.outputKind;
+    imageBatchDraft.paths.forEach((file, index) => { imageBatchDraft.results[index] ||= { input: file, imagePath: state.frameOverrides[index] || file, route: ["готовый файл · без очистки"] }; });
+  }
   imageBatchDraft.adjustments ||= { brightness: 0, contrast: 0, warmth: 0 };
   $("#imageBatchPixelateEnabled").checked = Boolean(imageBatchDraft.pixelate);
+  $("#imageBatchSharedPalette").checked = imageBatchDraft.pixelate?.paletteScope !== "frame";
   $("#imageBatchPixelateSize").value = String(imageBatchDraft.pixelate?.size || 3);
   $("#imageBatchPixelateColors").value = String(imageBatchDraft.pixelate?.colors || 32);
   $("#imageBatchPixelateDither").value = imageBatchDraft.pixelate?.dither || "none";
@@ -235,8 +313,8 @@ window.openImageBatchPreview = function (configuration = {}) {
     : configuration.modelOverride
       ? "Выбранная модель запустится для каждого файла, даже если у PNG уже есть прозрачность. Сравните белые детали и край перед применением."
       : "Автовыбор может сохранить уже имеющуюся прозрачность без запуска модели. Если фон остался, выберите ToonOut и сравните результат.";
-  $('#imageBatchTitle').textContent = configuration.healFirst ? 'Восстановление объекта · Подорожник' : exportAtlases ? 'Пакетная подготовка PNG + JSON' : 'Автоочистка изображений';
-  $('.batch-preview-header p').textContent = configuration.healFirst ? 'Сравните исходник, восстановленный объект и результат обычной очистки. Применение можно отменить Ctrl+Z; исходные файлы остаются на месте.' : exportAtlases ? 'Проверьте очистку каждого исходника. После просмотра сохраняются отдельные PNG + JSON. Исходные файлы остаются на месте.' : 'Сравните исходник и результат. Применение можно отменить Ctrl+Z; PNG сохраняются отдельной кнопкой.';
+  $('#imageBatchTitle').textContent = configuration.readyOnly ? "Сборка готовых изображений" : configuration.healFirst ? 'Восстановление объекта · Подорожник' : exportAtlases ? 'Пакетная подготовка PNG + JSON' : 'Автоочистка изображений';
+  $('.batch-preview-header p').textContent = configuration.readyOnly ? "Файлы используются как есть. Выберите лист или атлас и фон сохраняемого PNG. Исходники сохраняются." : configuration.healFirst ? 'Сравните исходник, восстановленный объект и результат обычной очистки. Применение можно отменить Ctrl+Z; исходные файлы остаются на месте.' : exportAtlases ? 'Проверьте очистку каждого исходника. После просмотра сохраняются отдельные PNG + JSON. Исходные файлы остаются на месте.' : 'Сравните исходник и результат. Применение можно отменить Ctrl+Z; PNG сохраняются отдельной кнопкой.';
   $('#imageBatchHealingFigure').classList.toggle('hidden', !configuration.healFirst);
   $('#imageBatchComparison').classList.toggle('with-healing', Boolean(configuration.healFirst));
   $('#applyImageBatch').textContent = exportAtlases ? 'Сохранить выбранные · PNG + JSON' : 'Применить выбранные';
@@ -250,11 +328,12 @@ window.closeImageBatchPreview = function () {
 };
 async function prepareImageBatch(mode = "all", requestedIndexes = null) {
   if (state.busy) return;
+  if (mode === "all" && imageBatchDraft.outputKind && imageBatchDraft.outputKind !== "png" && imageBatchIndexes().every(index => imageBatchDraft.results[index])) { await prepareBatchAssembly(); return; }
   const indexes = (requestedIndexes || imageBatchIndexes()).filter(index => mode === "failed" ? imageBatchDraft.failures[index] : mode === "remaining" ? !imageBatchDraft.results[index] && !imageBatchDraft.failures[index] : true);
   if (!indexes.length) return;
   const configuration = imageBatchDraft.configuration || {};
   const baseline = configuration.options || collectOptions();
-  const settings = { ...baseline, batchModelOverride: configuration.modelOverride, batchBackgroundMode: configuration.backgroundMode, batchBlackContour: configuration.blackContour, edgeRefine: { mode: "none", width: 1, depth: 2, whiteOnly: true, ...baseline.edgeRefine, noLightArtwork: configuration.lightArtworkPolicy === "none", lightArtworkPolicy: configuration.lightArtworkPolicy, contourWidth: configuration.contourWidth }, pixelate: imageBatchDraft.pixelate || (configuration.exportAtlases ? baseline.pixelate : null), toning: configuration.exportAtlases ? baseline.toning : null, imageGeometry: imageBatchDraft.imageGeometry || (configuration.exportAtlases ? baseline.imageGeometry : null), colorAdjust: { ...imageBatchDraft.adjustments }, frameTransforms: {}, attachments: [], attachmentPlacements: null };
+  const settings = { ...baseline, pixelScale: imageBatchDraft.pixelScale || 1, batchModelOverride: configuration.modelOverride, batchBackgroundMode: configuration.backgroundMode, batchBlackContour: configuration.blackContour, edgeRefine: { mode: "none", width: 1, depth: 2, whiteOnly: true, ...baseline.edgeRefine, noLightArtwork: configuration.lightArtworkPolicy === "none", lightArtworkPolicy: configuration.lightArtworkPolicy, contourWidth: configuration.contourWidth }, pixelate: imageBatchDraft.pixelate || (configuration.exportAtlases ? baseline.pixelate : null), toning: configuration.exportAtlases ? baseline.toning : null, imageGeometry: imageBatchDraft.imageGeometry || (configuration.exportAtlases ? baseline.imageGeometry : null), colorAdjust: { ...imageBatchDraft.adjustments }, frameTransforms: {}, attachments: [], attachmentPlacements: null };
   state.busy = true; updateActionState(); renderImageBatchDraft();
   $("#prepareImageBatch").textContent = "Обрабатываю…";
   settings.batchCleanupByIndex = imageBatchDraft.cleanupChoices || {};
@@ -306,9 +385,10 @@ $("#imageBatchContourWidth").addEventListener("change", event => {
 $("#imageBatchTasks").addEventListener("click", event => {
   const button = event.target.closest("button[data-batch-task]");
   if (!button || state.busy) return;
+  if (button.dataset.batchTask === "ready") { window.openImageBatchPreview({ readyOnly: true, automatic: false }); return; }
   const healFirst = button.dataset.batchTask === "healing";
-  if (healFirst === Boolean(imageBatchDraft.configuration?.healFirst)) return;
-  window.openImageBatchPreview({ ...imageBatchDraft.configuration, healFirst, automatic: true });
+  if (!imageBatchDraft.configuration?.readyOnly && healFirst === Boolean(imageBatchDraft.configuration?.healFirst)) return;
+  window.openImageBatchPreview({ ...imageBatchDraft.configuration, healFirst, readyOnly: false, automatic: true });
 });
 function imageBatchColorChanged() {
   if (!imageBatchDraft || state.busy) return;
@@ -328,7 +408,7 @@ function imageBatchPixelationChanged() {
   const size = Math.max(2, Math.min(32, Math.round(Number(sizeControl.value) || 3)));
   sizeControl.value = String(size);
   imageBatchDraft.pixelate = $("#imageBatchPixelateEnabled").checked
-    ? { size, colors: Number($("#imageBatchPixelateColors").value), palette: "auto", mode: "clean", dither: $("#imageBatchPixelateDither").value }
+    ? { size, colors: Number($("#imageBatchPixelateColors").value), palette: "auto", mode: "clean", paletteScope: $("#imageBatchSharedPalette").checked ? "series" : "frame", dither: $("#imageBatchPixelateDither").value }
     : null;
   imageBatchDraft.results = {}; imageBatchDraft.failures = {}; imageBatchDraft.settings = {}; imageBatchDraft.exported = {}; imageBatchDraft.exportFailures = {};
   persistImageBatchDraft(); renderImageBatchDraft(); showImageBatchPair(imageBatchReviewIndex);
@@ -362,7 +442,7 @@ function imageBatchGeometryChanged() {
 for (const id of ["imageBatchGeometryMode", "imageBatchWidth", "imageBatchHeight", "imageBatchGeometryTrim", "imageBatchGeometryKernel"]) {
   document.getElementById(id).addEventListener("change", imageBatchGeometryChanged);
 }
-for (const id of ["imageBatchPixelateEnabled", "imageBatchPixelateSize", "imageBatchPixelateColors", "imageBatchPixelateDither"]) {
+for (const id of ["imageBatchPixelateEnabled", "imageBatchPixelateSize", "imageBatchPixelateColors", "imageBatchPixelateDither", "imageBatchSharedPalette"]) {
   document.getElementById(id).addEventListener("change", imageBatchPixelationChanged);
 }
 for (const key of ["Brightness", "Contrast", "Warmth"]) document.getElementById("imageBatch" + key).addEventListener("input", imageBatchColorChanged);
@@ -404,6 +484,7 @@ async function exportReviewedImageAtlases(indexes) {
 $("#applyImageBatch").addEventListener("click", async () => {
   const indexes = imageBatchIndexes();
   if (state.busy || !indexes.length || indexes.some(index => !imageBatchDraft.results[index])) return;
+  if (imageBatchDraft.outputKind && imageBatchDraft.outputKind !== "png") { await saveBatchAssembly(); return; }
   if (imageBatchDraft.configuration?.exportAtlases) { await exportReviewedImageAtlases(indexes); return; }
   const { preparedCleanupRecord } = await import("./prepared-cleanup.mjs");
   clearTimeout(state.historyTimer); pushHistory("До пакетной очистки");
@@ -418,3 +499,7 @@ $("#applyImageBatch").addEventListener("click", async () => {
 document.addEventListener("keydown", event => {
   if (event.key === "Escape" && !$("#imageBatchModal").classList.contains("hidden")) { event.preventDefault(); window.closeImageBatchPreview(); }
 });
+
+$("#assembleReadyImages").addEventListener("click", () => window.openImageBatchPreview({ readyOnly: true, automatic: false }));
+
+$("#imageBatchPage").addEventListener("change", renderImageBatchDraft);

@@ -11,6 +11,7 @@ import { reviewMatteFile } from "./matte-review.mjs";
 import { chooseLightArtworkPolicy } from "./light-artwork-policy.mjs";
 import { resolveMattingModelId } from "./ai-models.mjs";
 import { backgroundKeyMode } from "./background-analysis.mjs";
+import { buildSeriesPalette } from "./series-palette.mjs";
 
 const solidBackgroundModes = new Set(["white", "black", "green", "magenta", "blue"]);
 const backgroundNames = { white: "белый", black: "чёрный", green: "зелёный", magenta: "маджента", blue: "синий", auto: "подбор цвета" };
@@ -81,6 +82,24 @@ export async function previewWithModelFallback({ inputPath, options, appRoot, au
 }
 
 export async function processImageBatch({ paths, outputDir, options = {}, splitObjects = true, outputKind = "atlas", automatic = false, healFirst = false, installed = [], sourceIndexes = [], appRoot, signal, onProgress, shouldStop, previewFrame = processFramePreview }) {
+  if (outputKind === "images" && options.pixelate?.paletteScope === "series" && (options.pixelate.palette || "auto") === "auto" && !options.pixelate.sharedColors) {
+    const first = await processImageBatch({ paths, outputDir, options: { ...options, pixelate: null, pixelScale: 1 }, splitObjects, outputKind, automatic, healFirst, installed, sourceIndexes, appRoot, signal, shouldStop, previewFrame, onProgress: p => onProgress?.({ ...p, value: p.value * .8 }) });
+    const sharedColors = await buildSeriesPalette(first.results.map(r => r.imagePath), options.pixelate.colors);
+    const completed = [];
+    for (const [i, item] of first.results.entries()) {
+      if (signal?.aborted) break;
+      const preview = await previewFrame({ inputPath: item.imagePath, appRoot, signal, options: { keyMode: "alpha", pixelate: { ...options.pixelate, sharedColors }, pixelScale: options.pixelScale || 1 } });
+      await fs.copyFile(preview.afterPath, item.imagePath);
+      item.bounds = preview.bounds; item.sharedPalette = sharedColors;
+      item.changeReport = await compareImagePixels(item.input, item.imagePath);
+      item.route = [...item.route, "Пикселизация · общая палитра серии"];
+      item.matteReview = await reviewMatteFile(item.imagePath);
+      completed.push(item); onProgress?.({ stage: "palette", value: .8 + .2 * (i + 1) / first.results.length, message: `Общая палитра · ${i + 1}/${first.results.length}` });
+    }
+    const result = { ...first, results: completed, completed: completed.length, cancelled: Boolean(signal?.aborted), stopped: first.stopped || completed.length !== first.results.length };
+    await fs.writeFile(first.reportPath, JSON.stringify({ ...result, profile: options, sharedPalette: sharedColors }, null, 2));
+    return result;
+  }
   const inputs = [...new Set((paths || []).map(file => path.resolve(file)))];
   if (!inputs.length || inputs.length > 256) throw new Error("Выберите от 1 до 256 изображений.");
   if (!outputDir) throw new Error("Выберите папку результатов.");

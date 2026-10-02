@@ -34,6 +34,10 @@ export function planTaskScenarios(snapshot = {}) {
   const smallDrawing = measured.flatShare > 0.4 && Math.max(Number(measured.width) || 0, Number(measured.height) || 0) < 512;
   const candidates = [];
   const offer = (task, score, why) => candidates.push({ task, score, why });
+  if (source.kind === "frames") {
+    offer("readySheet", source.kind === "sheet" ? 67 : count > 1 ? 112 : 67, "Файлы готовы: собрать регулярный спрайт-лист и JSON без очистки, на прозрачном или выбранном фоне.");
+    offer("readyAtlas", source.kind === "sheet" ? 66 : count > 1 ? 111 : 66, "Файлы готовы: упаковать атлас MaxRects и JSON; исходные пиксели и альфа сохраняются.");
+  }
   if (source.kind === "sheet") {
     offer("layout", 100, `Открыт готовый лист; найдено ${count || "несколько"} объектов. Их можно разнести в отдельные ячейки и записать новые координаты в JSON.`);
     offer("extract", 88, "На листе несколько объектов: выберите один и сохраните его отдельным PNG.");

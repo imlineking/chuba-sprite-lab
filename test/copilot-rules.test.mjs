@@ -27,7 +27,7 @@ test("a frame touching the source edge offers the clipping repair route first", 
 
 test("unrelated mixed images offer image cleanup, atlas and animation without imposing alignment", () => {
   const scenarios = planTaskScenarios({ source: { kind: "frames", frameCount: 8, mixedSizes: true } });
-  assert.deepEqual(scenarios.slice(0, 3).map(item => item.task), ["edit", "combine", "animation"]);
+  assert.deepEqual(scenarios.slice(0, 3).map(item => item.task), ["edit", "readySheet", "readyAtlas"]);
   assert.equal(scenarios.some(item => item.task === "match"), false);
 });
 

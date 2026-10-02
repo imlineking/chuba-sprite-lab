@@ -8,7 +8,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sharp from "sharp";
-import { analyzeFrameConsistency, inspectSource, makeSourcePreview, processAnimationSet, processFramePreview, processSprites, processVideoBatch, resolveBinary, supportedImageExtensions } from "./processor.mjs";
+import { analyzeFrameConsistency, inspectSource, makeSourcePreview, resolveBinary, supportedImageExtensions } from "./processor.mjs";
 import { sliceSpriteSheet } from "./sheet-slicer.mjs";
 import { matchSheetFrameNames, readSheetFrameRects } from "./sheet-metadata.mjs";
 import { describePaths as describePathsFrom, describeSpriteSheet as describeSpriteSheetFrom, describeVideoBatch as describeVideoBatchFrom } from "./source-describe.mjs";
@@ -20,7 +20,10 @@ import { DesktopCompanion } from "./desktop-companion.mjs";
 import { loadPortableProject, savePortableProject, missingProjectFiles, mapProjectPaths } from "./project-storage.mjs";
 import { windowsLoginName } from "./windows-user-name.mjs";
 import { readUserProfile, saveUserProfile, effectiveUserName } from "./user-profile.mjs";
-import { processImageBatch } from "./image-batch.mjs";
+import { ProcessingExecutor } from "./processing-executor.mjs";
+const processingExecutor = new ProcessingExecutor();
+function executeProcessing(operation, { signal, onProgress, shouldStop: _stop, ...payload }) { return processingExecutor.run(operation, payload, { signal, onProgress }); }
+app.on("before-quit", () => processingExecutor.close());
 import { finishSheetImport, makeTempWorkspace, pruneStaleTempWorkspaces } from "./temp-workspace.mjs";
 import { planSuggestions, planTaskScenarios } from "./copilot-rules.mjs";
 import { planWithCopilot, comparePlanners, plannerStatus } from "./copilot-planner.mjs";
@@ -59,6 +62,14 @@ ipcMain.handle("user:save-profile",(_event,name)=> {
   return profileSaveQueue;
 });
 let copyableFrames = new Map();
+import { prunePreviewCache } from "./preview-cache.mjs";
+let previewReferences = [];
+ipcMain.handle("preview:retain", async (event, references = []) => {
+  if (event.sender !== mainWindow?.webContents || !Array.isArray(references) || references.length > 20000) throw new Error("Недопустимый список просмотров.");
+  previewReferences = references.filter(p => typeof p === "string");
+  if (!activeJob) await prunePreviewCache(path.join(app.getPath("userData"), "image-batch-previews"), { references: previewReferences });
+  return true;
+});
 let activeJob = null;
 const selfTestMode = process.argv.includes("--self-test") || process.env.CHUBA_SPRITE_SELF_TEST === "1";
 const uiRegressionMode = process.argv.includes("--ui-regression");
@@ -352,6 +363,10 @@ async function restoreProjectSource(descriptor = {}) {
   const missing = [];
   for (const filePath of paths) if (!await pathExists(filePath)) missing.push(filePath);
   if (missing.length) throw new Error(`Не найдены исходники (${missing.length}). Порядок кадров сохранён. Откройте проект и укажите файлы заново:\n${missing.slice(0, 5).join("\n")}`);
+  if (descriptor.kind === "sheet" && descriptor.sheetMode === "metadata" && descriptor.frameMetadata) {
+    const restored = await describePaths("frames", available);
+    return { ...descriptor, ...restored, kind: "sheet", sheetMode: "metadata", maskPrepared: true, sheetUrl: descriptor.sheetPath ? pathToFileURL(descriptor.sheetPath).href : null };
+  }
   if (descriptor.kind === "sheet") {
     const sheetPath = path.resolve(String(descriptor.sheetPath || paths[0] || ""));
     if (!await pathExists(sheetPath)) throw new Error("Исходный спрайт-лист проекта не найден.");
@@ -359,7 +374,7 @@ async function restoreProjectSource(descriptor = {}) {
   }
   if (!available.length) throw new Error("Исходные файлы проекта больше недоступны.");
   if (descriptor.kind === "video-batch") return describeVideoBatch(available);
-  return describePaths(descriptor.kind === "video" ? "video" : "frames", available);
+  return { ...descriptor, ...await describePaths(descriptor.kind === "video" ? "video" : "frames", available), ...(descriptor.maskPrepared ? { maskPrepared: true } : {}) };
 }
 
 function safeOutputName(value) {
@@ -439,10 +454,17 @@ ipcMain.handle("source:sheet", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "Выберите готовый спрайт-лист",
     properties: ["openFile"],
-    filters: [{ name: "Спрайт-лист", extensions: [...supportedImageExtensions].map((ext) => ext.slice(1)) }],
+    filters: [{ name: "Спрайт-лист / JSON атласа", extensions: [...supportedImageExtensions].map((ext) => ext.slice(1)).concat("json") }],
   });
   if (result.canceled || !result.filePaths[0]) return null;
-  return describeSpriteSheet(result.filePaths[0], { mode: "objects" });
+  const chosen = result.filePaths[0];
+  if (path.extname(chosen).toLowerCase() === ".json") {
+    const { normalizeSheetManifest } = await import("./sheet-metadata.mjs");
+    const normalized = normalizeSheetManifest(JSON.parse(await fs.readFile(chosen, "utf8")));
+    const sheetPath = path.resolve(path.dirname(chosen), normalized.pages[0].image);
+    return describeSpriteSheet(sheetPath, { mode: "metadata", metadataPath: chosen });
+  }
+  return describeSpriteSheet(chosen, { mode: "objects" });
 });
 
 ipcMain.handle("source:reslice-sheet", async (_event, request = {}) => {
@@ -541,6 +563,8 @@ const editorOperations = {
   frameAdjust: (request) => editorSession.adjustFrame(request.sessionId, request),
   paint: (request) => editorSession.paint(request.sessionId, request),
   fill: (request) => editorSession.fill(request.sessionId, request),
+  selectPixels: request => editorSession.selectPixels(request.sessionId, request),
+  movePixels: request => editorSession.transformSelection(request.sessionId, request),
   eraseTransparent: (request) => editorSession.eraseTransparent(request.sessionId, request),
   pick: (request) => editorSession.pick(request.sessionId, request),
   layerPixel: (request) => editorSession.layerPixel(request.sessionId, request),
@@ -1013,7 +1037,7 @@ ipcMain.handle("sprites:build", async (_event, request) => {
   if (isBatch && !request.previewOnly) {
     activeJob = { controller: new AbortController(), stopAfterCurrent: false };
     try {
-      const result = await processVideoBatch({
+      const result = await executeProcessing("processVideoBatch", {
         paths: request.source.paths,
         outputDir: request.outputDir,
         options: request.options,
@@ -1046,9 +1070,9 @@ ipcMain.handle("sprites:build", async (_event, request) => {
         const source = animation.active ? request.source : await restoreProjectSource(animation.source);
         animations.push({ name: animation.name, source, options: { ...(request.options || {}), ...(animation.options || {}), aiModelDirs: [modelsDirectory()] } });
       }
-      result = await processAnimationSet(withModels({ ...request, ...common, animations }));
+      result = await executeProcessing("processAnimationSet", withModels({ ...request, ...common, animations }));
     } else {
-      result = await processSprites(withModels({ ...request, ...common }));
+      result = await executeProcessing("processSprites", withModels({ ...request, ...common }));
     }
     copyableFrames = new Map((result.sourceFrameIndexes || []).map((sourceIndex, index) => [sourceIndex, result.imagePaths?.[index]]).filter(([, filePath]) => Boolean(filePath)));
     notifyFinished(result);
@@ -1113,7 +1137,7 @@ ipcMain.handle("sprites:image-batch", async (event, request = {}) => {
       outputDir = request.previewDirectory ? path.resolve(request.previewDirectory) : await fs.mkdtemp(path.join(cache, "preview-"));
       if (path.dirname(outputDir) !== cache) throw new Error("Недопустимая папка предпросмотра.");
     }
-    const result = await processImageBatch({ ...request, outputDir, installed, appRoot, options: { ...(request.options || {}), aiModelDirs: [modelsDirectory()] }, signal: activeJob.controller.signal, shouldStop: () => Boolean(activeJob?.stopAfterCurrent), onProgress: progress => { mainWindow?.setProgressBar(progress.value); mainWindow?.webContents.send("sprites:progress", progress); } });
+    const result = await executeProcessing("processImageBatch", { ...request, outputDir, installed, appRoot, options: { ...(request.options || {}), aiModelDirs: [modelsDirectory()] }, signal: activeJob.controller.signal, shouldStop: () => Boolean(activeJob?.stopAfterCurrent), onProgress: progress => { mainWindow?.setProgressBar(progress.value); mainWindow?.webContents.send("sprites:progress", progress); } });
     if (!request.previewOnly) notifyFinished(result);
     return result;
   } finally { activeJob = null; mainWindow?.setProgressBar(-1); }
@@ -1122,11 +1146,12 @@ ipcMain.handle("sprites:image-batch", async (event, request = {}) => {
 ipcMain.handle("sprites:stop-after-current", () => {
   if (!activeJob) return false;
   activeJob.stopAfterCurrent = true;
+  processingExecutor.stopAfterCurrent();
   return true;
 });
 
 ipcMain.handle("preview:frame", async (_event, request) => {
-  const result = await processFramePreview({ ...(request || {}), appRoot, options: { aiModelDirs: [modelsDirectory()], ...((request || {}).options || {}) } });
+  const result = await executeProcessing("processFramePreview", { ...(request || {}), appRoot, options: { aiModelDirs: [modelsDirectory()], ...((request || {}).options || {}) } });
   return {
     ...result,
     beforeUrl: pathToFileURL(result.beforePath).href,

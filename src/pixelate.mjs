@@ -357,7 +357,7 @@ export function pixelate(data, info, options = {}) {
   const detail = clamp(Number(options.detail) || 0, 0, 100) / 100;
   grid = enhanceInteriorDetail(grid, gridWidth, gridHeight, detail);
 
-  const fixed = resolvePalette(options.palette, options.customColors);
+  const fixed = options.sharedColors || resolvePalette(options.palette, options.customColors);
   if (options.palette === "custom" && !fixed) throw new Error("Своя палитра: укажите от 2 до 64 разных цветов #RRGGBB через пробел или запятую.");
   const colorCount = clamp(Math.round(Number(options.colors) || 16), 2, 256);
   const sampled = [];

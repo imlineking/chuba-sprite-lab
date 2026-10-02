@@ -392,7 +392,7 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
     see(chosen, "Для сложного фона нужна вырезка ToonOut", "required");
   }
 
-  if (checker && !toonout && (target.cleanupRequested || independent)) steps.push({ stage: "checker", kind: "builtin", tool: "checker", title: "Убрать псевдопрозрачность", why: "Найдена повторяющаяся светлая клетка в двух направлениях. Удаляем подтверждённый узор; сложные остатки можно ограничить выделением и поправить маску.", confidence: "medium", status: "ready" });
+  if (checker && !toonout && (target.cleanupRequested || independent)) steps.push({ stage: "checker", kind: "builtin", tool: "checker", title: "Убрать псевдопрозрачность", why: "Найдена повторяющаяся клетка в двух тонах в двух направлениях. Удаляем подтверждённый узор; сложные остатки можно ограничить выделением и поправить маску.", confidence: "medium", status: "ready" });
   if (alreadyTransparent) notes.push("Наличие альфа-канала не гарантирует чистый фон: проверьте внутренние просветы на чёрной и зелёной подложке.");
 
   /* 2. The edge that the model leaves behind. */

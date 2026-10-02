@@ -1,3 +1,4 @@
+import { structuredCheckerMask } from "./structured-checker.mjs";
 // Normalized selections are independent of display zoom and source dimensions.
 export function selectionContains(selection, x, y) {
   if (!selection) return true;
@@ -125,7 +126,9 @@ export function checkerMask(data, { width, height, channels = 4 }, selection = n
       }
     }
   }
-  return { mask, count, sizes };
+  const dark = structuredCheckerMask(data, { width, height, channels }, (x, y) => selectionContains(selection, x, y));
+  if (dark.confidence === "high") for (let i = 0; i < mask.length; i++) if (dark.mask[i] && !mask[i]) { mask[i] = 1; count++; }
+  return { mask, count, sizes: [...new Set([...sizes, ...dark.models.map(m => m.size)])], darkModels: dark.models };
 }
 
 export function removeChecker(data, original, info, selection) {

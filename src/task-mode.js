@@ -2,6 +2,8 @@
 // the first screen and one clear next action. No source files are modified here.
 (() => {
   const taskNames = {
+    readySheet: "Собрать спрайт-лист",
+    readyAtlas: "Собрать атлас",
     batch: "Пакетно подготовить изображения",
     layout: "Разнести объекты по сетке",
     clipping: "Исправить обрезание",
@@ -74,10 +76,10 @@
     } catch (error) { showError(error.message); }
   }
   async function taskAddImages() {
-    if (state.busy || (state.source && state.source.kind !== "frames")) return;
+    if (state.busy || (state.source && state.source.kind !== "frames" && state.source.sheetMode !== "metadata")) return;
     try {
       const source = await window.spriteLab.addImages(state.source?.paths || []);
-      if (source) { setSource(source); setTab("source"); $("#taskGuide").scrollIntoView({ block: "start", behavior: "smooth" }); }
+      if (source) { window.mergeAddedSpriteFiles(source); setTab("source"); $("#taskGuide").scrollIntoView({ block: "start", behavior: "smooth" }); }
     } catch (error) { setStatus(error?.message || "Не удалось добавить изображения", "error", 0); showError(error?.message); }
   }
 
@@ -351,6 +353,10 @@
           ? async () => { try { setSource(await window.spriteLab.resliceSheet({ sheetPath: source.paths[0], options: { mode: "objects" } })); } catch (error) { showError(error?.message); } }
           : () => chooseSource("chooseSheet");
       }
+    } else if (["readySheet", "readyAtlas"].includes(selected)) {
+      if (!source) { guide.textContent = "Откройте готовые PNG. Восстановление и очистка отключены; можно выбрать фон сохраняемого листа."; primary.textContent = "1 · Открыть готовые изображения"; primaryAction = () => chooseSource("chooseSource"); }
+      else if (source.kind === "frames" || source.kind === "sheet") { guide.textContent = "Файлы используются как есть. Проверьте порядок, формат и фон, затем сохраните PNG + JSON."; primary.textContent = "2 · Показать сборку"; primaryAction = () => { window.openImageBatchPreview({ paths: source.paths, readyOnly: true, automatic: false, outputKind: selected === "readyAtlas" ? "atlas" : "sheet" }); }; secondary.textContent = "Добавить файлы"; secondary.classList.remove("hidden"); secondaryAction = taskAddImages; }
+      else { guide.textContent = "Для сборки без очистки нужны изображения; видео подготовьте в задаче анимации."; primary.textContent = "Открыть PNG"; primaryAction = () => chooseSource("chooseSource"); }
     } else if (selected === "combine" || selected === "animation") {
       const imageCount = source?.kind === "frames" ? source.paths.length : 0;
       if (!source || imageCount === 1) {

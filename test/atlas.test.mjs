@@ -124,7 +124,7 @@ test("tight packing trims frames, splits pages and writes engine formats", async
   for (const format of ["phaser3", "godot", "texturepacker"]) {
     const result = await processSprites({
       source, outputDir: path.join(temp, format), name: "pack", appRoot,
-      options: { ...baseOptions, autoSize: false, cellWidth: 200, cellHeight: 200, padding: 0, packing: "tight", atlasMaxSize: 200, atlasOverflow: "split", exportFormat: format },
+      options: { ...baseOptions, autoSize: false, cellWidth: 200, cellHeight: 200, padding: 8, packing: "tight", atlasMaxSize: 200, atlasOverflow: "split", exportFormat: format },
     });
     const manifest = JSON.parse(await fs.readFile(result.manifestPath, "utf8"));
     assert.equal(manifest.packing, "tight");
