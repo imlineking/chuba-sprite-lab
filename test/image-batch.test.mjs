@@ -186,3 +186,18 @@ test("quality review catches white regions after neural matting without erasing 
   assert.equal(issues[0].code,'white-regions-to-review');assert.equal(issues[0].count,1);
   assert.deepEqual(await fs.readFile(file),before);
 });
+
+test("unchanged prepared sprites expose small pale candidates without deleting white artwork", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "cslab-pale-review-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = await fixture(root, "white-detail.png", true);
+  const before = await fs.readFile(file);
+  const measurements = { width: 64, height: 48, hasTransparency: true, transparentShare: .7,
+    checkerPixels: 35, borderOpaqueRatio: 0, edgeMeasurement: "native", borderColour: [0, 0, 0] };
+  const protect = { policy: "protect", confidence: "high" };
+  const issues = await inspectCleanupQuality({ afterPath: file }, measurements, protect, { changed: 0 });
+  assert.ok(issues.some(issue => issue.code === "unchanged-pale-regions"));
+  assert.deepEqual(await fs.readFile(file), before, "Review changed the protected white pixel");
+  assert.deepEqual(await inspectCleanupQuality({ afterPath: file }, measurements, protect, { changed: 1 }), []);
+  assert.deepEqual(await inspectCleanupQuality({ afterPath: file }, { ...measurements, checkerPixels: 0 }, protect, { changed: 0 }), []);
+});

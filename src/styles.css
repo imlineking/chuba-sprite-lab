@@ -1047,6 +1047,12 @@ body[data-intent="images"] .filmstrip-actions { grid-template-columns: repeat(au
 .batch-model-choice { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; color: var(--text); }
 .batch-model-choice select { min-width: 220px; max-width: 100%; flex: 1; }
 .batch-model-choice small { flex-basis: 100%; color: var(--muted); line-height: 1.4; }
+.batch-preview-settings { flex: 0 1 190px; min-height: 60px; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 0 20px; margin-top: 10px; padding: 0 8px 8px 0; border-bottom: 1px solid var(--line); scrollbar-gutter: stable; }
+.batch-preview-settings:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.batch-preview-settings .batch-model-choice { margin-top: 8px; align-content: start; }
+.batch-model-choice select { min-height: 34px; padding: 6px 10px; border: 1px solid var(--line-bright); border-radius: 8px; background: var(--shell-field); color: var(--text); font: inherit; font-size: 13px; }
+.batch-preview-settings .batch-color-adjust { grid-column: 1 / -1; border-bottom: 0; }
+.batch-preview-header, .batch-task-choices, .batch-preview-scope, .batch-matte-review, .batch-preview-footer { flex-shrink: 0; }
 .batch-color-adjust { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 .batch-color-adjust strong { font-size: 12px; white-space: nowrap; }
 .batch-color-adjust label { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
@@ -1061,15 +1067,15 @@ body[data-intent="images"] .filmstrip-actions { grid-template-columns: repeat(au
 .batch-matte-review label { display: inline-flex; align-items: center; gap: 7px; }
 .batch-matte-review select { max-width: 200px; min-height: 34px; padding: 6px 8px; border: 1px solid var(--line-bright); border-radius: 8px; background: var(--shell-field); color: var(--text); font: inherit; }
 .batch-matte-review [role="status"] { flex-basis: 100%; color: var(--muted); line-height: 1.45; }
-.batch-preview-body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1.5fr); gap: 16px; }
+.batch-preview-body { min-height: 200px; flex: 1; display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1.5fr); gap: 16px; }
 .batch-preview-list { overflow-y: auto; padding: 4px; }
 .batch-preview-row { display: grid; grid-template-columns: 20px minmax(0,1fr); gap: 10px; padding: 12px; border-bottom: 1px solid var(--border, #647084); }
 .batch-preview-row input { width: 18px; height: 18px; align-self: center; accent-color: var(--orange); }
 .batch-preview-row button { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; width: 100%; min-width: 0; padding: 0; text-align: left; background: transparent; border: 0; color: inherit; }
 .batch-preview-row button span { overflow-wrap: anywhere; }
 .batch-preview-row small { line-height: 1.5; opacity: .8; }
-.batch-preview-comparison { min-height: 0; display: grid; grid-template-rows: 1fr 1fr; gap: 10px; }
-.batch-preview-comparison.with-healing { grid-template-rows: repeat(3, minmax(0, 1fr)); }
+.batch-preview-comparison { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); gap: 10px; }
+.batch-preview-comparison.with-healing { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .batch-preview-comparison figure { margin: 0; min-height: 0; display: flex; flex-direction: column; background: repeating-conic-gradient(#747c82 0% 25%, #abb1b7 0% 50%) 0 / 20px 20px; border-radius: 10px; overflow: hidden; }
 .batch-preview-comparison figcaption { padding: 7px 10px; background: #17202c; color: #fff; }
 .batch-preview-comparison img { min-height: 0; flex: 1; width: 100%; object-fit: contain; image-rendering: pixelated; }
@@ -1084,4 +1090,4 @@ body[data-intent="images"] .filmstrip-actions { grid-template-columns: repeat(au
 .batch-preview-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 16px; }
 .batch-preview-footer .button { min-height: 40px; height: auto; padding: 10px 14px; }
 html[data-theme="light"] .batch-preview-dialog { background: #f8f9fb; color: #252c35; border-color: #d2d7de; }
-@media (max-width: 760px) { .batch-task-choices { grid-template-columns: 1fr; } .batch-preview-dialog { padding: 12px; } }
+@media (max-width: 760px) { .batch-task-choices, .batch-preview-settings { grid-template-columns: 1fr; } .batch-preview-dialog { padding: 12px; } }

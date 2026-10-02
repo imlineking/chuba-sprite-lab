@@ -31,7 +31,7 @@ async function compareImagePixels(beforePath, afterPath) {
   return { changed, resized: false };
 }
 
-export async function inspectCleanupQuality(preview, measurements, lightDecision) {
+export async function inspectCleanupQuality(preview, measurements, lightDecision, changeReport) {
   const issues=[];
   let white=preview.whiteRemainders;
   if(!white?.count && measurements?.borderColour?.every(value=>value>=230)) {
@@ -46,6 +46,14 @@ export async function inspectCleanupQuality(preview, measurements, lightDecision
     const remaining=await measureSource([preview.afterPath]);
     const remainingPrepared = hasPreparedAlpha(remaining);
     if(hasConfirmedChecker(remaining,{preparedAlpha:remainingPrepared})) issues.push({code:'residual-checker',pixels:Math.round(remaining.checkerPixels),message:`Обнаружены области, похожие на остатки клетки (${Math.round(remaining.checkerPixels)} пикселей). Проверьте их на цветной подложке; детали рисунка могут выглядеть похоже.`});
+  }
+  // Small pale candidates may be below the threshold for destructive grid
+  // removal. Keeping them is reasonable; silently accepting a no-op is not.
+  if (changeReport?.changed === 0 && preparedAlpha && measurements?.edgeMeasurement === "native"
+    && measurements.checkerPixels >= Math.max(30, measurements.width * measurements.height * .005)
+    && !issues.some(issue => issue.code === "residual-checker")) {
+    issues.push({ code: "unchanged-pale-regions", pixels: Math.round(measurements.checkerPixels),
+      message: "Файл не изменён: остались спорные светлые области. Если в рисунке нет белого и серого, выберите «Белого нет — убрать светлые остатки»; иначе сравните другой способ вырезки и защитите светлые детали." });
   }
   return issues;
 }
@@ -175,10 +183,10 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
         const { result: preview, fallback } = await previewWithModelFallback({ inputPath, options: settings, appRoot, automatic, installed, signal, preview: previewFrame });
         signal?.throwIfAborted();
         if (!preview.bounds?.width || !preview.bounds?.height) throw new Error("После очистки не осталось объекта. Попробуйте другой профиль или защитите детали маской.");
-        const qualityIssues=await inspectCleanupQuality(preview,measurements,lightDecision);
+        const changeReport = await compareImagePixels(file, preview.afterPath);
+        const qualityIssues=await inspectCleanupQuality(preview,measurements,lightDecision,changeReport);
         const qualityWarnings=qualityIssues.map(issue=>issue.message);
         const matteReview=await reviewMatteFile(preview.afterPath);
-        const changeReport = await compareImagePixels(file, preview.afterPath);
         if (automatic && changeReport.changed === 0 && qualityIssues.length) qualityWarnings.push("Автоматическая очистка не изменила этот файл; проверьте отмеченные области.");
         if (automatic && changeReport.changed === 0 && settings.keyMode === "ai" && settings.aiForceModel) qualityWarnings.push("Результат выбранной модели совпадает с исходником; проверьте фон или попробуйте другой способ.");
         if (healing?.report.lightDetailGuard?.enabled && (!settings.edgeRefine || settings.edgeRefine.mode === "none")) qualityWarnings.push("Светлые детали защищены: перекраска кромки оставлена для ручной проверки.");
