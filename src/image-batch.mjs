@@ -94,6 +94,12 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
       onProgress?.({ stage: "batch", value: index / inputs.length, message: `Изображение ${index + 1}/${inputs.length} · ${name}` });
       if (outputKind === "images") {
         const sourceIndex = sourceIndexes[index] ?? index;
+        const cleanupChoice = options.batchCleanupByIndex?.[sourceIndex] || {};
+        const colors = cleanupChoice.colors || [];
+        if (!Array.isArray(colors) || colors.length > 16 || colors.some(edit =>
+          !Array.isArray(edit.color) || edit.color.length !== 3 || edit.color.some(value => !Number.isInteger(value) || value < 0 || value > 255)
+          || !Number.isFinite(edit.tolerance) || edit.tolerance < 0 || edit.tolerance > 255
+          || !["all", "exterior"].includes(edit.scope))) throw new Error("Проверьте цвет, допуск и область удаления.");
         let inputPath = options.frameOverrides?.[sourceIndex] || file;
         let healing = null;
         if (healFirst) {
@@ -101,8 +107,19 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
           healing = await healImage(inputPath, path.join(workspace, "healing"), { signal });
           inputPath = healing.imagePath;
         }
+        // One colour-key implementation serves both a single sprite and a group.
+        // Explicit colour removal must not silently trigger neural segmentation.
+        for (const [colorIndex, edit] of colors.entries()) {
+          const keyed = await keyFrame(inputPath, "custom", edit.tolerance, 0, 0,
+            { keyColor: edit.color, keyScope: edit.scope, edgeDecontaminate: false, fringeCleanup: false });
+          inputPath = path.join(workspace, `color-${colorIndex}.png`);
+          await fs.writeFile(inputPath, keyed.buffer);
+          signal?.throwIfAborted();
+        }
         let settings = { ...options, previewFrameIndex: sourceIndex, outputBackground: "transparent" };
-        const lightRequest = options.edgeRefine?.noLightArtwork ? "none" : options.edgeRefine?.lightArtworkPolicy || "protect";
+        const globalLightRequest = options.edgeRefine?.noLightArtwork ? "none" : options.edgeRefine?.lightArtworkPolicy || "protect";
+        const lightRequest = ["none", "protect"].includes(cleanupChoice.lightArtworkPolicy)
+          ? cleanupChoice.lightArtworkPolicy : globalLightRequest;
         let lightDecision = chooseLightArtworkPolicy(null, lightRequest);
         if (healing && (!settings.edgeRefine || settings.edgeRefine.mode === "none")) {
           // Repaint a confirmed pale fringe on dark/coloured sprites. Cream
@@ -118,7 +135,7 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
             blackOutline: options.batchBackgroundMode === "black" && options.batchBlackContour === "remove" ? 0 : (Number(settings.blackOutline) || 3),
             edgeDecontaminate: options.batchBackgroundMode !== "black" };
         }
-        if (automatic) {
+        if (automatic && !colors.length) {
           measurements = await measureSource([inputPath]);
           lightDecision = chooseLightArtworkPolicy(measurements, lightRequest);
           // The repaired alpha is the baseline. Do not replace it with a new
@@ -164,6 +181,8 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
           }
           if (!requestedModel && lightDecision.policy !== "none" && plan.steps.some(step => step.stage === "checker")) settings.aiEdits = [...(settings.aiEdits || []), { type: "checker", frameIndex: sourceIndex }];
         }
+        if (colors.length) settings = { ...settings, keyMode: "alpha", aiForceModel: false,
+          fringeCleanup: false, edgeDecontaminate: false, edgeRefine: { mode: "none" }, aiEdits: [] };
         if (lightDecision.policy === "none") {
           // An explicit palette choice wins over the planner's conservative
           // pale-detail guard, including when Podorozhnik ran first.
@@ -186,6 +205,7 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
         const changeReport = await compareImagePixels(file, preview.afterPath);
         const qualityIssues=await inspectCleanupQuality(preview,measurements,lightDecision,changeReport);
         const qualityWarnings=qualityIssues.map(issue=>issue.message);
+        const suggestNoLightArtwork = lightRequest === "auto" && qualityIssues.some(issue => issue.code === "unchanged-pale-regions");
         const matteReview=await reviewMatteFile(preview.afterPath);
         if (automatic && changeReport.changed === 0 && qualityIssues.length) qualityWarnings.push("Автоматическая очистка не изменила этот файл; проверьте отмеченные области.");
         if (automatic && changeReport.changed === 0 && settings.keyMode === "ai" && settings.aiForceModel) qualityWarnings.push("Результат выбранной модели совпадает с исходником; проверьте фон или попробуйте другой способ.");
@@ -206,13 +226,14 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
           }
         }
         const route = [
+          ...colors.map(edit => `Удаление цвета #${edit.color.map(value => value.toString(16).padStart(2, "0")).join("")}`),
           ...(healing ? ["Восстановление"] : []),
           settings.keyMode === "ai" ? `Выделение · ${settings.aiModel}` : settings.keyMode === "alpha" ? "Сохранена прозрачность" : settings.keyMode === "black" ? `Чёрный фон · ${settings.blackOutline ? "контур сохранён" : "без сохранения контура"}` : `Очистка фона · ${backgroundNames[settings.keyMode] || settings.keyMode}`,
           ...((settings.aiEdits || []).some(edit => edit.type === "checker" && edit.frameIndex === sourceIndex) ? ["Удаление шахматки"] : []),
           ...(preview.edgeRefineReport?.removed || preview.edgeRefineReport?.recolored ? [settings.edgeRefine?.noLightArtwork ? "Очистка светлых остатков и края" : "Очистка края"] : []),
           "Проверка результата",
         ];
-        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, route, fallback, qualityIssues, qualityWarnings, matteReview, healingPath, healingReport: healing?.report || null, cleanupReport: preview.edgeRefineReport || null, lightDecision, changeReport });
+        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, route, fallback, qualityIssues, qualityWarnings, matteReview, healingPath, healingReport: healing?.report || null, cleanupReport: preview.edgeRefineReport || null, lightDecision, changeReport, suggestNoLightArtwork, colorRemoval: colors });
         onProgress?.({ stage: "batch", value: (index + 1) / inputs.length, message: `Сохранено ${index + 1}/${inputs.length} · ${name}.png` });
         continue;
       }

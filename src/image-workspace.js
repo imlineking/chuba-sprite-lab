@@ -76,7 +76,7 @@ function persistImageBatchDraft() {
 }
 function imageBatchIndexes() {
   const scope = $("#imageBatchScope").value;
-  if (scope === "current") return [Math.min(state.selectedFrameIndex, imageBatchDraft.paths.length - 1)];
+  if (scope === "current") return [Math.min(imageBatchReviewIndex, imageBatchDraft.paths.length - 1)];
   return imageBatchDraft.paths.map((_, index) => index).filter(index => scope === "all" || imageBatchDraft.selected.includes(index));
 }
 function showImageBatchPair(index) {
@@ -88,6 +88,7 @@ function showImageBatchPair(index) {
   if (item?.healingPath) $("#imageBatchHealing").src = imageBatchUrl(item.healingPath);
   else $("#imageBatchHealing").removeAttribute("src");
   renderImageBatchMatteReview();
+  window.renderBatchCleanupSuggestion?.();
 }
 function renderImageBatchMatteReview() {
   const review = imageBatchDraft?.results[imageBatchReviewIndex]?.matteReview;
@@ -148,7 +149,7 @@ function renderImageBatchDraft() {
       ? ` · удалено ${cleanup.removed} пикс. остатков · перекрашено ${cleanup.recolored} пикс. кромки`
       : " · светлая кромка не изменилась" : "";
     const changeText = item?.changeReport?.changed === 0 ? " · пиксели не изменились" : item?.changeReport?.changed != null ? ` · всего изменено ${item.changeReport.changed} пикс.` : "";
-    const lightText = item?.lightDecision?.policy === "none" ? " · светлые остатки убраны" : item?.lightDecision?.confidence === "uncertain" ? " · светлые детали сохранены: решение неуверенное" : item?.lightDecision ? " · светлые детали сохранены" : "";
+    const lightText = item?.colorRemoval?.length ? " · удаляется только выбранный цвет" : item?.lightDecision?.policy === "none" ? " · светлые остатки убраны" : item?.lightDecision?.confidence === "uncertain" ? " · светлые детали сохранены: решение неуверенное" : item?.lightDecision ? " · светлые детали сохранены" : "";
     detail.textContent = imageBatchDraft.exportFailures?.[index] ? `Ошибка сохранения: ${imageBatchDraft.exportFailures[index]}` : imageBatchDraft.failures[index] ? `Ошибка: ${imageBatchDraft.failures[index]}` : imageBatchDraft.exported?.[index] ? "Сохранено · PNG + JSON" : item ? `${item.changeReport?.changed === 0 ? "Без изменений" : "Готово"} · ${item.route?.join(" → ") || model || "локальная очистка"}${lightText}${cleanupText}${changeText}${item.fallback ? " · CPU fallback" : ""}${item.qualityWarnings?.length ? " · " + item.qualityWarnings.join(" ") : ""}` : "Ещё не обработано";
     if (item?.lightDecision?.reason) button.title = item.lightDecision.reason;
     button.append(title, detail); button.addEventListener("click", () => showImageBatchPair(index)); row.append(checkbox, button); list.append(row);
@@ -166,6 +167,8 @@ function renderImageBatchDraft() {
   $("#imageBatchBlackContour").disabled = state.busy;
   $("#imageBatchLightArtwork").disabled = state.busy;
   $("#imageBatchContourWidth").disabled = state.busy;
+  $("#imageBatchOtherModels").disabled = state.busy;
+  window.renderBatchCleanupSuggestion?.();
   $$("#imageBatchTasks button, .batch-color-adjust input, #imageBatchResetColor").forEach(control => { control.disabled = state.busy; });
 }
 window.openImageBatchPreview = function (configuration = {}) {
@@ -176,10 +179,12 @@ window.openImageBatchPreview = function (configuration = {}) {
   imageBatchReturnFocus = document.activeElement;
   const paths = configuration.paths || state.source.paths;
   const exportAtlases = Boolean(configuration.exportAtlases);
-  const configurationKey = JSON.stringify({version:7, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
+  const configurationKey = JSON.stringify({version:8, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
   let saved; try { saved = JSON.parse(localStorage.getItem("spriteLab.pendingImageBatch")); } catch { /* No prior job. */ }
   if (!imageBatchDraft || JSON.stringify(imageBatchDraft.paths) !== JSON.stringify(paths) || imageBatchDraft.configurationKey !== configurationKey) {
-    const adjustments = imageBatchDraft?.adjustments || { brightness: 0, contrast: 0, warmth: 0 };
+    const adjustments = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths)
+      ? imageBatchDraft.adjustments || { brightness: 0, contrast: 0, warmth: 0 }
+      : { brightness: 0, contrast: 0, warmth: 0 };
     imageBatchDraft = saved && JSON.stringify(saved.paths) === JSON.stringify(paths) && saved.configurationKey === configurationKey && saved.results && saved.failures && saved.selected ? saved : { paths: [...paths], selected: [Math.min(state.selectedFrameIndex,paths.length-1)], results: {}, failures: {}, settings: {}, directory: null, configurationKey, configuration, adjustments };
   }
   imageBatchDraft.adjustments ||= { brightness: 0, contrast: 0, warmth: 0 };
@@ -195,12 +200,14 @@ window.openImageBatchPreview = function (configuration = {}) {
   modelSelect.replaceChildren();
   const autoOption = document.createElement("option"); autoOption.value = ""; autoOption.textContent = "Автоматически подобрать способ"; modelSelect.append(autoOption);
   for (const option of $("#aiModel").options) {
+    if (!configuration.showAllModels && !["toonout", "birefnet-tiny", configuration.modelOverride].includes(option.value)) continue;
     const choice = document.createElement("option"); choice.value = option.value; choice.textContent = option.textContent; modelSelect.append(choice);
   }
   if (configuration.modelOverride && ![...modelSelect.options].some(option => option.value === configuration.modelOverride)) {
     const missing = document.createElement("option"); missing.value = configuration.modelOverride; missing.textContent = `${configuration.modelOverride} · проверьте установку`; modelSelect.append(missing);
   }
   modelSelect.value = configuration.modelOverride;
+  $("#imageBatchOtherModels").textContent = configuration.showAllModels ? "Скрыть остальные модели" : "Другие модели";
   $("#imageBatchBackground").value = configuration.backgroundMode;
   $("#imageBatchBlackContour").value = configuration.blackContour;
   $("#imageBatchLightArtwork").value = configuration.lightArtworkPolicy;
@@ -224,15 +231,16 @@ window.closeImageBatchPreview = function () {
   if (state.busy) { $("#imageBatchSummary").textContent = "Остановите обработку перед закрытием. Готовые результаты сохранятся в просмотре."; return; }
   persistImageBatchDraft(); $("#imageBatchModal").classList.add("hidden"); imageBatchReturnFocus?.focus();
 };
-async function prepareImageBatch(mode = "all") {
+async function prepareImageBatch(mode = "all", requestedIndexes = null) {
   if (state.busy) return;
-  const indexes = imageBatchIndexes().filter(index => mode === "failed" ? imageBatchDraft.failures[index] : mode === "remaining" ? !imageBatchDraft.results[index] && !imageBatchDraft.failures[index] : true);
+  const indexes = (requestedIndexes || imageBatchIndexes()).filter(index => mode === "failed" ? imageBatchDraft.failures[index] : mode === "remaining" ? !imageBatchDraft.results[index] && !imageBatchDraft.failures[index] : true);
   if (!indexes.length) return;
   const configuration = imageBatchDraft.configuration || {};
   const baseline = configuration.options || collectOptions();
   const settings = { ...baseline, batchModelOverride: configuration.modelOverride, batchBackgroundMode: configuration.backgroundMode, batchBlackContour: configuration.blackContour, edgeRefine: { mode: "none", width: 1, depth: 2, whiteOnly: true, ...baseline.edgeRefine, noLightArtwork: configuration.lightArtworkPolicy === "none", lightArtworkPolicy: configuration.lightArtworkPolicy, contourWidth: configuration.contourWidth }, pixelate: configuration.exportAtlases ? baseline.pixelate : null, toning: configuration.exportAtlases ? baseline.toning : null, colorAdjust: { ...imageBatchDraft.adjustments }, frameTransforms: {}, attachments: [], attachmentPlacements: null };
   state.busy = true; updateActionState(); renderImageBatchDraft();
   $("#prepareImageBatch").textContent = "Обрабатываю…";
+  settings.batchCleanupByIndex = imageBatchDraft.cleanupChoices || {};
   $("#cancelJob").classList.remove("hidden");
   setStatus(`Готовлю просмотр: ${indexes.length} изображений…`, "busy", .02);
   try {
@@ -257,6 +265,20 @@ $("#imageBatchModel").addEventListener("change", event => {
   if (state.busy || !imageBatchDraft) return;
   window.openImageBatchPreview({ ...imageBatchDraft.configuration, modelOverride: event.target.value, backgroundMode: "auto" });
 });
+$("#imageBatchOtherModels").addEventListener("click", () => {
+  if (state.busy || !imageBatchDraft) return;
+  const configuration = imageBatchDraft.configuration;
+  configuration.showAllModels = !configuration.showAllModels;
+  const select = $("#imageBatchModel");
+  for (const option of [...select.options]) if (option.value) option.remove();
+  for (const option of $("#aiModel").options) {
+    if (!configuration.showAllModels && !["toonout", "birefnet-tiny", configuration.modelOverride].includes(option.value)) continue;
+    const choice = document.createElement("option"); choice.value = option.value; choice.textContent = option.textContent; select.append(choice);
+  }
+  select.value = configuration.modelOverride;
+  $("#imageBatchOtherModels").textContent = configuration.showAllModels ? "Скрыть остальные модели" : "Другие модели";
+  persistImageBatchDraft();
+});
 $("#imageBatchBackground").addEventListener("change", event => {
   if (state.busy || !imageBatchDraft) return;
   window.openImageBatchPreview({ ...imageBatchDraft.configuration, backgroundMode: event.target.value, modelOverride: "" });
@@ -267,6 +289,11 @@ $("#imageBatchBlackContour").addEventListener("change", event => {
 });
 $("#imageBatchLightArtwork").addEventListener("change", event => {
   if (state.busy || !imageBatchDraft) return;
+  if (event.target.value === "none") {
+    event.target.value = imageBatchDraft.configuration.lightArtworkPolicy;
+    void window.confirmBatchNoLightArtwork(imageBatchIndexes());
+    return;
+  }
   window.openImageBatchPreview({ ...imageBatchDraft.configuration, lightArtworkPolicy: event.target.value });
 });
 $("#imageBatchContourWidth").addEventListener("change", event => {

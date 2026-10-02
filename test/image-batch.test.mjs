@@ -201,3 +201,40 @@ test("unchanged prepared sprites expose small pale candidates without deleting w
   assert.deepEqual(await inspectCleanupQuality({ afterPath: file }, measurements, protect, { changed: 1 }), []);
   assert.deepEqual(await inspectCleanupQuality({ afterPath: file }, { ...measurements, checkerPixels: 0 }, protect, { changed: 0 }), []);
 });
+
+test("confirmed palette cleanup uses source indexes and never changes an unconfirmed sprite", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "cslab-confirmed-palette-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const first = await fixture(root, "confirmed.png", true), second = await fixture(root, "protected.png", true);
+  const result = await processImageBatch({ paths: [first, second], sourceIndexes: [7, 8],
+    outputDir: path.join(root, "out"), outputKind: "images", automatic: true, appRoot: path.resolve("."),
+    options: { keyMode: "alpha", edgeRefine: { mode: "none", lightArtworkPolicy: "auto" },
+      batchCleanupByIndex: { 7: { lightArtworkPolicy: "none" }, 8: { lightArtworkPolicy: "protect" } } } });
+  assert.equal(result.failed, 0);
+  const cleaned = await sharp(result.results[0].imagePath).ensureAlpha().raw().toBuffer();
+  assert.equal(cleaned[(24 * 64 + 18) * 4 + 3], 0);
+  assert.equal(result.results[0].lightDecision.confidence, "explicit");
+  assert.deepEqual(await sharp(result.results[1].imagePath).ensureAlpha().raw().toBuffer(), await sharp(second).ensureAlpha().raw().toBuffer());
+});
+
+test("confirmed colour removal handles a group with no AI, protects enclosed colour in exterior mode, and preserves originals", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "cslab-confirmed-color-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const files = [await fixture(root, "all.png"), await fixture(root, "exterior.png")];
+  const originals = await Promise.all(files.map(file => fs.readFile(file)));
+  const result = await processImageBatch({ paths: files, sourceIndexes: [4, 9], outputDir: path.join(root, "out"),
+    outputKind: "images", automatic: true, appRoot: path.resolve("."),
+    options: { keyMode: "ai", aiModel: "unavailable", edgeRefine: { mode: "none" }, batchCleanupByIndex: {
+      4: { colors: [{ color: [210, 30, 170], tolerance: 0, scope: "all" }] },
+      9: { colors: [{ color: [210, 30, 170], tolerance: 0, scope: "exterior" }] },
+    } } });
+  assert.equal(result.failed, 0);
+  for (const [index, item] of result.results.entries()) {
+    const pixels = await sharp(item.imagePath).ensureAlpha().raw().toBuffer();
+    assert.equal(pixels[3], 0, "Background colour remained");
+    assert.equal(pixels[(18 * 64 + 18) * 4 + 3], index ? 255 : 0, "Incorrect treatment of enclosed colour");
+    assert.equal(pixels[(24 * 64 + 18) * 4 + 3], 255, "Unselected white detail was removed");
+    assert.ok(item.route[0].includes("#d21eaa"));
+    assert.deepEqual(await fs.readFile(files[index]), originals[index]);
+  }
+});
