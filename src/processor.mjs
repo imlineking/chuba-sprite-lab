@@ -9,6 +9,7 @@ import { currentAIProvider, segmentSubject } from "./ai-segmentation.mjs";
 import { applyMaskEdits } from "./mask-edits.mjs";
 import { cleanMagentaFringe } from "./edge-cleanup.mjs";
 import { pixelate } from "./pixelate.mjs";
+import { applyImageGeometry } from "./image-geometry.mjs";
 import { toneRgba } from "./toning.mjs";
 import { decontaminateEdges } from "./edge-decontaminate.mjs";
 import { refineEdgeRgba } from "./edge-refine.mjs";
@@ -1141,6 +1142,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
       const { data, info } = await sharp(enlarged.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
       keyed = { ...keyed, buffer: enlarged.buffer, info, bounds: alphaBounds(data, info) };
     }
+    if (options.imageGeometry) keyed = await applyImageGeometry(keyed, options.imageGeometry);
     // Pixel art runs after the background is gone, otherwise the palette would repaint the
     // background instead of the sprite. Per frame, so it stays inside the same pool.
     if (pixelateOptions) keyed = await applyPixelation(keyed, pixelateOptions);
@@ -2394,6 +2396,7 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
   const placements = options.attachmentPlacements?.[previewFrameIndex]
     || (options.attachments || []).map((attachment) => ({ ...attachment, points: attachment.points || [] }));
   keyed = await compositeAttachments(keyed, placements);
+  if (options.imageGeometry) keyed = await applyImageGeometry(keyed, options.imageGeometry);
   if (options.pixelate && Number(options.pixelate.size) > 1) keyed = await applyPixelation(keyed, options.pixelate);
   if (options.toning) keyed = await applyToning(keyed, options.toning);
   if (options.colorAdjust) keyed = await applyImageColorAdjust(keyed, options.colorAdjust);
@@ -2420,6 +2423,7 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
     keyColor: keyed.keyColor,
     whiteRemainders,
     edgeRefineReport: keyed.edgeRefineReport || null,
+    geometryReport: keyed.geometryReport || null,
   };
 }
 

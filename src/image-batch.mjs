@@ -208,6 +208,8 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
         const changeReport = await compareImagePixels(file, preview.afterPath);
         const qualityIssues=await inspectCleanupQuality(preview,measurements,lightDecision,changeReport);
         const qualityWarnings=qualityIssues.map(issue=>issue.message);
+        if (preview.geometryReport?.cropped) qualityWarnings.push("Заполнение кадра обрезало края по выбранному формату. Проверьте объект.");
+        if (preview.geometryReport?.stretched) qualityWarnings.push("Растяжение изменило пропорции по выбранному формату.");
         const suggestNoLightArtwork = lightRequest === "auto" && qualityIssues.some(issue => issue.code === "unchanged-pale-regions");
         const matteReview=await reviewMatteFile(preview.afterPath);
         if (automatic && changeReport.changed === 0 && qualityIssues.length) qualityWarnings.push("Автоматическая очистка не изменила этот файл; проверьте отмеченные области.");
@@ -234,11 +236,12 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
           settings.keyMode === "ai" ? `Выделение · ${settings.aiModel}` : settings.keyMode === "alpha" ? "Сохранена прозрачность" : settings.keyMode === "black" ? `Чёрный фон · ${settings.blackOutline ? "контур сохранён" : "без сохранения контура"}` : `Очистка фона · ${backgroundNames[settings.keyMode] || settings.keyMode}`,
           ...((settings.aiEdits || []).some(edit => edit.type === "checker" && edit.frameIndex === sourceIndex) ? ["Удаление шахматки"] : []),
           ...(preview.edgeRefineReport?.removed || preview.edgeRefineReport?.recolored ? [settings.edgeRefine?.noLightArtwork ? "Очистка светлых остатков и края" : "Очистка края"] : []),
+          ...(preview.geometryReport ? [`Размер · ${preview.geometryReport.outputSize.width}×${preview.geometryReport.outputSize.height} px`] : []),
           ...(settings.pixelate ? [`Пикселизация · блок ${settings.pixelate.size} px`] : []),
           ...(settings.colorAdjust && Object.values(settings.colorAdjust).some(value => Number(value)) ? ["Коррекция цвета"] : []),
           "Проверка результата",
         ];
-        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, route, fallback, qualityIssues, qualityWarnings, matteReview, healingPath, healingReport: healing?.report || null, cleanupReport: preview.edgeRefineReport || null, lightDecision, changeReport, suggestNoLightArtwork, colorRemoval: colors });
+        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, route, fallback, qualityIssues, qualityWarnings, matteReview, healingPath, healingReport: healing?.report || null, cleanupReport: preview.edgeRefineReport || null, geometryReport: preview.geometryReport || null, lightDecision, changeReport, suggestNoLightArtwork, colorRemoval: colors });
         onProgress?.({ stage: "batch", value: (index + 1) / inputs.length, message: `Сохранено ${index + 1}/${inputs.length} · ${name}.png` });
         continue;
       }

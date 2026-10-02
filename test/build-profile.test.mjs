@@ -8,6 +8,12 @@ import { exportFormats } from "../src/processor.mjs";
 
 const baseDir = path.resolve(os.tmpdir(), "chuba-profile-base");
 
+test("geometry survives recipe loading and rejects invalid target dimensions", () => {
+  const parsed = readProfile(profile({ options: { imageGeometry: { mode: "contain", width: 32, height: 24, kernel: "nearest" } } }), { baseDir });
+  assert.deepEqual(parsed.animations[0].options.imageGeometry, { mode: "contain", width: 32, height: 24, kernel: "nearest", trimToObject: true });
+  assert.throws(() => readProfile(profile({ options: { imageGeometry: { mode: "stretch", width: 0, height: 12 } } }), { baseDir }), /imageGeometry/);
+});
+
 test("old cutout profiles migrate to ToonOut while pixelation and edge settings survive", () => {
   for (const aiModel of ["isnet-anime", "birefnet-tiny", "u2netp"]) {
     const parsed = readProfile(profile({ options: { keyMode: "ai", aiModel,

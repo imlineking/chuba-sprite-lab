@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveMattingModelId } from "./ai-models.mjs";
+import { validateImageGeometry } from "./image-geometry.mjs";
 import { parseCustomPalette, pixelDithers, pixelModes, pixelPalettes } from "./pixelate.mjs";
 
 // A build profile is the complete recipe of one export: the sources plus every
@@ -24,7 +25,7 @@ export const profileOptionKeys = new Set([
   "fringeCleanup", "fringeStrength", "edgeDecontaminate", "keyColor", "aiProvider", "aiQuality", "aiForceModel", "pixelate", "frameParallelism", "attachments", "attachmentPlacements",
   "frameOverrides", "frameTransforms", "preparedCleanup", "fitEachFrame", "timeline", "loopMode",
   "loopRange", "packing", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo",
-  "cleanOutput", "animationName", "auxAI", "keyScope", "aiModel", "edgeRefine", "toning",
+  "cleanOutput", "animationName", "auxAI", "keyScope", "aiModel", "edgeRefine", "toning", "imageGeometry",
 ]);
 
 const sourceKinds = ["video", "frames", "sheet"];
@@ -102,6 +103,10 @@ function normalizeOptions(value, problem, label, baseDir) {
       const strength = Number(options.toning.strength);
       if (!Number.isFinite(strength) || strength < 0 || strength > 100) problem(`${label}.toning.strength: ожидалось число 0…100.`);
     }
+  }
+  if (options.imageGeometry !== undefined) {
+    try { options.imageGeometry = validateImageGeometry(options.imageGeometry); }
+    catch (error) { problem(label + ".imageGeometry: " + error.message); }
   }
   if (options.exports !== undefined) {
     if (!isPlainObject(options.exports)) {

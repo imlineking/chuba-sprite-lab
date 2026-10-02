@@ -291,8 +291,51 @@ try {
     assert.equal(await evaluate("Object.keys(state.frameOverrides).length"), 0);
     batchPixelation = { selectedOnly: true, changed: reviewed.changeReport.changed, size: 4, colors: 16, dither: "bayer4", savedPixelsMatch: true, canvasPreserved: true, undo: true };
   }
+  let batchGeometry = null;
+  if (!process.argv[4]) {
+    const fixturePaths = [0, 1].map(i => path.join(output, "pixel-fixture-" + i + ".png"));
+    const waitGeometry = async expression => {
+      for (let i = 0; i < 400; i++) { if (await evaluate(expression)) return; await pause(100); }
+      throw new Error("Timeout: " + expression);
+    };
+    await evaluate("window.openImageBatchPreview({automatic:false,options:{keyMode:'alpha',edgeRefine:{mode:'none'}}});$('#imageBatchGeometry').open=true");
+    assert.equal(await evaluate("$('#imageBatchWidth').min"), "1");
+    await evaluate("$('#imageBatchGeometryMode').value='contain';$('#imageBatchWidth').value='32';$('#imageBatchHeight').value='24';$('#imageBatchGeometryMode').dispatchEvent(new Event('change'));$('#imageBatchScope').value='all';renderImageBatchDraft()");
+    assert.equal(await evaluate("$('#applyImageBatch').disabled"), true, "Dimensions did not invalidate old preview");
+    await evaluate("$('#prepareImageBatch').click()");
+    await waitGeometry("!state.busy && Object.keys(imageBatchDraft.results).length===2");
+    const reviewed = await evaluate("imageBatchDraft.results");
+    for (const item of Object.values(reviewed)) {
+      assert.deepEqual(item.geometryReport.outputSize, { width: 32, height: 24 });
+      assert.equal(item.geometryReport.cropped, false);
+      assert.ok(item.route.some(step => step.includes("32×24")));
+    }
+    for (const theme of ["light", "dark"]) {
+      await call("Emulation.setDeviceMetricsOverride", { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false });
+      await evaluate("document.documentElement.dataset.theme=" + JSON.stringify(theme) + ";$('#imageBatchGeometry').scrollIntoView({block:'nearest'})");
+      await pause(250);
+      const layout = await evaluate("(()=>{const r=$('#imageBatchAfter').getBoundingClientRect(),b=$('#applyImageBatch').getBoundingClientRect();return {height:r.height,visible:b.bottom<=innerHeight,overflow:document.documentElement.scrollWidth>innerWidth}})()");
+      assert.ok(layout.height >= 120 && layout.visible && !layout.overflow, JSON.stringify(layout));
+      await screenshot("batch-geometry-" + theme + "-1024.png");
+    }
+    await call("Emulation.setDeviceMetricsOverride", { width: 1360, height: 900, deviceScaleFactor: 1, mobile: false });
+    await evaluate("$('#applyImageBatch').click()");
+    await waitGeometry("$('#imageBatchModal').classList.contains('hidden')");
+    const exported = await evaluate("(async()=>{state.outputFolder=" + JSON.stringify(path.join(output, "saved-geometry")) + ";return window.saveIndependentImages({all:true});})()");
+    assert.equal(exported.completed, 2); assert.equal(exported.failed, 0);
+    for (const [index, file] of fixturePaths.entries()) {
+      const item = exported.results.find(result => result.input === file);
+      const actual = await sharp(item.imagePath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      assert.equal(actual.info.width, 32); assert.equal(actual.info.height, 24);
+      assert.deepEqual(actual.data, await sharp(reviewed[index].imagePath).ensureAlpha().raw().toBuffer(), "Export resized or pixelated the accepted preview again");
+      assert.equal((await sharp(file).metadata()).width, 64, "Original source was resized");
+    }
+    await evaluate("undoWorkspace()");
+    assert.equal(await evaluate("Object.keys(state.frameOverrides).length"), 0);
+    batchGeometry = { all: true, size: [32, 24], combinedWithPixelation: true, savedPixelsMatch: true, originalUnchanged: true, undo: true };
+  }
   assert.deepEqual(exceptions, []);
-  const report = { executable, originalHash, initial, layoutChecks, manual, cleanupDecisions, engines, pixelOptions, pixelationChanged:true, batchPixelation, saved: saved.results[0].imagePath, savedPixelsMatch: true, originalUnchanged: true, exceptions };
+  const report = { executable, originalHash, initial, layoutChecks, manual, cleanupDecisions, engines, pixelOptions, pixelationChanged:true, batchPixelation, batchGeometry, saved: saved.results[0].imagePath, savedPixelsMatch: true, originalUnchanged: true, exceptions };
   await fs.writeFile(path.join(output, "report.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } finally {
