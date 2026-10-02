@@ -314,7 +314,7 @@ test("exports only the selected artifact types", async () => {
 test("local AI segmentation produces an editable transparent mask", async (context) => {
   const appRoot = path.resolve(".");
   try {
-    await fs.access(path.join(appRoot, "models", "u2netp.onnx"));
+    await fs.access(path.join(appRoot, "models", "toonout.onnx"));
   } catch {
     context.skip("local AI model is not prepared");
     return;
@@ -322,7 +322,10 @@ test("local AI segmentation produces an editable transparent mask", async (conte
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-lab-ai-test-"));
   const inputPath = path.join(temp, "subject.png");
   await makeFrame(inputPath, 20, 19);
-  const clean = await keyFrame(inputPath, "ai", 28, 3, 0, {
+  const neuralInput = path.join(temp, "neural-subject.png"), pixels = Buffer.alloc(160*160*4,255);
+  for(let y=40;y<120;y++)for(let x=40;x<120;x++)pixels.set([225,86,18,255],(y*160+x)*4);
+  await sharp(pixels,{raw:{width:160,height:160,channels:4}}).png().toFile(neuralInput);
+  const clean = await keyFrame(neuralInput, "ai", 28, 3, 0, {
     appRoot,
     frameIndex: 0,
     aiCutoff: 42,
@@ -330,14 +333,14 @@ test("local AI segmentation produces an editable transparent mask", async (conte
     aiForceModel: true,
     aiEdits: [],
   });
-  const original = await sharp(inputPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const original = await sharp(neuralInput).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const hard = await sharp(clean.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   for (let index = 0; index < hard.info.width * hard.info.height; index += 1) {
     const offset = index * hard.info.channels;
     assert.ok(hard.data[offset + 3] === 0 || hard.data[offset + 3] === 255, "zero softness must produce a hard alpha mask");
     assert.deepEqual([...hard.data.subarray(offset, offset + 3)], [...original.data.subarray(offset, offset + 3)], "AI cleanup must not alter source RGB pixels");
   }
-  const softened = await keyFrame(inputPath, "ai", 28, 3, 0, {
+  const softened = await keyFrame(neuralInput, "ai", 28, 3, 0, {
     appRoot, frameIndex: 0, aiCutoff: 42, aiSoftness: 2, aiForceModel: true, aiEdits: [],
   });
   const softPixels = await sharp(softened.buffer).ensureAlpha().raw().toBuffer();

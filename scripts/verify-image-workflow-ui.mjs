@@ -156,12 +156,8 @@ try {
     const paletteTargets = await evaluate("imageBatchDraft.paths.map((p,i)=>({p,i})).filter(x=>/clump-of-grass|sunflower/.test(x.p)).map(x=>x.i)");
     const protectedIndex = await evaluate("imageBatchDraft.paths.findIndex(p=>p.endsWith('flowers_white_daisy_01.png'))");
     assert.deepEqual(await evaluate("batchPaletteCandidates()"), paletteTargets);
-    assert.deepEqual(await evaluate("[...$('#imageBatchModel').options].map(o=>o.value)"), ["", "toonout", "birefnet-tiny"]);
-    const cataloguePreview = await evaluate(`imageBatchDraft.results[${protectedIndex}].imagePath`);
-    await evaluate("$('#imageBatchOtherModels').click()");
-    assert.ok(await evaluate("$('#imageBatchModel').options.length>3"));
-    await evaluate("$('#imageBatchOtherModels').click()");
-    assert.equal(await evaluate(`imageBatchDraft.results[${protectedIndex}].imagePath`), cataloguePreview, "Expanding the catalogue reprocessed images");
+    assert.deepEqual(await evaluate("[...$('#imageBatchModel').options].map(o=>o.value)"), ["", "toonout"]);
+    assert.equal(await evaluate("Boolean(document.querySelector('#imageBatchOtherModels'))"), false);
     const protectedPath = await evaluate(`imageBatchDraft.results[${protectedIndex}].imagePath`);
     await screenshot("palette-suggestion.png");
     await evaluate("$('#imageBatchConfirmNoLight').click()");
@@ -232,8 +228,71 @@ try {
     for (const [i, file] of group.entries()) assert.equal(crypto.createHash("sha256").update(await fs.readFile(file)).digest("hex"), originalGroupHashes[i]);
     cleanupDecisions = { paletteChanges, protectedFlowerNotReprocessed: true, cancelledWithoutChanges: true, sourcePipette: true, selectedOnly: true, groupColorRemoval: true, groupUndo: true };
   }
+  await evaluate("if(!$('#imageBatchModal').classList.contains('hidden')) $('#closeImageBatch').click();$('#openModels').click()");
+  for(let i=0;i<100;i++){if(await evaluate("$('#modelsList').children.length===5"))break;await pause(100);}
+  const engines = await evaluate("autoPilotState.status.entries.map(e=>e.id)");
+  assert.deepEqual(engines,["toonout","lama","rife","real-esrgan","depth-anything-v2"]);
+  await pause(500); await screenshot("local-functions.png");
+  await evaluate("$('#closeModels').click();window.taskChoose('stylize','manual');setTab('process');$('#pixelatePanel').open=true;$('#pixelateEnabled').checked=true;$('#pixelateSize').value='3';$('#pixelateColors').value='16';$('#pixelateDither').value='bayer4';$('#pixelatePanel').scrollIntoView({block:'center'})");
+  const pixelOptions = await evaluate("collectOptions().pixelate");
+  assert.equal(pixelOptions.size,3);assert.equal(pixelOptions.colors,16);assert.equal(pixelOptions.dither,"bayer4");
+  const pixelPreview = await evaluate(`spriteLab.previewFrame({inputPath:${JSON.stringify(input)},options:{...collectOptions(),keyMode:'alpha',frameOverrides:{},frameTransforms:{},preparedCleanup:{},aiEdits:[],attachments:[],edgeRefine:{mode:'none'}}})`);
+  const beforePixel = await sharp(input).ensureAlpha().raw().toBuffer();
+  const afterPixel = await sharp(pixelPreview.afterPath).ensureAlpha().raw().toBuffer();
+  assert.notDeepEqual(afterPixel,beforePixel,"Pixelation did not change the image");
+  await screenshot("pixelation-controls.png");
+  let batchPixelation = null;
+  if (!process.argv[4]) {
+    const fixturePaths = [];
+    for (let i = 0; i < 2; i++) {
+      const pixels = Buffer.alloc(64 * 48 * 4);
+      for (let y = 4; y < 44; y++) for (let x = 4; x < 60; x++) pixels.set([x * 4, y * 5, (x * 3 + y * 2) % 256, 255], (y * 64 + x) * 4);
+      const file = path.join(output, "pixel-fixture-" + i + ".png");
+      await sharp(pixels, { raw: { width: 64, height: 48, channels: 4 } }).png().toFile(file); fixturePaths.push(file);
+    }
+    const waitBatch = async expression => {
+      for (let i = 0; i < 400; i++) { if (await evaluate(expression)) return; await pause(100); }
+      throw new Error("Timeout: " + expression);
+    };
+    await evaluate("(async()=>{setSource(await spriteLab.restoreProject({source:{kind:'frames',paths:" + JSON.stringify(fixturePaths) + "}}));window.startImageEditing();initializeHistory('Batch pixelation');$('#pixelateEnabled').checked=false;window.openImageBatchPreview({automatic:false,options:{keyMode:'alpha',edgeRefine:{mode:'none'}}});})()");
+    await waitBatch("!state.busy && Object.keys(imageBatchDraft.results).length===2");
+    assert.equal(await evaluate("imageBatchDraft.results[0].changeReport.changed"), 0, "Cleanup unexpectedly inherited pixelation");
+    await evaluate("$('#imageBatchPixelation').open=true;$('#imageBatchPixelateEnabled').checked=true;$('#imageBatchPixelateEnabled').dispatchEvent(new Event('change'));$('#imageBatchPixelateSize').value='4';$('#imageBatchPixelateColors').value='16';$('#imageBatchPixelateDither').value='bayer4';$('#imageBatchPixelateDither').dispatchEvent(new Event('change'));$('#imageBatchScope').value='selected';imageBatchDraft.selected=[1];renderImageBatchDraft();$('#prepareImageBatch').click()");
+    await waitBatch("!state.busy && Boolean(imageBatchDraft.results[1])");
+    assert.equal(await evaluate("Boolean(imageBatchDraft.results[0])"), false, "Unselected file was pixelated");
+    const reviewed = await evaluate("imageBatchDraft.results[1]");
+    assert.ok(reviewed.changeReport.changed > 0);
+    assert.ok(reviewed.route.some(step => step.includes("Пикселизация")));
+    await evaluate("$('#imageBatchPixelation').scrollIntoView({block:'nearest'})");
+    await pause(300); await screenshot("batch-pixelation.png");
+    for (const theme of ["light", "dark"]) {
+      await call("Emulation.setDeviceMetricsOverride", { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false });
+      await evaluate("document.documentElement.dataset.theme=" + JSON.stringify(theme));
+      await pause(250);
+      const geometry = await evaluate("(()=>{const r=$('#imageBatchAfter').getBoundingClientRect(),b=$('#applyImageBatch').getBoundingClientRect();return {imageHeight:r.height,buttonVisible:b.bottom<=innerHeight,overflow:document.documentElement.scrollWidth>innerWidth}})()");
+      assert.ok(geometry.imageHeight >= 120 && geometry.buttonVisible && !geometry.overflow, JSON.stringify(geometry));
+      await screenshot("batch-pixelation-" + theme + "-1024.png");
+    }
+    await call("Emulation.setDeviceMetricsOverride", { width: 1360, height: 900, deviceScaleFactor: 1, mobile: false });
+    await evaluate("$('#applyImageBatch').click()");
+    await waitBatch("$('#imageBatchModal').classList.contains('hidden')");
+    assert.equal(await evaluate("Object.keys(state.frameOverrides).join(',')"), "1");
+    const exported = await evaluate("(async()=>{state.outputFolder=" + JSON.stringify(path.join(output, "saved-pixelation")) + ";return window.saveIndependentImages({all:true});})()");
+    assert.equal(exported.completed, 2); assert.equal(exported.failed, 0);
+    for (let i = 0; i < 2; i++) {
+      const savedFile = exported.results.find(item => item.input === fixturePaths[i]);
+      const expected = await sharp(i === 1 ? reviewed.imagePath : fixturePaths[i]).ensureAlpha().raw().toBuffer();
+      const actual = await sharp(savedFile.imagePath).ensureAlpha().raw().toBuffer();
+      assert.deepEqual(actual, expected, "Saved PNG does not match the selected preview");
+      const metadata = await sharp(savedFile.imagePath).metadata();
+      assert.equal(metadata.width, 64); assert.equal(metadata.height, 48);
+    }
+    await evaluate("undoWorkspace()");
+    assert.equal(await evaluate("Object.keys(state.frameOverrides).length"), 0);
+    batchPixelation = { selectedOnly: true, changed: reviewed.changeReport.changed, size: 4, colors: 16, dither: "bayer4", savedPixelsMatch: true, canvasPreserved: true, undo: true };
+  }
   assert.deepEqual(exceptions, []);
-  const report = { executable, originalHash, initial, layoutChecks, manual, cleanupDecisions, saved: saved.results[0].imagePath, savedPixelsMatch: true, originalUnchanged: true, exceptions };
+  const report = { executable, originalHash, initial, layoutChecks, manual, cleanupDecisions, engines, pixelOptions, pixelationChanged:true, batchPixelation, saved: saved.results[0].imagePath, savedPixelsMatch: true, originalUnchanged: true, exceptions };
   await fs.writeFile(path.join(output, "report.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } finally {

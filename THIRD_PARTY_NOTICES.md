@@ -1,6 +1,6 @@
 # Third-party notices
 
-Chuba Sprite Lab includes or uses the following third-party projects:
+This list describes the current source packaging configuration. Previously distributed binaries can contain the older model set; their own notices remain applicable. Chuba Sprite Lab includes or uses the following third-party projects:
 
 - [Electron](https://www.electronjs.org/) — MIT License.
 - [Sharp](https://sharp.pixelplumbing.com/) and libvips — Apache-2.0 and their respective dependency licenses.
@@ -8,9 +8,7 @@ Chuba Sprite Lab includes or uses the following third-party projects:
 - [FFmpeg](https://ffmpeg.org/) — distributed under the license applicable to the bundled build. FFmpeg is a separate project and is not owned by Hanuman Media Company.
 - [electron-builder](https://www.electron.build/) — MIT License; used to produce release builds and not required as a separate end-user installation.
 - [ONNX Runtime](https://onnxruntime.ai/) — MIT License; runs the included local models.
-- [U²-Net](https://github.com/xuebinqin/U-2-Net) — Apache License 2.0. The compact `u2netp`, full U²-Net, portrait matting and Silueta exports are included for local segmentation. Exports come from the [rembg release assets](https://github.com/danielgatis/rembg/releases/tag/v0.0.0).
-- [DIS / IS-Net](https://github.com/xuebinqin/DIS) — Apache-2.0; general and anime ONNX exports are included from the rembg release assets.
-- [BiRefNet](https://github.com/ZhengPeng7/BiRefNet) — MIT; general tiny, general, high-resolution matting and portrait ONNX exports are included from the rembg release assets.
+- [ToonOut](https://huggingface.co/joelseytre/toonout) and its [BiRefNet](https://github.com/ZhengPeng7/BiRefNet) base — MIT; a pinned official ToonOut checkpoint is exported locally to ONNX. The full license is included as resources/models/ToonOut-LICENSE.txt. Export provenance, revision, size and SHA-256 are recorded in docs/TOONOUT.md.
 - [LaMa](https://github.com/advimman/lama) — Apache-2.0; the portable demo includes the [sapienkit ONNX conversion](https://huggingface.co/sapienkit/LaMa-ONNX).
 - [RIFE](https://github.com/hzwer/ECCV2022-RIFE) — MIT; the portable demo includes the [walterlow timestep ONNX conversion](https://huggingface.co/walterlow/RIFE_fp32_timestep).
 - [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) — BSD-3-Clause; the included anime 6B [ONNX conversion](https://huggingface.co/mhmtaufiq/realesrgan-onnx) is distinct from the full x4plus weights.

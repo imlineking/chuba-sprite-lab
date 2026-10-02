@@ -276,7 +276,7 @@ function autoPilotRenderModels() {
     const meta = document.createElement("small");
     meta.className = "model-meta";
     const parts = [
-      entry.tasks.join(" · "),
+      entry.tasks.map(task => ({ matting: "Вырезка объекта", "matting-art": "Рисованная графика", "matting-checker": "Запечённая шахматка", inpaint: "Дорисовка по маске", interpolate: "Промежуточные кадры", upscale: "Увеличение изображения", depth: "Карта глубины" }[task] || task)).join(" · "),
       entry.sizeBytes ? formatModelSize(entry.totalBytes) : "размер не заявлен",
       entry.bundled ? "в комплекте" : entry.url ? "скачивается" : "только вручную",
     ];
@@ -333,7 +333,7 @@ function autoPilotRenderModels() {
       actions.append(later);
     } else if (entry.bundled) {
       const missing = document.createElement("small");
-      missing.textContent = "Файл комплекта отсутствует. Скопируйте папку portable полностью.";
+      missing.textContent = "Файл комплекта отсутствует. Используйте полный выпуск Chuba Sprite Lab.";
       actions.append(missing);
     } else if (entry.url) {
       const download = document.createElement("button");
@@ -394,8 +394,8 @@ function autoPilotFillModelSelect() {
   }
   if (!select.options.length) {
     const option = document.createElement("option");
-    option.value = "u2netp";
-    option.textContent = "U²-Net small — в комплекте";
+    option.value = "toonout";
+    option.textContent = "Вырезка объекта · ToonOut — в комплекте";
     select.append(option);
   }
   if ([...select.options].some((option) => option.value === keep)) select.value = keep;

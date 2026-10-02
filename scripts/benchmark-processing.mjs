@@ -91,7 +91,7 @@ await attempt("controlled-inputs", async () => {
 });
 
 const cases = [
-  { id: "portrait", paths: [portrait], goal: "stylize", options: { keyMode: "ai", aiModel: "birefnet-portrait", aiForceModel: true, pixelate: { size: 6, colors: 24, mode: "shaded", dither: "bayer4", palette: "auto" } } },
+  { id: "portrait", paths: [portrait], goal: "stylize", options: { keyMode: "ai", aiModel: "toonout", aiForceModel: true, pixelate: { size: 6, colors: 24, mode: "shaded", dither: "bayer4", palette: "auto" } } },
   { id: "white-bzzz", paths: [bzzz], goal: "background", auto: true },
   { id: "atlas-mixed", paths: mixed, goal: "combine", options: { packing: "tight", exports: { ...common.exports, preview: false } } },
   { id: "video-pig", paths: [pig], goal: "animation", kind: "video", options: { fps: 2, maxFrames: 8 } },
@@ -133,7 +133,7 @@ const mattingCases = [
   { id: "checker-controlled", input: path.join(generated, "flowers-checker.png"), reference: path.join(generated, "flowers-truth.png") },
   { id: "photo", input: portrait },
 ];
-for (const entry of mattingCases) for (const tool of ["contour", "all-colour", "checker", "u2netp", "birefnet-tiny"]) {
+for (const entry of mattingCases) for (const tool of ["contour", "all-colour", "checker", "toonout"]) {
   if (tool === "checker" && !["branch", "checker-controlled"].includes(entry.id)) continue;
   if (entry.id === "photo" && ["contour", "all-colour"].includes(tool)) continue;
   await attempt(`matting-${entry.id}-${tool}`, async () => {
@@ -146,7 +146,7 @@ for (const entry of mattingCases) for (const tool of ["contour", "all-colour", "
 }
 
 // Every pixel drawing mode and every dither, using a single prepared photo mask.
-const portraitMask = path.join(output, "photo-birefnet-tiny.png");
+const portraitMask = path.join(output, "photo-toonout.png");
 for (const mode of pixelModes) await attempt(`pixel-style-${mode}`, async () => {
   const start = performance.now(); const result = await processFramePreview({ inputPath: portraitMask, appRoot: root, options: { ...common, pixelate: { size: 6, colors: 24, mode, dither: "none", palette: "auto" } } });
   const name = path.join(output, `portrait-${mode}.png`); await fs.copyFile(result.afterPath, name);

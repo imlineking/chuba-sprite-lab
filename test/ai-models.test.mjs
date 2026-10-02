@@ -14,6 +14,7 @@ import {
   readSessionShapes,
   rejectedModels,
   runnableModels,
+  retiredMattingModelIds, resolveMattingModelId,
   verificationOf,
 } from "../src/ai-models.mjs";
 
@@ -38,7 +39,7 @@ test("every catalogue entry is complete and uniquely named", () => {
 
 test("only models that really exist can be downloaded", () => {
   const downloadable = aiModelCatalog.filter((model) => canDownload(model));
-  assert.equal(aiModelCatalog.filter(model => model.bundled).length, 15);
+  assert.equal(aiModelCatalog.filter(model => model.bundled).length, 5);
   for (const model of downloadable) {
     for (const file of modelFiles(model)) {
       assert.equal(assertDownloadUrl(file.url), file.url);
@@ -63,22 +64,22 @@ test("a download link is refused when it leads somewhere else", () => {
 });
 
 test("a model with several files counts its full size", () => {
-  const sam = modelById("mobile-sam");
+  const sam = { file: "encoder.onnx", sizeBytes: 100, extraFiles: [{file:"decoder.onnx",sizeBytes:20}] };
   assert.equal(modelFiles(sam).length, 2);
   assert.equal(modelTotalBytes(sam), sam.sizeBytes + sam.extraFiles[0].sizeBytes);
 });
 
 test("the bundled model needs no download and the ready ones are the runnable ones", () => {
-  assert.equal(modelById("u2netp").bundled, true);
-  assert.equal(canDownload(modelById("u2netp")), false);
+  assert.equal(modelById("toonout").bundled, true);
+  assert.equal(canDownload(modelById("toonout")), false);
   assert.ok(runnableModels().every((model) => model.readiness === "ready"));
-  assert.ok(runnableModels().some((model) => model.id === "isnet-anime"));
+  assert.ok(runnableModels().some((model) => model.id === "toonout"));
   assert.ok(modelsForTask("matting", { onlyRunnable: true }).every((model) => model.tasks.includes("matting")));
   assert.equal(modelsForTask("inpaint").length, 1);
 });
 
 test("verification says plainly whether a hash was published or recorded here", () => {
-  const published = modelFiles(modelById("vitmatte-small"))[0];
+  const published = modelFiles(modelById("toonout"))[0];
   assert.equal(verificationOf(published).level, "published");
   assert.equal(verificationOf(published).sha256.length, 64);
   assert.equal(verificationOf({ sha256: null }, { recorded: "abc" }).level, "recorded");
@@ -109,7 +110,7 @@ test("the model file itself decides the input size, with the family as a fallbac
   // Dynamic dimensions carry no size, so the family default is used.
   const dynamic = { inputNames: ["x"], outputNames: ["y"], inputMetadata: { x: { dimensions: [1, 3, -1, -1] } } };
   assert.equal(readSessionShapes(dynamic).inputSize, null);
-  assert.equal(familyInputSize("u2net"), 320);
+  assert.equal(modelById("isnet-anime"), null);
   assert.equal(familyInputSize("birefnet"), 1024);
   assert.equal(familyInputSize("unknown-family"), 320);
 });
@@ -129,4 +130,13 @@ test("what was refused is refused for a stated reason", () => {
   const nonCommercial = rejectedModels.filter((model) => /коммерческ|некоммерческ/i.test(model.reason));
   assert.ok(nonCommercial.length >= 2, "отказ по лицензии должен быть назван прямо");
   assert.ok(rejectedModels.some((model) => /эталон/.test(model.reason)), "подмена лица отклонена отдельно");
+});
+
+test("one cutout engine and unique auxiliary functions replace the old model menu", () => {
+  assert.deepEqual(aiModelCatalog.map(model=>model.id), ["toonout","lama","rife","real-esrgan","depth-anything-v2"]);
+  assert.deepEqual(modelsForTask("matting").map(model=>model.id), ["toonout"]);
+  for (const id of retiredMattingModelIds) { assert.equal(modelById(id),null); assert.equal(resolveMattingModelId(id),"toonout"); }
+  assert.equal(resolveMattingModelId(),"toonout");
+  assert.throws(()=>resolveMattingModelId("typo"),/Неизвестный/);
+  assert.throws(()=>resolveMattingModelId("lama"),/Неизвестный/);
 });

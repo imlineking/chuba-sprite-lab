@@ -451,7 +451,7 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
     mode === "ai" ? context.aiSoftness : null,
     mode === "ai" ? context.aiForceModel : null,
     // The mask depends on which model ran, so the model belongs in the cache key too.
-    mode === "ai" ? context.aiModel || "u2netp" : null,
+    mode === "ai" ? context.aiModel || "toonout" : null,
     context.aiEdits?.length ? context.frameIndex : null,
     context.aiEdits || [],
   ]);

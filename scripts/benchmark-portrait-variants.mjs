@@ -7,13 +7,13 @@ const root = path.resolve(import.meta.dirname, "..");
 const photo = path.resolve(process.argv[2]);
 const output = path.resolve(process.argv[3]);
 const report = { matting: [], styles: [] };
-for (const model of ["u2net-portrait", "isnet-general", "birefnet-portrait"]) {
+for (const model of ["toonout"]) {
   clearRenderCache(); const started = performance.now();
   const result = await keyFrame(photo, "ai", 28, 0, 0, { appRoot: root, aiModelDirs: [path.join(root, "models")], aiModel: model, aiProvider: "cpu", aiQuality: "fast", aiCutoff: "auto", aiSoftness: 0, aiForceModel: true });
   const file = path.join(output, `photo-${model}.png`); await fs.writeFile(file, result.buffer);
   report.matting.push({ model, file, elapsedMs: Math.round(performance.now() - started), metrics: result.aiMetrics });
 }
-const input = path.join(output, "photo-birefnet-portrait.png");
+const input = path.join(output, "photo-toonout.png");
 const choices = [...pixelModes.map(mode => ({ name: `portrait-best-${mode}`, mode, dither: "none", size: 6, colors: 24 })), ...pixelDithers.map(dither => ({ name: `portrait-best-dither-${dither}`, mode: "shaded", dither, size: 6, colors: 24 })), { name: "portrait-best-tuned-clean", mode: "clean", dither: "none", size: 4, colors: 48 }, { name: "portrait-best-tuned-shaded", mode: "shaded", dither: "none", size: 4, colors: 48, shadingSteps: 8 }];
 for (const { name, ...pixelate } of choices) {
   const result = await processFramePreview({ inputPath: input, appRoot: root, options: { keyMode: "alpha", pixelate } });

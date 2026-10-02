@@ -13,7 +13,7 @@ test("portable resources include every bundled model and no optional download", 
   const config = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url)));
   const resource = config.build.extraResources.find((entry) => entry.to === "models");
   const bundled = aiModelCatalog.filter((entry) => entry.bundled);
-  assert.equal(bundled.length, 15);
+  assert.equal(bundled.length, 5);
   assert.ok(bundled.every(entry => entry.readiness === "ready"));
   assert.deepEqual(resource.filter.filter((file) => file.endsWith(".onnx")).sort(), bundled.map((entry) => entry.file).sort());
   assert.ok(resource.filter.includes("bundled-models.json"));
@@ -45,7 +45,7 @@ test("bundled segmentation wins over a stale cache and directories are rejected"
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-seg-path-test-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const cache = path.join(root, "cache"); const resourcesPath = path.join(root, "resources"); const appRoot = path.join(root, "app");
-  const file = "isnet-anime.onnx"; const packaged = path.join(resourcesPath, "models", file);
+  const file = "toonout.onnx"; const packaged = path.join(resourcesPath, "models", file);
   await fs.mkdir(path.dirname(packaged), { recursive: true }); await fs.mkdir(cache);
   await fs.writeFile(packaged, "verified bundle"); await fs.writeFile(path.join(cache, file), "stale cache");
   assert.equal(await resolveAIModel(appRoot, { file, resourcesPath, extraDirs: [cache] }), packaged);

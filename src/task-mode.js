@@ -65,7 +65,7 @@
     const paths = batchInputPaths(); if (!paths.length || state.busy) return;
     try {
       const profile = $("#batchImageProfile").value;
-      if (profile === "ai") await taskEnsureModel($("#aiModel").value || "u2netp");
+      if (profile === "ai") await taskEnsureModel($("#aiModel").value || "toonout");
       const options = collectOptions();
       if (profile === "color") Object.assign(options, { keyMode: "custom", keyColor: hexToRgb($("#batchKeyColor").value), keyScope: $("#batchKeyScope").value, tolerance: Number($("#batchTolerance").value) });
       if (profile === "ai") options.keyMode = "ai";

@@ -3,11 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import * as ort from "onnxruntime-node";
 import sharp from "sharp";
-import { aiModelCatalog, familyInputSize, modelById, modelFamilies, readSessionShapes } from "./ai-models.mjs";
+import { aiModelCatalog, familyInputSize, modelById, resolveMattingModelId, modelFamilies, readSessionShapes } from "./ai-models.mjs";
 import { modelSearchDirectories } from "./model-paths.mjs";
 import { segmentationInput, segmentationProbabilities } from "./ai-tensors.mjs";
 
-const BUNDLED_MODEL = "u2netp.onnx";
+const BUNDLED_MODEL = "toonout.onnx";
 // A tile about this size keeps the subject large inside the model input, whatever size that is.
 const TILE_TARGET = 640;
 const MAX_TILES_PER_AXIS = 4;
@@ -43,18 +43,13 @@ async function exists(candidate) {
   }
 }
 
-// Every extra model is looked up by its own file name. The bundled one stays the fallback, so a
-// missing download degrades to the shipped model instead of stopping the build.
+// Resolve only the requested shipped engine; missing weights are a visible error.
 export async function resolveAIModel(appRoot, { file = BUNDLED_MODEL, extraDirs = [], resourcesPath = process.resourcesPath } = {}) {
-  const model = aiModelCatalog.find((entry) => entry.file === file);
-  const candidates = [
-    ...modelSearchDirectories(model, { appRoot, aiModelDirs: extraDirs, resourcesPath }).map((directory) => path.join(directory, file)),
-    // The bundled fallback is always available.
-    resourcesPath ? path.join(resourcesPath, "models", BUNDLED_MODEL) : null,
-    path.join(appRoot, "models", BUNDLED_MODEL),
-  ].filter(Boolean);
+  const model = aiModelCatalog.find(entry => entry.file === file && entry.tasks.includes("matting"));
+  if (!model) throw new Error(`Способ вырезки для ${file} больше не поддерживается. Используйте ToonOut.`);
+  const candidates = modelSearchDirectories(model, { appRoot, aiModelDirs: extraDirs, resourcesPath }).map(directory => path.join(directory, file));
   for (const candidate of candidates) if (await exists(candidate)) return candidate;
-  throw new Error(`Локальная ИИ-модель не найдена (${file}). Загрузите её в окне «Модели ИИ» или переустановите Chuba Sprite Lab.`);
+  throw new Error(`Локальная модель ToonOut не найдена (${file}). Проверьте комплект Chuba Sprite Lab.`);
 }
 
 // DirectML runs the same model on the graphics card. Measured on the development machine the raw
@@ -145,7 +140,7 @@ export function resetAISessionForTests() {
 // The input size is read from the model itself: an export that takes 1024×1024 instead of 320×320 must
 // keep working, and no table of guesses can know that in advance. The family only supplies a fallback
 // for exports with dynamic dimensions.
-async function getSession(appRoot, mode, { file = BUNDLED_MODEL, family = "u2net", extraDirs = [] } = {}) {
+async function getSession(appRoot, mode, { file = BUNDLED_MODEL, family = "birefnet", extraDirs = [] } = {}) {
   const modelPath = await resolveAIModel(appRoot, { file, extraDirs });
   if (loadedSession && loadedModelPath === modelPath && loadedMode === mode) {
     return { session: loadedSession, inputSize: loadedInputSize, modelPath };
@@ -232,17 +227,15 @@ async function predictRegion(session, inputPath, rect, fullSize, useTta, size, m
 
 export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness = 0, provider = "auto", quality = "balanced", model = null, modelDirs = [] } = {}) {
   if (!appRoot) throw new Error("Не указан путь к локальной ИИ-модели.");
-  // An unknown or not-yet-downloaded model is not an error: the bundled one takes over and the report
-  // says which model actually ran.
-  const requested = model ? modelById(model) : null;
+  const requested = modelById(resolveMattingModelId(model));
   const loader = await getSession(appRoot, provider, {
     file: requested?.file || BUNDLED_MODEL,
-    family: requested?.family || "u2net",
+    family: requested?.family || "birefnet",
     extraDirs: modelDirs,
   });
   const session = loader.session;
   const inputSize = loader.inputSize;
-  const usedModel = requested && path.basename(loader.modelPath).toLowerCase() === requested.file.toLowerCase() ? requested : modelById("u2netp");
+  const usedModel = requested && path.basename(loader.modelPath).toLowerCase() === requested.file.toLowerCase() ? requested : modelById("toonout");
   const { data: source, info } = await sharp(inputPath).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const fullSize = { width: info.width, height: info.height };
   const plan = tilePlan(info.width, info.height, usedModel?.wholeImage ? "fast" : quality);
@@ -315,8 +308,8 @@ export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness
     data: source,
     info,
     provider: loadedProvider,
-    model: usedModel?.id || "u2netp",
-    modelName: usedModel?.name || "U²-Net small",
+    model: usedModel?.id || "toonout",
+    modelName: usedModel?.name || "ToonOut",
     inputSize,
     quality: plan.quality,
     tiles: rects.length,

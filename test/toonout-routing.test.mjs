@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { planAutoPilot } from "../src/auto-pilot.mjs";
 import { modelById } from "../src/ai-models.mjs";
-const installed = ["toonout", "birefnet-tiny", "isnet-general", "u2netp"];
+const installed = ["toonout"];
 const base = { width: 1308, height: 743, edgeMeasurement: "native", detailDensity: 0.108,
   colourCount: 2000, flatShare: 0.002, gradientShare: 0.3, softShare: 0.04, transparentShare: 0.64,
   borderOpaqueRatio: 0, borderColourCount: 0, borderSolidRatio: 0, solidBackground: false, checkerPixels: 37000,
@@ -22,13 +22,14 @@ test("complex comic on flat white uses ToonOut, but simple flowers still use the
   assert.ok(flowers.steps.some(s => s.stage === "key" && s.tool === "key"));
   assert.ok(!flowers.steps.some(s => s.stage === "checker"));
 });
-test("a prepared mask, missing ToonOut, thumbnails and plain photos do not promote ToonOut", () => {
+test("prepared masks remain unchanged; all other model tasks use ToonOut or report it missing", () => {
   const prepared = plan({}, { maskPrepared: true });
-  assert.notEqual(prepared.settings.modelId, "toonout");
+  assert.equal(prepared.settings.modelId, "toonout");
   assert.ok(!prepared.steps.some(s => s.stage === "checker" || s.stage === "matting"));
-  assert.notEqual(plan({}, {}, installed.filter(id => id !== "toonout")).settings.modelId, "toonout");
-  assert.notEqual(plan({ edgeMeasurement: "thumbnail" }).settings.modelId, "toonout");
-  assert.notEqual(plan({ checkerPixels: 0, detailDensity: 0.006, transparentShare: 0 }).settings.modelId, "toonout");
+  const missing=plan({}, {}, []);
+  assert.equal(missing.steps.find(step=>step.stage==="matting").status,"blocked");
+  assert.equal(plan({edgeMeasurement:"thumbnail"}).steps.find(step=>step.stage==="matting").tool,"toonout");
+  assert.equal(plan({checkerPixels:0,detailDensity:.006,transparentShare:0}).steps.find(step=>step.stage==="matting").tool,"toonout");
 });
 test("ToonOut has a pinned local export with calibrated probabilities and whole-image inference", () => {
   const model = modelById("toonout");

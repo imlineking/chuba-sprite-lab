@@ -1,7 +1,6 @@
 // Local AI models the tool can use, and the rules for getting them.
 //
-// Portable folders include all runnable segmentation and auxiliary models. Future stages
-// remain in the catalogue. Source URLs, exact sizes and available digests are recorded
+// The application includes one cutout engine and the distinct working auxiliary functions. Source URLs, exact sizes and available digests are recorded
 // per export; loading and running a file is checked separately from downloading its bytes.
 
 import { createHash } from "node:crypto";
@@ -19,16 +18,11 @@ export const downloadHosts = [  "github.com",
   "xethub.hf.co",
 ];
 
-const REMBG_RELEASE = "https://github.com/danielgatis/rembg/releases/download/v0.0.0";
 
 // How a family expects its input. The input size is a fallback: when a downloaded file is inspected,
 // the size declared by the model itself wins, so a different export still runs.
 export const modelFamilies = {
-  u2net: { inputSize: 320, normalisation: "imagenet", output: "alpha-plane", note: "U²-Net: одна карта прозрачности 320×320." },
-  isnet: { inputSize: 1024, normalisation: "imagenet", output: "alpha-plane", note: "IS-Net: та же карта, но крупнее вход." },
-  birefnet: { inputSize: 1024, normalisation: "imagenet", output: "alpha-plane", note: "BiRefNet: лучшее качество волос и меха, тяжёлая." },
-  vitmatte: { inputSize: 1024, normalisation: "imagenet", output: "alpha-plane", note: "ViTMatte: уточняет готовую карту по тримапу." },
-  sam: { inputSize: 1024, normalisation: "raw", output: "prompt-mask", note: "SAM: вырезает объект по клику или рамке." },
+  birefnet: { inputSize: 1024, normalisation: "imagenet", output: "alpha-plane", note: "ToonOut: одна карта прозрачности по всему изображению." },
   lama: { inputSize: 512, normalisation: "raw", output: "image", note: "LaMa: дорисовывает фон вместо убранного объекта." },
   rife: { inputSize: 0, normalisation: "raw", output: "image", note: "RIFE: добавляет промежуточные кадры." },
   esrgan: { inputSize: 0, normalisation: "raw", output: "image", note: "Real-ESRGAN: увеличивает и восстанавливает мелкий источник." },
@@ -53,206 +47,6 @@ export const aiModelCatalog = [
     note: "Сложная рисованная графика и растительность с запечённой подложкой. Один проход по всему изображению; результат нужно проверить. Не заменяет лёгкую вырезку простого фона и не рисует портреты.",
   },
 
-  {
-    id: "u2netp",
-    name: "U²-Net small",
-    family: "u2net",
-    tasks: ["matting"],
-    readiness: "ready",
-    bundled: true,
-    file: "u2netp.onnx",
-    sizeBytes: 4574861,
-    licence: { name: "Apache-2.0", commercial: true },
-    speed: "fast",
-    quality: "base",
-    note: "В комплекте. Быстрая маска для простого фона, слабее на волосах и мехе.",
-  },
-  {
-    id: "silueta",
-    name: "Silueta",
-    family: "u2net",
-    tasks: ["matting"],
-    readiness: "ready",
-    file: "silueta.onnx",
-    sizeBytes: 44173029,
-    url: `${REMBG_RELEASE}/silueta.onnx`,
-    licence: { name: "Apache-2.0", commercial: true, note: "производная U²-Net" },
-    speed: "fast",
-    quality: "base",
-    note: "Та же семья, что u2netp, но заметно аккуратнее по краю.",
-  },
-  {
-    id: "u2net",
-    name: "U²-Net",
-    family: "u2net",
-    tasks: ["matting"],
-    readiness: "ready",
-    file: "u2net.onnx",
-    sizeBytes: 175997641,
-    url: `${REMBG_RELEASE}/u2net.onnx`,
-    licence: { name: "Apache-2.0", commercial: true },
-    speed: "medium",
-    quality: "good",
-    note: "Полная версия: ровнее держит тонкие детали, чем u2netp, при том же входе.",
-  },
-  {
-    id: "u2net-portrait",
-    name: "U²-Net portrait matting",
-    family: "u2net",
-    tasks: ["matting", "matting-portrait"],
-    readiness: "ready",
-    file: "u2net-portrait-matting.onnx",
-    sizeBytes: 175994013,
-    url: `${REMBG_RELEASE}/u2net-portrait-matting.onnx`,
-    licence: { name: "Apache-2.0", commercial: true },
-    speed: "medium",
-    quality: "good",
-    note: "Обучена на портретах: хороша для лица и плеч персонажа, хуже для предметов.",
-  },
-  {
-    id: "isnet-general",
-    name: "IS-Net general",
-    family: "isnet",
-    tasks: ["matting"],
-    readiness: "ready",
-    file: "isnet-general-use.onnx",
-    sizeBytes: 178648008,
-    url: `${REMBG_RELEASE}/isnet-general-use.onnx`,
-    licence: { name: "MIT / Apache-2.0", commercial: true, note: "DIS, Xuebin Qin; обе лицензии разрешают коммерческое использование" },
-    speed: "medium",
-    quality: "high",
-    note: "Заметно чище по контуру, чем U²-Net, и лучше держит мелкие отдельные части.",
-  },
-  {
-    id: "isnet-anime",
-    name: "IS-Net anime",
-    family: "isnet",
-    tasks: ["matting", "matting-art"],
-    readiness: "ready",
-    file: "isnet-anime.onnx",
-    sizeBytes: 176069933,
-    url: `${REMBG_RELEASE}/isnet-anime.onnx`,
-    licence: { name: "MIT / Apache-2.0", commercial: true, note: "DIS, Xuebin Qin" },
-    speed: "medium",
-    quality: "high",
-    note: "Обучена на рисованных кадрах: ровный край на контуре и заливках, без «фотографичного» шума.",
-  },
-  {
-    id: "birefnet-tiny",
-    name: "BiRefNet tiny",
-    family: "birefnet",
-    tasks: ["matting", "matting-fine"],
-    readiness: "ready",
-    file: "BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx",
-    sizeBytes: 224005088,
-    url: `${REMBG_RELEASE}/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx`,
-    licence: { name: "MIT", commercial: true },
-    speed: "medium",
-    quality: "high",
-    note: "Альтернатива для сохранения белых деталей и мелкой растительности. На цветных фонах может оставить больше каймы; сравните с ToonOut. Около 214 МиБ весов.",
-  },
-  {
-    id: "birefnet-general",
-    name: "BiRefNet general",
-    family: "birefnet",
-    tasks: ["matting", "matting-fine"],
-    readiness: "ready",
-    file: "BiRefNet-general-epoch_244.onnx",
-    sizeBytes: 972666916,
-    url: `${REMBG_RELEASE}/BiRefNet-general-epoch_244.onnx`,
-    licence: { name: "MIT", commercial: true },
-    speed: "slow",
-    quality: "best",
-    note: "Лучшая универсальная маска: мех, волосы, тонкие шнуры. Нужно около 3 ГБ свободной памяти.",
-  },
-  {
-    id: "birefnet-hr-matting",
-    name: "BiRefNet HR matting",
-    family: "birefnet",
-    tasks: ["matting-fine"],
-    readiness: "ready",
-    file: "BiRefNet_HR-matting-epoch_135.onnx",
-    sizeBytes: 1098928867,
-    url: `${REMBG_RELEASE}/BiRefNet_HR-matting-epoch_135.onnx`,
-    licence: { name: "MIT", commercial: true },
-    speed: "slow",
-    quality: "best",
-    note: "Специально для матирования: снимает полупрозрачную кайму по меху и волосам лучше всех в списке.",
-  },
-  {
-    id: "birefnet-portrait",
-    name: "BiRefNet portrait",
-    family: "birefnet",
-    tasks: ["matting-fine", "matting-portrait"],
-    readiness: "ready",
-    file: "BiRefNet-portrait-epoch_150.onnx",
-    sizeBytes: 972666916,
-    url: `${REMBG_RELEASE}/BiRefNet-portrait-epoch_150.onnx`,
-    licence: { name: "MIT", commercial: true },
-    speed: "slow",
-    quality: "best",
-    note: "Портретный вариант: лицо, шея, плечи, волосы.",
-  },
-  {
-    id: "vitmatte-small",
-    name: "ViTMatte small",
-    family: "vitmatte",
-    tasks: ["matting-fine"],
-    readiness: "staged",
-    file: "vitmatte-small-composition-1k.onnx",
-    sizeBytes: 114423212,
-    url: `${REMBG_RELEASE}/vitmatte-small-composition-1k.onnx`,
-    sha256: "659b9bb2870f80cffbe20dae4c7f18417fbdf68c0195861d24e9082c28373a24",
-    licence: { name: "Apache-2.0", commercial: true },
-    speed: "fast",
-    quality: "high",
-    note: "Уточняет уже готовую маску по тримапу. Этап в конвейере появится после очереди редактора.",
-  },
-  {
-    id: "vitmatte-base",
-    name: "ViTMatte base",
-    family: "vitmatte",
-    tasks: ["matting-fine"],
-    readiness: "staged",
-    file: "vitmatte-base-composition-1k.onnx",
-    sizeBytes: 397910545,
-    url: `${REMBG_RELEASE}/vitmatte-base-composition-1k.onnx`,
-    sha256: "87bb10979f816061497ba6867b338c65a05cebd7d1507f6dde92a86382dec1f2",
-    licence: { name: "Apache-2.0", commercial: true },
-    speed: "medium",
-    quality: "best",
-    note: "Точнее мелкой версии, вдвое тяжелее. Тот же тримап-подход.",
-  },
-  {
-    id: "mobile-sam",
-    name: "MobileSAM",
-    family: "sam",
-    tasks: ["cutout"],
-    readiness: "staged",
-    file: "mobile_sam.encoder.quant.onnx",
-    extraFiles: [{ file: "sam_vit_b_01ec64.decoder.quant.onnx", sizeBytes: 8742591, url: `${REMBG_RELEASE}/sam_vit_b_01ec64.decoder.quant.onnx` }],
-    sizeBytes: 11050106,
-    url: `${REMBG_RELEASE}/mobile_sam.encoder.quant.onnx`,
-    licence: { name: "Apache-2.0", commercial: true },
-    speed: "fast",
-    quality: "good",
-    note: "Вырезает объект по клику: два файла — кодировщик и декодер, всего 20 МБ.",
-  },
-  {
-    id: "sam-vit-b",
-    name: "SAM ViT-B",
-    family: "sam",
-    tasks: ["cutout"],
-    readiness: "staged",
-    file: "vit_b-encoder-quant.onnx",
-    extraFiles: [{ file: "vit_b-decoder-quant.onnx", sizeBytes: 8742591, url: `${REMBG_RELEASE}/vit_b-decoder-quant.onnx` }],
-    sizeBytes: 99827815,
-    url: `${REMBG_RELEASE}/vit_b-encoder-quant.onnx`,
-    licence: { name: "Apache-2.0", commercial: true },
-    speed: "medium",
-    quality: "best",
-    note: "Полноразмерная SAM: точнее на пересечениях объектов, тяжелее и медленнее MobileSAM.",
-  },
   {
     id: "lama",
     bundled: true,
@@ -290,7 +84,7 @@ export const aiModelCatalog = [
   {
     id: "real-esrgan",
     bundled: true,
-    name: "Real-ESRGAN anime 6B",
+    name: "Увеличение изображения · Real-ESRGAN",
     family: "esrgan",
     tasks: ["upscale"],
     readiness: "ready",
@@ -342,6 +136,13 @@ export const rejectedModels = [
     reason: "Лицензия свободная, но модель дорисовывает лицо по-своему. У персонажа утверждённый эталон внешности, поэтому подмена черт недопустима.",
   },
 ];
+
+// Old projects keep working without reviving retired segmentation engines.
+export const retiredMattingModelIds = Object.freeze(["u2netp", "silueta", "u2net", "u2net-portrait", "isnet-general", "isnet-anime", "birefnet-tiny", "birefnet-general", "birefnet-hr-matting", "birefnet-portrait", "vitmatte-small", "vitmatte-base", "mobile-sam", "sam-vit-b"]);
+export function resolveMattingModelId(id) {
+  if (!id || id === "toonout" || retiredMattingModelIds.includes(id)) return "toonout";
+  throw new Error(`Неизвестный способ вырезки: ${id}. Выберите вырезку объекта ToonOut.`);
+}
 
 export function modelById(id) {
   return aiModelCatalog.find((model) => model.id === id) || null;
@@ -440,7 +241,7 @@ export function familyInputSize(family) {
 // A stored file is not a working model. This builds the tensor the family expects, runs one pass on a
 // synthetic image and checks the answer is a usable alpha map: right size, finite values, and not one
 // flat number. Anything else is reported as a failure with the runtime's own message.
-export async function validateModelFile(filePath, { family = "u2net", provider = "cpu" } = {}) {
+export async function validateModelFile(filePath, { family = "birefnet", provider = "cpu" } = {}) {
   const auxiliaryId = { lama: "lama", rife: "rife", esrgan: "real-esrgan", depth: "depth-anything-v2" }[family];
   if (auxiliaryId) {
     const session = await loadAuxSession(filePath);

@@ -9,6 +9,7 @@ import { findWhiteRemainders } from "./white-remainders.mjs";
 import { healImage } from "./healing-bridge.mjs";
 import { reviewMatteFile } from "./matte-review.mjs";
 import { chooseLightArtworkPolicy } from "./light-artwork-policy.mjs";
+import { resolveMattingModelId } from "./ai-models.mjs";
 import { backgroundKeyMode } from "./background-analysis.mjs";
 
 const solidBackgroundModes = new Set(["white", "black", "green", "magenta", "blue"]);
@@ -58,16 +59,17 @@ export async function inspectCleanupQuality(preview, measurements, lightDecision
   return issues;
 }
 
-export async function previewWithModelFallback({ inputPath, options, appRoot, automatic, installed = [], signal, preview = processFramePreview }) {
+export async function previewWithModelFallback({ inputPath, options, appRoot, automatic, signal, preview = processFramePreview }) {
+  if (options.keyMode === "ai") options = { ...options, aiModel: resolveMattingModelId(options.aiModel) };
   try { return { result: await preview({ inputPath, options, appRoot }), fallback: null }; }
   catch (error) {
     if (!automatic || options.keyMode !== "ai" || signal?.aborted || !/Dml|out of memory|8007000E|allocation|memory|device|execution provider/i.test(error.message)) throw error;
-    const models = [options.aiModel, ...["birefnet-tiny", "isnet-general", "u2netp"].filter(id => installed.includes(id) && id !== options.aiModel)];
+    const models = ["toonout"];
     let lastError = error;
     for (const model of models) {
       signal?.throwIfAborted();
       try {
-        const settings = { ...options, aiProvider: "cpu", aiModel: model, aiQuality: model === "u2netp" ? "fast" : "balanced" };
+        const settings = { ...options, aiProvider: "cpu", aiModel: model, aiQuality: "fast" };
         return { result: await preview({ inputPath, options: settings, appRoot }), fallback: { reason: error.message, provider: "cpu", model, quality: settings.aiQuality } };
       } catch (failure) {
         lastError = failure;
@@ -141,10 +143,11 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
           // The repaired alpha is the baseline. Do not replace it with a new
           // whole-object ToonOut mask during the specialist cleanup pass.
           const available = healing ? installed.filter(id => id !== "toonout") : installed;
-          plan = planAutoPilot({ measurements, installed: available, source: { kind: "images", frameCount: 1 }, target: { intent: "images", cleanupRequested: true } });
+          plan = planAutoPilot({ measurements, installed: available, source: { kind: "images", frameCount: 1, maskPrepared: Boolean(healing) }, target: { intent: "images", cleanupRequested: true } });
           const explicitChoice = Object.hasOwn(options, "batchModelOverride");
           forcedBackground = solidBackgroundModes.has(options.batchBackgroundMode) ? options.batchBackgroundMode : null;
-          const requestedModel = healing || forcedBackground ? null : explicitChoice ? options.batchModelOverride : options.keyMode === "ai" ? options.aiModel : null;
+          const modelChoice = healing || forcedBackground ? null : explicitChoice ? options.batchModelOverride : options.keyMode === "ai" ? options.aiModel : null;
+          const requestedModel = modelChoice ? resolveMattingModelId(modelChoice) : null;
           const matting = plan.steps.find(step => step.stage === "matting");
           if (forcedBackground) {
             settings = { ...settings, keyMode: forcedBackground, keyScope: "exterior", aiForceModel: false };
@@ -153,7 +156,7 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
               ...plan.steps.filter(step => !["matting", "key", "checker"].includes(step.stage)),
             ] };
           } else if (requestedModel) {
-            if (!installed.includes(requestedModel)) throw new Error(`Выбранная модель ${requestedModel} не установлена. Выберите другую модель или автовыбор.`);
+            if (!installed.includes(requestedModel)) throw new Error("ToonOut не найден. Проверьте комплект программы в окне «Локальные функции».");
             // A model selected by the user must not disappear behind the automatic
             // alpha shortcut, even when the source is already partly transparent.
             settings = { ...settings, keyMode: "ai", aiModel: requestedModel, aiForceModel: true };
@@ -231,6 +234,8 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
           settings.keyMode === "ai" ? `Выделение · ${settings.aiModel}` : settings.keyMode === "alpha" ? "Сохранена прозрачность" : settings.keyMode === "black" ? `Чёрный фон · ${settings.blackOutline ? "контур сохранён" : "без сохранения контура"}` : `Очистка фона · ${backgroundNames[settings.keyMode] || settings.keyMode}`,
           ...((settings.aiEdits || []).some(edit => edit.type === "checker" && edit.frameIndex === sourceIndex) ? ["Удаление шахматки"] : []),
           ...(preview.edgeRefineReport?.removed || preview.edgeRefineReport?.recolored ? [settings.edgeRefine?.noLightArtwork ? "Очистка светлых остатков и края" : "Очистка края"] : []),
+          ...(settings.pixelate ? [`Пикселизация · блок ${settings.pixelate.size} px`] : []),
+          ...(settings.colorAdjust && Object.values(settings.colorAdjust).some(value => Number(value)) ? ["Коррекция цвета"] : []),
           "Проверка результата",
         ];
         results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, route, fallback, qualityIssues, qualityWarnings, matteReview, healingPath, healingReport: healing?.report || null, cleanupReport: preview.edgeRefineReport || null, lightDecision, changeReport, suggestNoLightArtwork, colorRemoval: colors });

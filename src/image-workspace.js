@@ -167,27 +167,34 @@ function renderImageBatchDraft() {
   $("#imageBatchBlackContour").disabled = state.busy;
   $("#imageBatchLightArtwork").disabled = state.busy;
   $("#imageBatchContourWidth").disabled = state.busy;
-  $("#imageBatchOtherModels").disabled = state.busy;
   window.renderBatchCleanupSuggestion?.();
   $$("#imageBatchTasks button, .batch-color-adjust input, #imageBatchResetColor").forEach(control => { control.disabled = state.busy; });
+  $$("#imageBatchPixelation input, #imageBatchPixelation select").forEach(control => {
+    control.disabled = state.busy || (control.id !== "imageBatchPixelateEnabled" && !imageBatchDraft.pixelate);
+  });
 }
 window.openImageBatchPreview = function (configuration = {}) {
   if ((!configuration.paths && state.source?.kind !== "frames") || state.busy) return;
   const initialOptions = configuration.options || collectOptions();
   const modelOverride = configuration.healFirst ? "" : configuration.modelOverride ?? (initialOptions.keyMode === "ai" ? initialOptions.aiModel : "");
-  configuration = { ...configuration, modelOverride: modelOverride || "", backgroundMode: ["white", "black", "green", "magenta"].includes(configuration.backgroundMode) ? configuration.backgroundMode : "auto", blackContour: configuration.blackContour === "remove" ? "remove" : "preserve", lightArtworkPolicy: ["auto", "protect", "none"].includes(configuration.lightArtworkPolicy) ? configuration.lightArtworkPolicy : "auto", contourWidth: configuration.contourWidth === 4 ? 4 : 2 };
+  configuration = { ...configuration, modelOverride: modelOverride ? "toonout" : "", backgroundMode: ["white", "black", "green", "magenta"].includes(configuration.backgroundMode) ? configuration.backgroundMode : "auto", blackContour: configuration.blackContour === "remove" ? "remove" : "preserve", lightArtworkPolicy: ["auto", "protect", "none"].includes(configuration.lightArtworkPolicy) ? configuration.lightArtworkPolicy : "auto", contourWidth: configuration.contourWidth === 4 ? 4 : 2 };
   imageBatchReturnFocus = document.activeElement;
   const paths = configuration.paths || state.source.paths;
   const exportAtlases = Boolean(configuration.exportAtlases);
-  const configurationKey = JSON.stringify({version:9, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
+  const configurationKey = JSON.stringify({version:11, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
   let saved; try { saved = JSON.parse(localStorage.getItem("spriteLab.pendingImageBatch")); } catch { /* No prior job. */ }
   if (!imageBatchDraft || JSON.stringify(imageBatchDraft.paths) !== JSON.stringify(paths) || imageBatchDraft.configurationKey !== configurationKey) {
     const adjustments = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths)
       ? imageBatchDraft.adjustments || { brightness: 0, contrast: 0, warmth: 0 }
       : { brightness: 0, contrast: 0, warmth: 0 };
-    imageBatchDraft = saved && JSON.stringify(saved.paths) === JSON.stringify(paths) && saved.configurationKey === configurationKey && saved.results && saved.failures && saved.selected ? saved : { paths: [...paths], selected: [Math.min(state.selectedFrameIndex,paths.length-1)], results: {}, failures: {}, settings: {}, directory: null, configurationKey, configuration, adjustments };
+    const pixelate = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths) ? imageBatchDraft.pixelate || null : null;
+    imageBatchDraft = saved && JSON.stringify(saved.paths) === JSON.stringify(paths) && saved.configurationKey === configurationKey && saved.results && saved.failures && saved.selected ? saved : { paths: [...paths], selected: [Math.min(state.selectedFrameIndex,paths.length-1)], results: {}, failures: {}, settings: {}, directory: null, configurationKey, configuration, adjustments, pixelate };
   }
   imageBatchDraft.adjustments ||= { brightness: 0, contrast: 0, warmth: 0 };
+  $("#imageBatchPixelateEnabled").checked = Boolean(imageBatchDraft.pixelate);
+  $("#imageBatchPixelateSize").value = String(imageBatchDraft.pixelate?.size || 3);
+  $("#imageBatchPixelateColors").value = String(imageBatchDraft.pixelate?.colors || 32);
+  $("#imageBatchPixelateDither").value = imageBatchDraft.pixelate?.dither || "none";
   for (const key of ["brightness", "contrast", "warmth"]) {
     document.getElementById("imageBatch" + key[0].toUpperCase() + key.slice(1)).value = String(imageBatchDraft.adjustments[key] || 0);
     document.getElementById("imageBatch" + key[0].toUpperCase() + key.slice(1) + "Value").textContent = String(imageBatchDraft.adjustments[key] || 0);
@@ -200,14 +207,13 @@ window.openImageBatchPreview = function (configuration = {}) {
   modelSelect.replaceChildren();
   const autoOption = document.createElement("option"); autoOption.value = ""; autoOption.textContent = "Автоматически подобрать способ"; modelSelect.append(autoOption);
   for (const option of $("#aiModel").options) {
-    if (!configuration.showAllModels && !["toonout", "birefnet-tiny", configuration.modelOverride].includes(option.value)) continue;
+    if (option.value !== "toonout") continue;
     const choice = document.createElement("option"); choice.value = option.value; choice.textContent = option.textContent; modelSelect.append(choice);
   }
   if (configuration.modelOverride && ![...modelSelect.options].some(option => option.value === configuration.modelOverride)) {
     const missing = document.createElement("option"); missing.value = configuration.modelOverride; missing.textContent = `${configuration.modelOverride} · проверьте установку`; modelSelect.append(missing);
   }
   modelSelect.value = configuration.modelOverride;
-  $("#imageBatchOtherModels").textContent = configuration.showAllModels ? "Скрыть остальные модели" : "Другие модели";
   $("#imageBatchBackground").value = configuration.backgroundMode;
   $("#imageBatchBlackContour").value = configuration.blackContour;
   $("#imageBatchLightArtwork").value = configuration.lightArtworkPolicy;
@@ -217,7 +223,7 @@ window.openImageBatchPreview = function (configuration = {}) {
     ? "После восстановления сохраняем его контур и запускаем обычную очистку."
     : configuration.modelOverride
       ? "Выбранная модель запустится для каждого файла, даже если у PNG уже есть прозрачность. Сравните белые детали и край перед применением."
-      : "Автовыбор может сохранить уже имеющуюся прозрачность без запуска модели. Если фон остался, выберите модель и сравните результат.";
+      : "Автовыбор может сохранить уже имеющуюся прозрачность без запуска модели. Если фон остался, выберите ToonOut и сравните результат.";
   $('#imageBatchTitle').textContent = configuration.healFirst ? 'Восстановление объекта · Подорожник' : exportAtlases ? 'Пакетная подготовка PNG + JSON' : 'Автоочистка изображений';
   $('.batch-preview-header p').textContent = configuration.healFirst ? 'Сравните исходник, восстановленный объект и результат обычной очистки. Применение можно отменить Ctrl+Z; исходные файлы остаются на месте.' : exportAtlases ? 'Проверьте очистку каждого исходника. После просмотра сохраняются отдельные PNG + JSON. Исходные файлы остаются на месте.' : 'Сравните исходник и результат. Применение можно отменить Ctrl+Z; PNG сохраняются отдельной кнопкой.';
   $('#imageBatchHealingFigure').classList.toggle('hidden', !configuration.healFirst);
@@ -237,7 +243,7 @@ async function prepareImageBatch(mode = "all", requestedIndexes = null) {
   if (!indexes.length) return;
   const configuration = imageBatchDraft.configuration || {};
   const baseline = configuration.options || collectOptions();
-  const settings = { ...baseline, batchModelOverride: configuration.modelOverride, batchBackgroundMode: configuration.backgroundMode, batchBlackContour: configuration.blackContour, edgeRefine: { mode: "none", width: 1, depth: 2, whiteOnly: true, ...baseline.edgeRefine, noLightArtwork: configuration.lightArtworkPolicy === "none", lightArtworkPolicy: configuration.lightArtworkPolicy, contourWidth: configuration.contourWidth }, pixelate: configuration.exportAtlases ? baseline.pixelate : null, toning: configuration.exportAtlases ? baseline.toning : null, colorAdjust: { ...imageBatchDraft.adjustments }, frameTransforms: {}, attachments: [], attachmentPlacements: null };
+  const settings = { ...baseline, batchModelOverride: configuration.modelOverride, batchBackgroundMode: configuration.backgroundMode, batchBlackContour: configuration.blackContour, edgeRefine: { mode: "none", width: 1, depth: 2, whiteOnly: true, ...baseline.edgeRefine, noLightArtwork: configuration.lightArtworkPolicy === "none", lightArtworkPolicy: configuration.lightArtworkPolicy, contourWidth: configuration.contourWidth }, pixelate: imageBatchDraft.pixelate || (configuration.exportAtlases ? baseline.pixelate : null), toning: configuration.exportAtlases ? baseline.toning : null, colorAdjust: { ...imageBatchDraft.adjustments }, frameTransforms: {}, attachments: [], attachmentPlacements: null };
   state.busy = true; updateActionState(); renderImageBatchDraft();
   $("#prepareImageBatch").textContent = "Обрабатываю…";
   settings.batchCleanupByIndex = imageBatchDraft.cleanupChoices || {};
@@ -248,7 +254,7 @@ async function prepareImageBatch(mode = "all", requestedIndexes = null) {
     imageBatchDraft.directory = result.outputDir;
     for (const item of result.results) {
       const index = imageBatchDraft.paths.indexOf(item.input);
-      imageBatchDraft.results[index] = item; imageBatchDraft.settings[index] = baseline; delete imageBatchDraft.failures[index];
+      imageBatchDraft.results[index] = item; imageBatchDraft.settings[index] = { ...baseline, pixelate: settings.pixelate }; delete imageBatchDraft.failures[index];
       delete imageBatchDraft.exported?.[index]; delete imageBatchDraft.exportFailures?.[index];
     }
     for (const item of result.failures) {
@@ -264,20 +270,6 @@ $("#imageBatchScope").addEventListener("change", renderImageBatchDraft);
 $("#imageBatchModel").addEventListener("change", event => {
   if (state.busy || !imageBatchDraft) return;
   window.openImageBatchPreview({ ...imageBatchDraft.configuration, modelOverride: event.target.value, backgroundMode: "auto" });
-});
-$("#imageBatchOtherModels").addEventListener("click", () => {
-  if (state.busy || !imageBatchDraft) return;
-  const configuration = imageBatchDraft.configuration;
-  configuration.showAllModels = !configuration.showAllModels;
-  const select = $("#imageBatchModel");
-  for (const option of [...select.options]) if (option.value) option.remove();
-  for (const option of $("#aiModel").options) {
-    if (!configuration.showAllModels && !["toonout", "birefnet-tiny", configuration.modelOverride].includes(option.value)) continue;
-    const choice = document.createElement("option"); choice.value = option.value; choice.textContent = option.textContent; select.append(choice);
-  }
-  select.value = configuration.modelOverride;
-  $("#imageBatchOtherModels").textContent = configuration.showAllModels ? "Скрыть остальные модели" : "Другие модели";
-  persistImageBatchDraft();
 });
 $("#imageBatchBackground").addEventListener("change", event => {
   if (state.busy || !imageBatchDraft) return;
@@ -318,6 +310,21 @@ function imageBatchColorChanged() {
   persistImageBatchDraft(); renderImageBatchDraft(); showImageBatchPair(imageBatchReviewIndex);
   $("#imageBatchSummary").textContent = "Цвет изменён · обновите просмотр, затем примените PNG";
   $("#prepareImageBatch").textContent = "Обновить просмотр";
+}
+function imageBatchPixelationChanged() {
+  if (!imageBatchDraft || state.busy) return;
+  const sizeControl = $("#imageBatchPixelateSize");
+  const size = Math.max(2, Math.min(32, Math.round(Number(sizeControl.value) || 3)));
+  sizeControl.value = String(size);
+  imageBatchDraft.pixelate = $("#imageBatchPixelateEnabled").checked
+    ? { size, colors: Number($("#imageBatchPixelateColors").value), palette: "auto", mode: "clean", dither: $("#imageBatchPixelateDither").value }
+    : null;
+  imageBatchDraft.results = {}; imageBatchDraft.failures = {}; imageBatchDraft.settings = {}; imageBatchDraft.exported = {}; imageBatchDraft.exportFailures = {};
+  persistImageBatchDraft(); renderImageBatchDraft(); showImageBatchPair(imageBatchReviewIndex);
+  $("#imageBatchSummary").textContent = "Пикселизация изменена · обновите просмотр, затем примените PNG";
+}
+for (const id of ["imageBatchPixelateEnabled", "imageBatchPixelateSize", "imageBatchPixelateColors", "imageBatchPixelateDither"]) {
+  document.getElementById(id).addEventListener("change", imageBatchPixelationChanged);
 }
 for (const key of ["Brightness", "Contrast", "Warmth"]) document.getElementById("imageBatch" + key).addEventListener("input", imageBatchColorChanged);
 $("#imageBatchResetColor").addEventListener("click", () => {

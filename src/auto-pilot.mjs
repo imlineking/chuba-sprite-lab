@@ -233,9 +233,9 @@ export async function measureSource(paths, { limit = 3, sampleSize = 192 } = {})
 // Best first. The first installed entry wins; when nothing is installed the list still names the tool
 // the plan would use, so the interface can offer exactly that download.
 export const mattingPreference = {
-  fine: ["birefnet-hr-matting", "birefnet-general", "birefnet-portrait", "birefnet-tiny", "isnet-general", "isnet-anime", "u2net", "silueta", "u2netp"],
-  art: ["isnet-anime", "birefnet-tiny", "isnet-general", "u2net", "silueta", "u2netp"],
-  general: ["isnet-general", "birefnet-tiny", "isnet-anime", "u2net", "silueta", "u2netp"],
+  fine: ["toonout"],
+  art: ["toonout"],
+  general: ["toonout"],
 };
 
 const SOLID_BORDER_RATIO = 0.72;
@@ -264,9 +264,9 @@ function modelStep(model, { installed, title, why, confidence }) {
   return {
     stage: "matting",
     kind: "model",
-    tool: model?.id || "u2netp",
+    tool: model?.id || "toonout",
     modelId: model?.id || null,
-    title: title || `Снять фон моделью ${model?.name || "U²-Net small"}`,
+    title: title || `Снять фон моделью ${model?.name || "ToonOut"}`,
     why,
     confidence,
     status: statusFor(model, installed),
@@ -305,7 +305,7 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
       steps: [],
       needed: [],
       notes: ["Нет кадров для замера: сначала добавьте источник."],
-      settings: { provider: "auto", quality: "balanced", modelId: "u2netp" },
+      settings: { provider: "auto", quality: "balanced", modelId: "toonout" },
     };
   }
   const steps = [];
@@ -344,13 +344,12 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
     ? backgroundKeyMode({ solid: true, transparentRatio: 0, colour: measurements.borderColour }) : null;
   // Only promote the verified complex cases, never a prepared mask or a simple flower/photo.
   const checker = checkerCandidate && !solid && !source.maskPrepared;
-  const complexArt = measurements.edgeMeasurement === "native"
-    && measurements.width * measurements.height > 400000
-    && measurements.detailDensity >= 0.085;
-  const toonout = !source.maskPrepared && !["black", "green", "magenta"].includes(flatKeyMode)
-    && installed.includes("toonout") && complexArt
-    && (checker || (solid && measurements.colourCount >= 512 && measurements.flatShare >= 0.1));
+  // One segmentation engine: repeated grids and white backgrounds are model
+  // tasks; known chroma/black backgrounds retain the explicit colour tools.
+  const complexArt = measurements.edgeMeasurement === "native" && measurements.width * measurements.height > 400000 && measurements.detailDensity >= .085;
+  const toonout = !source.maskPrepared && (checker || (!alreadyTransparent && complexArt && (flatKeyMode === "white" || (solid && !flatKeyMode && measurements.colourCount >= 512))));
   if (toonout) {
+    see(modelById("toonout"), "Для вырезки нужна модель ToonOut из комплекта", "required");
     steps.push(modelStep(modelById("toonout"), { installed, confidence: "medium",
       why: checker ? "Сложные детали и остатки запечённой клетки: ToonOut лучше сохранил такие просветы на проверенных ветках. Проверим результат на контрастной подложке."
         : "Однотонный фон, но рисунок содержит много тонких цветных границ. На сложной комиксной графике ToonOut лучше сохранил светлые детали, чем простой контур. Проверим маску перед сохранением." }));
@@ -381,16 +380,16 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
       || measurements.softShare > HAIRY_SOFT_SHARE
       || measurements.detailDensity > HAIRY_DETAIL_DENSITY);
     const order = independent
-      ? ["birefnet-tiny", "isnet-general", "isnet-anime", "u2net", "silueta", "u2netp"]
+      ? ["toonout"]
       : hairy ? mattingPreference.fine : measurements.flatShare > ART_FLAT_SHARE ? mattingPreference.art : mattingPreference.general;
     const chosen = pickTool(order, installed);
     const why = independent
-      ? "Фон неоднородный. Для очистки отдельных изображений выбираем компактную установленную модель: она сохраняет исходный холст и не требует загрузки тяжёлой модели для всей очереди."
+      ? "Фон неоднородный. Для очистки отдельных изображений используем ToonOut с сохранением исходного холста."
       : hairy
       ? `Край сложный: длина границы ${measurements.thinStructure.toFixed(2)} от площади, ${Math.round(measurements.softShare * 100)}% полупрозрачных пикселей и плотность мелких деталей ${Math.round(measurements.detailDensity * 100)}% — это мех, волосы или тонкие детали. Нужна модель, обученная на матировании.`
       : `Фон не однотонный (${measurements.borderColourCount} цветов у края) — нужна модель выделения.`;
     steps.push(modelStep(chosen, { installed, why, confidence: hairy ? "high" : "medium" }));
-    for (const id of order.slice(0, 3)) see(modelById(id), hairy ? "Лучше держит мех и волосы" : "Ровнее контур, чем у модели в комплекте");
+    see(chosen, "Для сложного фона нужна вырезка ToonOut", "required");
   }
 
   if (checker && !toonout && (target.cleanupRequested || independent)) steps.push({ stage: "checker", kind: "builtin", tool: "checker", title: "Убрать псевдопрозрачность", why: "Найдена повторяющаяся светлая клетка в двух направлениях. Удаляем подтверждённый узор; сложные остатки можно ограничить выделением и поправить маску.", confidence: "medium", status: "ready" });
@@ -517,11 +516,9 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
     status: "ready",
   });
 
-  const heavy = steps.some((step) => ["birefnet-hr-matting", "birefnet-general", "birefnet-portrait"].includes(step.modelId));
-  const quality = toonout ? "fast" : measurements.width <= 640 && measurements.height <= 640 && !heavy ? "fast" : heavy ? "max" : "balanced";
+  const quality = "fast";
   const mattingStep = steps.find((step) => step.stage === "matting");
   if (toonout) notes.push("ToonOut: около 887 МиБ весов, один проход 1024×1024. Тонкие детали и белые элементы проверьте вручную; это вырезка, не художественная перерисовка.");
-  if (heavy) notes.push("Выбранная модель занимает около 1 ГБ и требует 3–4 ГБ свободной памяти при запуске.");
 
   return {
     mode: "auto",
@@ -529,14 +526,14 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
     steps,
     needed,
     notes,
-    settings: { provider: "auto", quality, modelId: mattingStep?.modelId || "u2netp" },
+    settings: { provider: "auto", quality, modelId: mattingStep?.modelId || "toonout" },
     summary: toonout ? "Выбран ToonOut для сложной графики. Проверьте светлые детали и просветы перед сохранением." : checker && (target.cleanupRequested || independent)
       ? "Найдена запечённая клетка: удалим подтверждённый узор, затем проверьте просветы и светлые детали."
       : alreadyTransparent
       ? "Прозрачность уже есть: сохраним исходный контур без повторного выделения моделью."
       : solid
       ? "Фон однотонный: обойдёмся без модели, остальное — очистка края и проверка."
-      : `Выбрана модель ${modelById(mattingStep?.modelId)?.name || "U²-Net small"}, качество «${quality}».`,
+      : `Выбрана модель ${modelById(mattingStep?.modelId)?.name || "ToonOut"}, качество «${quality}».`,
   };
 }
 

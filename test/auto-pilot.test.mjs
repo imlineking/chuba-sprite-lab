@@ -129,7 +129,7 @@ test("a solid background is cut by the contour and no model is required", () => 
     measurements: measure({ borderOpaqueRatio: 1, borderColourCount: 1 }),
     target: { cellWidth: 128, cellHeight: 128, atlasMaxSize: 4096 },
     source: { kind: "video", frameCount: 24 },
-    installed: ["u2netp"],
+    installed: ["toonout"],
   });
   assert.equal(plan.steps[0].stage, "key");
   assert.equal(plan.steps[0].status, "ready");
@@ -143,7 +143,7 @@ test("a verified black, green or magenta flat background keeps exact colour keyi
     const plan = planAutoPilot({ measurements: measure({ width: 1024, height: 1024, borderColour: colour,
       solidBackground: true, borderSolidRatio: 1, borderOpaqueRatio: 1, transparentShare: 0,
       detailDensity: .2, flatShare: .2, colourCount: 600, edgeMeasurement: "native" }),
-      target: { intent: "images", cleanupRequested: true }, source: { kind: "images", frameCount: 1 }, installed: ["toonout", "u2netp"] });
+      target: { intent: "images", cleanupRequested: true }, source: { kind: "images", frameCount: 1 }, installed: ["toonout", "toonout"] });
     assert.equal(plan.steps[0].stage, "key", `exact colour key should win for ${colour}`);
     assert.equal(plan.steps[0].tool, "key");
   }
@@ -155,7 +155,7 @@ test("an existing transparent border keeps its alpha instead of asking for matti
     measurements: analyseFrame(data, info),
     target: { cellWidth: 64 },
     source: { kind: "frames", frameCount: 4 },
-    installed: ["u2netp"],
+    installed: ["toonout"],
   });
   assert.equal(plan.steps[0].tool, "alpha");
   assert.equal(plan.steps.some((step) => step.stage === "matting"), false);
@@ -167,28 +167,28 @@ test("a complex edge asks for the best installed matting model", () => {
     measurements: measure({ thinStructure: 0.6, detailDensity: 0.3, softShare: 0.2 }),
     target: { cellWidth: 128 },
     source: { kind: "video", frameCount: 24 },
-    installed: ["u2netp", "isnet-general"],
+    installed: ["toonout", "toonout"],
   });
   const matting = plan.steps.find((step) => step.stage === "matting");
-  assert.equal(matting.tool, "isnet-general");
+  assert.equal(matting.tool, "toonout");
   assert.equal(matting.status, "ready");
   assert.match(matting.why, /мех|волос/i);
   // Better models are still offered, but the step itself can run.
-  assert.ok(plan.needed.some((entry) => entry.id === "birefnet-hr-matting"));
+  assert.equal(plan.needed.length, 0);
   assert.ok(plan.needed.every((entry) => entry.kind === "improve"));
 });
 
-test("with nothing but the bundled model the plan still runs, and says what would be better", () => {
+test("the sole bundled cutout engine runs without suggesting redundant alternatives", () => {
   const plan = planAutoPilot({
     measurements: measure({ thinStructure: 0.6, detailDensity: 0.3 }),
     target: { cellWidth: 128 },
     source: { kind: "video", frameCount: 24 },
-    installed: ["u2netp"],
+    installed: ["toonout"],
   });
   const matting = plan.steps.find((step) => step.stage === "matting");
   assert.equal(matting.status, "ready");
-  assert.equal(matting.tool, "u2netp");
-  assert.ok(plan.needed.length > 0);
+  assert.equal(matting.tool, "toonout");
+  assert.equal(plan.needed.length, 0);
   assert.ok(plan.needed.every((entry) => entry.canDownload || entry.ready));
 });
 
@@ -197,7 +197,7 @@ test("the plan never pretends a missing model is available", () => {
     measurements: measure({ width: 96, height: 96 }),
     target: { cellWidth: 256, cellHeight: 256, atlasMaxSize: 4096 },
     source: { kind: "images", frameCount: 6 },
-    installed: ["u2netp"],
+    installed: ["toonout"],
   });
   const upscale = plan.steps.find((step) => step.stage === "upscale");
   assert.equal(upscale.status, "blocked");
@@ -210,7 +210,7 @@ test("few frames in a video call for interpolation", () => {
     measurements: measure({ frameCount: 5 }),
     target: { cellWidth: 128 },
     source: { kind: "video", frameCount: 5 },
-    installed: ["u2netp"],
+    installed: ["toonout"],
   });
   const step = plan.steps.find((entry) => entry.stage === "interpolate");
   assert.equal(step.modelId, "rife");
@@ -223,7 +223,7 @@ test("a light rim adds the decontamination step", () => {
     measurements: measure({ fringeScore: 0.3 }),
     target: { cellWidth: 128 },
     source: { kind: "images", frameCount: 8 },
-    installed: ["u2netp"],
+    installed: ["toonout"],
   });
   const step = plan.steps.find((entry) => entry.stage === "fringe");
   assert.equal(step.tool, "edge-decontaminate");
@@ -235,7 +235,7 @@ test("the pixel-art style follows the frame, not a preset", () => {
     measurements: measure({ flatShare: 0.8, gradientShare: 0.02, colourCount: 12 }),
     target: { cellWidth: 48, cellHeight: 48, pixelArt: true },
     source: { kind: "images", frameCount: 8 },
-    installed: ["u2netp"],
+    installed: ["toonout"],
   }).steps.find((step) => step.stage === "pixelate");
   assert.equal(drawn.settings.mode, "clean");
   assert.equal(drawn.settings.dither, "none");
@@ -246,7 +246,7 @@ test("the pixel-art style follows the frame, not a preset", () => {
     measurements: measure({ flatShare: 0.05, gradientShare: 0.6, colourCount: 220 }),
     target: { cellWidth: 96, cellHeight: 96, pixelArt: true },
     source: { kind: "images", frameCount: 8 },
-    installed: ["u2netp"],
+    installed: ["toonout"],
   }).steps.find((step) => step.stage === "pixelate");
   assert.equal(photo.settings.mode, "shaded");
   assert.equal(photo.settings.dither, "bayer4");
@@ -260,23 +260,23 @@ test("a sheet larger than the limit is split into pages", () => {
     measurements: measure({ frameCount: 60 }),
     target: { cellWidth: 1024, cellHeight: 1024, atlasMaxSize: 4096 },
     source: { kind: "video", frameCount: 60 },
-    installed: ["u2netp"],
+    installed: ["toonout"],
   });
   const step = plan.steps.find((entry) => entry.stage === "atlas");
   assert.equal(step.stage, "atlas");
   assert.match(step.why, /7680|4096/);
 });
 
-test("a heavy model asks for the highest quality and warns about memory", () => {
+test("ToonOut retains whole-image context for large images", () => {
   const plan = planAutoPilot({
     measurements: measure({ width: 1600, height: 1200, thinStructure: 0.6, detailDensity: 0.3 }),
     target: { cellWidth: 256 },
     source: { kind: "video", frameCount: 24 },
-    installed: ["u2netp", "birefnet-hr-matting"],
+    installed: ["toonout", "toonout"],
   });
-  assert.equal(plan.settings.quality, "max");
-  assert.equal(plan.steps.find((step) => step.stage === "matting").tool, "birefnet-hr-matting");
-  assert.ok(plan.notes.some((note) => /памяти/.test(note)));
+  assert.equal(plan.settings.quality, "fast");
+  assert.equal(plan.steps.find((step) => step.stage === "matting").tool, "toonout");
+  assert.equal(plan.steps.filter(step=>step.stage==="matting").length,1);
 });
 
 test("a small frame with the bundled model runs quickly instead of heavily", () => {
@@ -284,7 +284,7 @@ test("a small frame with the bundled model runs quickly instead of heavily", () 
     measurements: measure({ width: 320, height: 320 }),
     target: { cellWidth: 128 },
     source: { kind: "images", frameCount: 10 },
-    installed: ["u2netp"],
+    installed: ["toonout"],
   });
   assert.equal(plan.settings.quality, "fast");
 });
@@ -318,7 +318,7 @@ test("a real frame is measured from a small copy but reports its true size", asy
 
     // And the plan built from it treats the frame as large: 400 px is smaller than a 640 px cell, but
     // the reported size is what the interface shows.
-    const plan = planAutoPilot({ measurements: measured, target: { cellWidth: 256, cellHeight: 256 }, source: { kind: "images", frameCount: 1 }, installed: ["u2netp"] });
+    const plan = planAutoPilot({ measurements: measured, target: { cellWidth: 256, cellHeight: 256 }, source: { kind: "images", frameCount: 1 }, installed: ["toonout"] });
     assert.equal(plan.steps.some((step) => step.stage === "upscale"), false);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
@@ -332,12 +332,19 @@ test("an unreadable file is reported instead of measured", async () => {
 
 test("a catalogue summary carries what the window has to show", () => {
   const list = catalogSummary();
-  assert.ok(list.length > 10);
-  const entry = list.find((model) => model.id === "vitmatte-small");
+  assert.equal(list.length, 5);
+  const entry = list.find((model) => model.id === "toonout");
   assert.equal(entry.sha256.length, 64);
   assert.equal(entry.licence.commercial, true);
   assert.ok(entry.totalBytes > 0);
-  const bundled = list.find((model) => model.id === "u2netp");
+  const bundled = list.find((model) => model.id === "toonout");
   assert.equal(bundled.bundled, true);
   assert.equal(bundled.url, null);
+});
+
+test("missing ToonOut blocks segmentation instead of switching to a retired engine",()=>{
+ const plan=planAutoPilot({measurements:measure({thinStructure:.6,detailDensity:.3}),installed:["u2netp","isnet-anime"]});
+ const step=plan.steps.find(step=>step.stage==="matting");
+ assert.equal(step.tool,"toonout");assert.equal(step.status,"blocked");
+ assert.ok(plan.needed.some(entry=>entry.id==="toonout"&&entry.required));
 });

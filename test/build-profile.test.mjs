@@ -8,6 +8,18 @@ import { exportFormats } from "../src/processor.mjs";
 
 const baseDir = path.resolve(os.tmpdir(), "chuba-profile-base");
 
+test("old cutout profiles migrate to ToonOut while pixelation and edge settings survive", () => {
+  for (const aiModel of ["isnet-anime", "birefnet-tiny", "u2netp"]) {
+    const parsed = readProfile(profile({ options: { keyMode: "ai", aiModel,
+      pixelate: { size: 3, colors: 16, mode: "clean", dither: "bayer4", palette: "auto" },
+      edgeRefine: { mode: "recolor", width: 1, depth: 5, whiteOnly: true } } }), { baseDir });
+    assert.equal(parsed.animations[0].options.aiModel, "toonout");
+    assert.equal(parsed.animations[0].options.pixelate.dither, "bayer4");
+    assert.equal(parsed.animations[0].options.edgeRefine.depth, 5);
+  }
+  assert.throws(() => readProfile(profile({ options: { keyMode: "ai", aiModel: "unknown" } }), { baseDir }), /Неизвестный способ/);
+});
+
 function profile(overrides = {}) {
   return {
     format: profileFormat,

@@ -17,5 +17,5 @@ export async function resolveAuxModel(id, { appRoot, aiModelDirs = [], resources
     const candidate = path.join(directory, model.file);
     try { if ((await fs.stat(candidate)).isFile()) return candidate; } catch { /* Try the next location. */ }
   }
-  throw new Error(`Модель ${model.name} не найдена. Проверьте комплект программы или откройте «Модели ИИ».`);
+  throw new Error(`Модель ${model.name} не найдена. Проверьте комплект программы или откройте «Локальные функции».`);
 }

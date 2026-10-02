@@ -150,16 +150,16 @@ test("image intent offers three paths and never inherits animation warnings or u
   const scenarios=planTaskScenarios({source:{kind:"frames",frameCount:50,mixedSizes:true}});
   assert.deepEqual(scenarios.slice(0,3).map(item=>item.task),["edit","combine","animation"]);
   assert.deepEqual(planSuggestions({source:{kind:"frames"},ui:{intent:"images"},built:{warnings:["скачок силуэта"]}}),[]);
-  const plan=planAutoPilot({measurements:{width:96,height:96,transparentShare:.7,borderOpaqueRatio:0,checkerPixels:300},target:{intent:"images",cellWidth:2048,cleanupRequested:true},source:{kind:"images",frameCount:50},installed:["u2netp"]});
-  assert.ok(plan.steps.some(step=>step.stage==="checker"));
+  const plan=planAutoPilot({measurements:{width:96,height:96,transparentShare:.7,borderOpaqueRatio:0,checkerPixels:300},target:{intent:"images",cellWidth:2048,cleanupRequested:true},source:{kind:"images",frameCount:50},installed:["toonout"]});
+  assert.ok(plan.steps.some(step=>step.stage==="matting"&&step.modelId==="toonout"));
   assert.equal(plan.steps.some(step=>["upscale","interpolate","atlas"].includes(step.stage)),false);
 });
 
 test("orchestrator recovers a GPU memory failure on CPU and records its decision; unrelated errors are not hidden", async () => {
   const calls=[];
   const preview=async request => { calls.push(request.options); if(request.options.aiProvider !== "cpu") throw new Error("Dml 8007000E out of memory"); return {afterPath:"clean.png"}; };
-  const result=await previewWithModelFallback({inputPath:"source.png",options:{keyMode:"ai",aiProvider:"auto",aiModel:"birefnet-tiny",aiQuality:"max"},automatic:true,installed:["birefnet-tiny"],preview});
-  assert.equal(calls.length,2);assert.equal(result.fallback.provider,"cpu");assert.equal(result.fallback.quality,"balanced");
+  const result=await previewWithModelFallback({inputPath:"source.png",options:{keyMode:"ai",aiProvider:"auto",aiModel:"toonout",aiQuality:"max"},automatic:true,installed:["toonout"],preview});
+  assert.equal(calls.length,2);assert.equal(result.fallback.provider,"cpu");assert.equal(result.fallback.quality,"fast");
   let attempts=0;
   await assert.rejects(previewWithModelFallback({inputPath:"source.png",options:{keyMode:"ai"},automatic:true,preview:async()=>{attempts++;throw new Error("Invalid PNG");}}),/Invalid PNG/);
   assert.equal(attempts,1);

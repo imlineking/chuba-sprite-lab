@@ -1371,13 +1371,13 @@ async function runSelfTest() {
       report.model = segmented.model;
       report.modelInput = segmented.inputSize;
       report.checks.push({ name: "inference", ok: true, provider: report.provider, model: report.model, inputSize: report.modelInput });
-      console.log(`ИИ-модель: ${report.model || "u2netp"}, вход ${report.modelInput || "—"}, ускоритель ${report.provider}`);
+      console.log(`ИИ-модель: ${report.model || "toonout"}, вход ${report.modelInput || "—"}, ускоритель ${report.provider}`);
     } finally {
       await fs.rm(probeDir, { recursive: true, force: true });
     }
     if (process.argv.includes("--self-test-all-models")) {
       const status = await modelsStatus();
-      for (const { id } of status.entries.filter(entry => entry.bundled && entry.readiness === "ready" && entry.id !== "u2netp")) {
+      for (const { id } of status.entries.filter(entry => entry.bundled && entry.readiness === "ready" && entry.id !== "toonout")) {
         const model = modelById(id);
         const filePath = await resolveAuxModel(id, { appRoot, aiModelDirs: [modelsDirectory()] });
         const validation = await validateModelFile(filePath, { family: model.family });

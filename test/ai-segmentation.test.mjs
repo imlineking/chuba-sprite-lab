@@ -64,10 +64,10 @@ test("Otsu splits a two-peak histogram between the peaks", () => {
   assert.equal(otsuThreshold(single), null, "a single level has nothing to split");
 });
 
-test("a large frame with a small subject is segmented through tiles", async (context) => {
+test("large images retain whole-image context with ToonOut", async (context) => {
   const appRoot = path.resolve(".");
   try {
-    await fs.access(path.join(appRoot, "models", "u2netp.onnx"));
+    await fs.access(path.join(appRoot, "models", "toonout.onnx"));
   } catch {
     context.skip("local AI model is not prepared");
     return;
@@ -78,7 +78,7 @@ test("a large frame with a small subject is segmented through tiles", async (con
   for (let index = 0; index < width * height; index += 1) {
     const x = index % width;
     const y = Math.floor(index / width);
-    const inSubject = x >= 1100 && x < 1190 && y >= 300 && y < 390;
+    const inSubject = x >= 1000 && x < 1300 && y >= 250 && y < 550;
     data[index * 4] = inSubject ? 225 : 255;
     data[index * 4 + 1] = inSubject ? 86 : 255;
     data[index * 4 + 2] = inSubject ? 18 : 255;
@@ -93,9 +93,9 @@ test("a large frame with a small subject is segmented through tiles", async (con
   assert.equal(single.autoThreshold, true);
 
   const tiled = await segmentSubject(inputPath, { appRoot, cutoff: "auto", quality: "balanced" });
-  assert.ok(tiled.tiles > 1, "a 1600 pixel frame must be split into tiles");
-  assert.equal(tiled.quality, "balanced");
-  assert.ok(tiled.coverage > 0.0005 && tiled.coverage < 0.05, `the subject is small, coverage was ${tiled.coverage}`);
+  assert.equal(tiled.tiles, 1, "ToonOut needs the entire object, not independent tiles");
+  assert.equal(tiled.quality, "fast");
+  assert.ok(tiled.coverage > 0.0005 && tiled.coverage < 0.2, `the subject is small, coverage was ${tiled.coverage}`);
 
   // The subject centre must survive the mask and a corner of the frame must be gone.
   const masked = await sharp(tiled.data, { raw: tiled.info }).png().toBuffer();
@@ -106,16 +106,16 @@ test("a large frame with a small subject is segmented through tiles", async (con
   assert.ok(pixels[corner] < 128, "the background corner must become transparent");
 });
 
-test("maximum quality on a single tile retains the subject instead of accumulating at NaN offsets", async context => {
+test("a legacy maximum-quality request retains the object with the sole whole-image engine", async context => {
   const appRoot=path.resolve(".");
-  try{await fs.access(path.join(appRoot,"models/u2netp.onnx"));}catch{context.skip("local model is not prepared");return;}
+  try{await fs.access(path.join(appRoot,"models/toonout.onnx"));}catch{context.skip("local model is not prepared");return;}
   const directory=await fs.mkdtemp(path.join(os.tmpdir(),"chuba-single-tta-")),inputPath=path.join(directory,"input.png");
   const size=160,data=Buffer.alloc(size*size*4,255);
   for(let y=40;y<120;y++)for(let x=40;x<120;x++){const at=(y*size+x)*4;data[at]=225;data[at+1]=86;data[at+2]=18;}
   await sharp(data,{raw:{width:size,height:size,channels:4}}).png().toFile(inputPath);
-  const result=await segmentSubject(inputPath,{appRoot,model:"u2netp",provider:"cpu",quality:"max",cutoff:"auto"});
-  assert.equal(result.tiles,1); assert.equal(result.tta,true);
+  const result=await segmentSubject(inputPath,{appRoot,model:"toonout",provider:"cpu",quality:"max",cutoff:"auto"});
+  assert.equal(result.tiles,1); assert.equal(result.tta,false);
   assert.ok(result.coverage>.1&&result.coverage<.5,`coverage ${result.coverage}`);
-  assert.ok(result.data[(80*size+80)*4+3]>128,"the subject must survive both passes");
+  assert.ok(result.data[(80*size+80)*4+3]>128,"the subject must survive whole-image inference");
   assert.equal(result.data[3],0,"background must be removed");
 });

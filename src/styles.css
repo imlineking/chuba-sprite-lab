@@ -1055,6 +1055,7 @@ body[data-intent="images"] .filmstrip-actions { grid-template-columns: repeat(au
 .batch-preview-settings .batch-color-adjust { grid-column: 1 / -1; border-bottom: 0; }
 .batch-color-removal { grid-column: 1 / -1; padding: 6px 0; }
 .batch-color-removal summary { cursor: pointer; font-weight: 700; }
+#imageBatchPixelation p { font-size: 12px; line-height: 1.4; color: var(--muted); margin: 8px 0 0; }
 .batch-color-removal-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 10px; font-size: 13px; }
 .batch-color-removal-controls label { display: inline-flex; align-items: center; gap: 6px; }
 .batch-color-removal input[type="number"] { width: 65px; }

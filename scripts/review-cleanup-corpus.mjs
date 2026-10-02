@@ -11,7 +11,7 @@ const root = path.resolve(import.meta.dirname, "..");
 if (!process.argv[2] || !process.argv[3]) throw new Error("Укажите папку исходных PNG и новую папку отчёта.");
 const input = path.resolve(process.argv[2]), output = path.resolve(process.argv[3]);
 const mode = process.argv[4] || "auto";
-if (!["auto", "confirmed", "toonout", "birefnet-tiny"].includes(mode)) throw new Error("Способ: auto, confirmed, toonout или birefnet-tiny.");
+if (!["auto", "confirmed", "toonout"].includes(mode)) throw new Error("Способ: auto, confirmed или toonout.");
 const annotations = JSON.parse(await fs.readFile(path.join(root, "test/fixtures/cleanup-review-cases.json"), "utf8"));
 assert.notEqual(input, output, "Отчёт должен находиться отдельно от исходников");
 await fs.mkdir(output); // Refuse to mix a previous run with this run.
@@ -30,11 +30,11 @@ for (const [index, name] of names.entries()) {
   const options = { keyMode: "auto", tolerance: 20, blackOutline: 3, batchBlackContour: "preserve",
     edgeRefine: { mode: "none", lightArtworkPolicy: "auto" } };
   if (mode === "confirmed") options.batchCleanupByIndex = { 0: { lightArtworkPolicy: palette } };
-  if (["toonout", "birefnet-tiny"].includes(mode)) Object.assign(options, { keyMode: "ai", aiModel: mode,
+  if (["toonout"].includes(mode)) Object.assign(options, { keyMode: "ai", aiModel: mode,
     batchModelOverride: mode, aiProvider: "dml", aiQuality: "balanced", aiForceModel: true,
     edgeRefine: { mode: "none", lightArtworkPolicy: "protect" } });
   const batch = await processImageBatch({ paths: [file], outputDir: directory, appRoot: root,
-    outputKind: "images", automatic: true, installed: ["toonout", "birefnet-tiny", "isnet-general", "u2netp"],
+    outputKind: "images", automatic: true, installed: ["toonout"],
     options });
   const ms = Math.round(performance.now() - start);
   assert.equal(await hash(file), beforeHash, `Изменён исходник ${name}`);

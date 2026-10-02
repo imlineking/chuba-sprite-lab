@@ -7,14 +7,14 @@ import { fileURLToPath } from "node:url";
 import * as ort from "onnxruntime-node";
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const modelPath = path.join(appRoot, "models", "u2netp.onnx");
-const input = new Float32Array(3 * 320 * 320).fill(0.5);
+const modelPath = path.join(appRoot, "models", "toonout.onnx");
+const input = new Float32Array(3 * 1024 * 1024).fill(0.5);
 
 async function measure(provider, runs) {
   const started = performance.now();
   const session = await ort.InferenceSession.create(modelPath, { executionProviders: [provider], graphOptimizationLevel: "all" });
   const createMs = Math.round(performance.now() - started);
-  const tensor = new ort.Tensor("float32", input, [1, 3, 320, 320]);
+  const tensor = new ort.Tensor("float32", input, [1, 3, 1024, 1024]);
   const inputName = session.inputNames[0];
   const runMs = [];
   for (let index = 0; index < runs; index += 1) {

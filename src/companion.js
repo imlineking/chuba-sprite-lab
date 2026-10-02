@@ -48,7 +48,7 @@
         for (const approach of ['auto','manual']) { const control=document.createElement('button'); control.textContent=approach==='auto'?'Авто':'Вручную'; control.disabled=Boolean(state.busy); control.onclick=()=>command('task',task.id,approach); row.append(control); }
         choices.append(row);
       }
-      button('Модели ИИ','Встроенные модели и проверка запуска',()=>command('models','models'));
+      button('Локальные функции','Встроенные движки и проверка запуска',()=>command('models','models'));
       button('Обновить подсказки','Проанализировать текущее состояние',()=>command('refresh','refresh'));
     } else button('Выбрать задачу','Автоматический или ручной сценарий',()=>action({action:'toggle'}));
   }

@@ -9,7 +9,7 @@ const game = path.resolve(process.argv[2]), output = path.resolve(process.argv[3
 const options = { aiProvider: "cpu", aiQuality: "fast", aiCutoff: "auto", aiSoftness: 0, aiForceModel: true, aiModelDirs: [path.join(root, "models")], autoSize: true, autoColumns: true, anchor: "body", padding: 12, pixelPerfect: true, removeDuplicates: false, fps: 1, maxFrames: 2, exports: { sheet: true, metadata: true, frames: true, preview: true } };
 const report = { cases: [] };
 const save = () => fs.writeFile(path.join(output, "video-auto-report.json"), JSON.stringify(report, null, 2));
-for (const model of ["u2netp", "birefnet-tiny"]) {
+for (const model of ["toonout"]) {
   clearRenderCache(); const source = await inspectSource({ kind: "video", paths: [path.join(game, "public/images/video/pig artist.mp4")], appRoot: root });
   const started = performance.now();
   const result = await processSprites({ source, appRoot: root, outputDir: output, name: `video-cut-${model}`, options: { ...options, aiModel: model, keyMode: "ai" } });

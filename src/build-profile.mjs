@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveMattingModelId } from "./ai-models.mjs";
 import { parseCustomPalette, pixelDithers, pixelModes, pixelPalettes } from "./pixelate.mjs";
 
 // A build profile is the complete recipe of one export: the sources plus every
@@ -70,6 +71,9 @@ function normalizeOptions(value, problem, label, baseDir) {
   }
   if (options.aiModel !== undefined && (typeof options.aiModel !== "string" || !/^[a-z0-9][a-z0-9-]*$/i.test(options.aiModel))) {
     problem(`${label}.aiModel: ожидался идентификатор модели.`);
+  }
+  if (typeof options.aiModel === "string" && /^[a-z0-9][a-z0-9-]*$/i.test(options.aiModel)) {
+    try { options.aiModel = resolveMattingModelId(options.aiModel); } catch (error) { problem(`${label}.aiModel: ${error.message}`); }
   }
   if (options.edgeRefine !== undefined) {
     if (!isPlainObject(options.edgeRefine)) problem(`${label}.edgeRefine: ожидался объект.`);

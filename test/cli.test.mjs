@@ -92,7 +92,7 @@ test("a recipe with the window's keying, model, edge and toning controls builds 
   const recipe = JSON.parse(await fs.readFile(profilePath, "utf8"));
   Object.assign(recipe.options, {
     keyScope: "exterior",
-    aiModel: "u2netp",
+    aiModel: "toonout",
     edgeRefine: { mode: "recolor", width: 1, depth: 2, whiteOnly: true },
     toning: { color: "#8bb8ff", strength: 35 },
   });

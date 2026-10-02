@@ -50,7 +50,7 @@ test("noise around a flat colour uses the same inexpensive key in both analysers
   const border = analyseBorderBackground(pixels, { width: 192, height: 192 });
   assert.equal(border.solid, true); assert.equal(backgroundKeyMode(border), "auto");
   const measurements = analyseFrame(pixels, { width: 192, height: 192 });
-  const plan = planAutoPilot({ measurements, source: { kind: "frames", frameCount: 1 }, installed: ["u2netp"] });
+  const plan = planAutoPilot({ measurements, source: { kind: "frames", frameCount: 1 }, installed: ["toonout"] });
   assert.equal(plan.steps.some(step => step.stage === "background" && step.modelId), false);
   for (let i = 0; i < pixels.length; i += 4) pixels.set(i % 8 ? [10, 20, 30, 255] : [200, 180, 160, 255], i);
   assert.equal(analyseBorderBackground(pixels, { width: 192, height: 192 }).solid, false);
