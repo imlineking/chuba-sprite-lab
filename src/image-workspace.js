@@ -179,7 +179,7 @@ window.openImageBatchPreview = function (configuration = {}) {
   imageBatchReturnFocus = document.activeElement;
   const paths = configuration.paths || state.source.paths;
   const exportAtlases = Boolean(configuration.exportAtlases);
-  const configurationKey = JSON.stringify({version:8, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
+  const configurationKey = JSON.stringify({version:9, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
   let saved; try { saved = JSON.parse(localStorage.getItem("spriteLab.pendingImageBatch")); } catch { /* No prior job. */ }
   if (!imageBatchDraft || JSON.stringify(imageBatchDraft.paths) !== JSON.stringify(paths) || imageBatchDraft.configurationKey !== configurationKey) {
     const adjustments = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths)

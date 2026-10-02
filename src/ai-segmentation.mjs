@@ -5,10 +5,9 @@ import * as ort from "onnxruntime-node";
 import sharp from "sharp";
 import { aiModelCatalog, familyInputSize, modelById, modelFamilies, readSessionShapes } from "./ai-models.mjs";
 import { modelSearchDirectories } from "./model-paths.mjs";
+import { segmentationInput, segmentationProbabilities } from "./ai-tensors.mjs";
 
 const BUNDLED_MODEL = "u2netp.onnx";
-const MEAN = [0.485, 0.456, 0.406];
-const STD = [0.229, 0.224, 0.225];
 // A tile about this size keeps the subject large inside the model input, whatever size that is.
 const TILE_TARGET = 640;
 const MAX_TILES_PER_AXIS = 4;
@@ -177,7 +176,7 @@ async function getSession(appRoot, mode, { file = BUNDLED_MODEL, family = "u2net
 }
 
 function flopPlane(values, width, height, channels = 1) {
-  const flipped = new values.constructor(values.length);
+  const flipped = Buffer.isBuffer(values) ? Buffer.alloc(values.length) : new values.constructor(values.length);
   for (let y = 0; y < height; y += 1) {
     const row = y * width * channels;
     for (let x = 0; x < width; x += 1) {
@@ -189,17 +188,13 @@ function flopPlane(values, width, height, channels = 1) {
   return flipped;
 }
 
-async function runModel(session, rgb, size) {
-  const plane = size * size;
-  const tensorData = new Float32Array(plane * 3);
-  for (let index = 0; index < plane; index += 1) {
-    tensorData[index] = (rgb[index * 3] / 255 - MEAN[0]) / STD[0];
-    tensorData[plane + index] = (rgb[index * 3 + 1] / 255 - MEAN[1]) / STD[1];
-    tensorData[plane * 2 + index] = (rgb[index * 3 + 2] / 255 - MEAN[2]) / STD[2];
-  }
+async function runModel(session, rgb, size, model) {
+  const tensorData = segmentationInput(rgb, model);
   const tensor = new ort.Tensor("float32", tensorData, [1, 3, size, size]);
   const outputs = await withSessionLock(() => session.run({ [session.inputNames[0]]: tensor }));
-  return outputs[session.outputNames[0]].data;
+  const output = outputs[session.outputNames[0]];
+  if (output?.data?.length !== size * size) throw new Error("ИИ вернул карту неверного размера.");
+  return output.data;
 }
 
 async function readRegionRgb(inputPath, rect, fullSize, size, model) {
@@ -227,28 +222,11 @@ async function toRegionSize(bytes, rect, size) {
 
 async function predictRegion(session, inputPath, rect, fullSize, useTta, size, model) {
   const rgb = await readRegionRgb(inputPath, rect, fullSize, size, model);
-  const passes = [await runModel(session, rgb, size)];
+  const passes = [await runModel(session, rgb, size, model)];
   // Averaging a mirrored pass removes the model's own left/right bias, at the cost of one more run.
-  if (useTta) passes.push(flopPlane(await runModel(session, flopPlane(rgb, size, size, 3), size), size, size));
+  if (useTta) passes.push(flopPlane(await runModel(session, flopPlane(rgb, size, size, 3), size, model), size, size));
 
-  // One shared range for every pass: stretching each pass on its own would distort their average.
-  let minimum = Infinity;
-  let maximum = -Infinity;
-  for (const pass of passes) {
-    for (const value of pass) {
-      if (value < minimum) minimum = value;
-      if (value > maximum) maximum = value;
-    }
-  }
-  if (model?.probabilityOutput) { minimum = 0; maximum = 1; }
-  const range = Math.max(1e-6, maximum - minimum);
-  const plane = size * size;
-  const bytes = Buffer.alloc(plane);
-  for (let index = 0; index < plane; index += 1) {
-    let total = 0;
-    for (const pass of passes) total += clamp((pass[index] - minimum) / range, 0, 1);
-    bytes[index] = Math.round((total / passes.length) * 255);
-  }
+  const bytes = segmentationProbabilities(passes, model);
   return toRegionSize(bytes, rect, size);
 }
 
@@ -269,7 +247,9 @@ export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness
   const fullSize = { width: info.width, height: info.height };
   const plan = tilePlan(info.width, info.height, usedModel?.wholeImage ? "fast" : quality);
   const useTta = plan.quality === "max";
-  const rects = plan.useTiles ? tileRects(info.width, info.height, plan) : [fullSize];
+  // Even one mirrored pass goes through the accumulator, which needs explicit
+  // zero offsets. A bare width/height rectangle produced NaN indexes and an empty mask.
+  const rects = tileRects(info.width, info.height, plan);
 
   let mask;
   if (rects.length === 1 && !useTta) {

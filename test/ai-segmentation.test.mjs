@@ -105,3 +105,17 @@ test("a large frame with a small subject is segmented through tiles", async (con
   assert.ok(pixels[centre] > 128, "the subject centre must stay opaque");
   assert.ok(pixels[corner] < 128, "the background corner must become transparent");
 });
+
+test("maximum quality on a single tile retains the subject instead of accumulating at NaN offsets", async context => {
+  const appRoot=path.resolve(".");
+  try{await fs.access(path.join(appRoot,"models/u2netp.onnx"));}catch{context.skip("local model is not prepared");return;}
+  const directory=await fs.mkdtemp(path.join(os.tmpdir(),"chuba-single-tta-")),inputPath=path.join(directory,"input.png");
+  const size=160,data=Buffer.alloc(size*size*4,255);
+  for(let y=40;y<120;y++)for(let x=40;x<120;x++){const at=(y*size+x)*4;data[at]=225;data[at+1]=86;data[at+2]=18;}
+  await sharp(data,{raw:{width:size,height:size,channels:4}}).png().toFile(inputPath);
+  const result=await segmentSubject(inputPath,{appRoot,model:"u2netp",provider:"cpu",quality:"max",cutoff:"auto"});
+  assert.equal(result.tiles,1); assert.equal(result.tta,true);
+  assert.ok(result.coverage>.1&&result.coverage<.5,`coverage ${result.coverage}`);
+  assert.ok(result.data[(80*size+80)*4+3]>128,"the subject must survive both passes");
+  assert.equal(result.data[3],0,"background must be removed");
+});

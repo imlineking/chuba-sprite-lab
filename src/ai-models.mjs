@@ -5,7 +5,9 @@
 // per export; loading and running a file is checked separately from downloading its bytes.
 
 import { createHash } from "node:crypto";
+import path from "node:path";
 import { loadAuxSession, validateAuxSession } from "./aux-ai.mjs";
+import { segmentationInput } from "./ai-tensors.mjs";
 
 export const downloadHosts = [  "github.com",
   "objects.githubusercontent.com",
@@ -147,7 +149,7 @@ export const aiModelCatalog = [
     licence: { name: "MIT", commercial: true },
     speed: "medium",
     quality: "high",
-    note: "BiRefNet в облегчённом варианте: лучшее соотношение качества и размера среди тяжёлых.",
+    note: "Альтернатива для сохранения белых деталей и мелкой растительности. На цветных фонах может оставить больше каймы; сравните с ToonOut. Около 214 МиБ весов.",
   },
   {
     id: "birefnet-general",
@@ -434,8 +436,6 @@ export function familyInputSize(family) {
   return modelFamilies[family]?.inputSize || 320;
 }
 
-const VALIDATION_MEAN = [0.485, 0.456, 0.406];
-const VALIDATION_STD = [0.229, 0.224, 0.225];
 
 // A stored file is not a working model. This builds the tensor the family expects, runs one pass on a
 // synthetic image and checks the answer is a usable alpha map: right size, finite values, and not one
@@ -458,8 +458,9 @@ export async function validateModelFile(filePath, { family = "u2net", provider =
   const size = shapes.inputSize || familyInputSize(family);
   if (!shapes.inputName) throw new Error("В модели не найден входной тензор.");
   const plane = size * size;
-  const data = new Float32Array(plane * 3);
+  const rgb = Buffer.alloc(plane * 3);
   const normalise = modelFamilies[family]?.normalisation !== "raw";
+  const model = aiModelCatalog.find(entry => entry.file === path.basename(filePath));
   for (let index = 0; index < plane; index += 1) {
     const x = index % size;
     const y = Math.floor(index / size);
@@ -467,10 +468,11 @@ export async function validateModelFile(filePath, { family = "u2net", provider =
     const inside = x > size * 0.25 && x < size * 0.75 && y > size * 0.25 && y < size * 0.75;
     const value = inside ? 1 : 0.1;
     for (let channel = 0; channel < 3; channel += 1) {
-      const raw = value * 255;
-      data[channel * plane + index] = normalise ? (raw / 255 - VALIDATION_MEAN[channel]) / VALIDATION_STD[channel] : raw / 255;
+      rgb[index * 3 + channel] = Math.round(value * 255);
     }
   }
+  const data = normalise ? segmentationInput(rgb, model || { family })
+    : Float32Array.from({ length: rgb.length }, (_, index) => rgb[(index % plane) * 3 + Math.floor(index / plane)] / 255);
   const tensor = new ort.Tensor("float32", data, [1, 3, size, size]);
   const outputs = await session.run({ [shapes.inputName]: tensor });
   // Pick by shape, not by name: an export may expose d0, output_image or nothing recognisable.
