@@ -10,6 +10,9 @@
 
 import { randomUUID } from "node:crypto";
 import './text-layer.js';
+import './brush-engine.js';
+import './drawing-shapes.js';
+import { transformPixels } from './pixel-transform.mjs';
 import { encodeEditorDocument, decodeEditorDocument } from './editor-document.mjs';
 const textSettings = globalThis.SpriteLabText.normalize;
 import {
@@ -20,7 +23,6 @@ import {
   ensureCel,
   findLayer,
   floodFill,
-  paintStroke,
   patchFromSnapshot,
   pushPatch,
   readPixel,
@@ -48,8 +50,8 @@ function activeLayer(session) {
   return findLayer(session.document, session.activeLayerId) || session.document.layers.at(-1);
 }
 
-function describeLayers(document) {
-  return document.layers.map((layer) => ({
+function describeLayers(document, frameIndex) {
+  return document.layers.filter(layer => layer.frameScope == null || layer.frameScope === frameIndex).map((layer) => ({
     id: layer.id,
     name: layer.name,
     visible: layer.visible,
@@ -58,24 +60,38 @@ function describeLayers(document) {
     blendMode: layer.blendMode,
     kind: layer.kind,
     text: layer.kind === 'text' ? structuredClone(layer.text) : undefined,
+    seriesTextId: layer.seriesTextId,
   }));
 }
 
 // One state shape for open, paint, fill, undo and layer changes: the window draws the composite and
 // rebuilds the panels from the rest, so no operation needs its own update path.
 function sessionState(session, extra = {}) {
+  const composite = compositeFrame(session.document, session.frameIndex);
+  if (session.savedFrames) {
+    for(const index of session.checkAllFrames ? session.frameIndices : [session.frameIndex]) {
+      const saved = session.savedFrames.get(index), settings = JSON.stringify(describeLayers(session.document,index)),pixels=index===session.frameIndex?composite:compositeFrame(session.document,index);
+      if (!saved || !Buffer.from(pixels).equals(saved.pixels) || settings !== saved.settings || session.document.frames[index].durationMs !== saved.durationMs) session.dirtyFrames.add(index);
+      else session.dirtyFrames.delete(index);
+    }
+    session.checkAllFrames=false;
+  }
   return {
     sessionId: session.id,
     name: session.name,
     frameIndex: session.frameIndex,
     width: session.document.width,
     height: session.document.height,
-    layers: describeLayers(session.document),
+    layers: describeLayers(session.document,session.frameIndex),
     activeLayerId: session.activeLayerId,
     selection: session.selection || null,
     canUndo: session.history.undoStack.length > 0,
     canRedo: session.history.redoStack.length > 0,
-    composite: compositeFrame(session.document, session.frameIndex),
+    composite,
+    frameIndices: session.frameIndices || [session.frameIndex],
+    durationMs: session.document.frames[session.frameIndex].durationMs,
+    dirty: session.dirtyFrames?.size > 0,
+    onion: session.onion ? (session.frameIndices || []).filter(i => Math.abs((session.frameIndices || []).indexOf(i) - (session.frameIndices || []).indexOf(session.frameIndex)) === 1).map(i => ({ index: i, composite: compositeFrame(session.document,i) })) : [],
     ...extra,
   };
 }
@@ -166,20 +182,85 @@ export function openSession({ width, height, name = "Кадр", frameIndex = 0, 
   return sessionState(session);
 }
 
+export function markSessionSaved(sessionId) {
+  const session = requireSession(sessionId); session.savedFrames = new Map(); session.dirtyFrames = new Set();
+  for (const i of session.frameIndices || [session.frameIndex]) session.savedFrames.set(i, { pixels: Buffer.from(compositeFrame(session.document,i)), settings: JSON.stringify(describeLayers(session.document,i)), durationMs: session.document.frames[i].durationMs });
+  return sessionState(session);
+}
+export function openSeries({ frames, frameIndex = 0, name = 'Серия' }) {
+  if (!Array.isArray(frames) || !frames.length || frames.length > 512) throw new Error('Редактор серии принимает от 1 до 512 кадров.');
+  const indices = frames.map(f=>Number(f.index));
+  if (new Set(indices).size !== indices.length || indices.some(i=>!Number.isInteger(i)||i<0||i>19999)) throw new Error('Недопустимые номера кадров.');
+  const width=Math.max(...frames.map(f=>f.width)),height=Math.max(...frames.map(f=>f.height));
+  if (width*height*4*frames.length>256*1024*1024) throw new Error('Серия превышает 256 МБ пикселей. Разделите её на несколько анимаций.');
+  const state=openSession({width,height,frameIndex:indices.includes(frameIndex)?frameIndex:indices[0],name}),session=requireSession(state.sessionId),document=session.document;
+  document.layers=[];document.cels.clear();document.frames=Array.from({length:Math.max(...indices)+1},()=>({durationMs:100}));session.frameIndices=indices;
+  for (const frame of frames) {
+    if(frame.pixels?.length!==frame.width*frame.height*4)throw new Error('Повреждены пиксели кадра.');
+    const decoded=frame.editableDocument?decodeEditorDocument(frame.editableDocument,{width:frame.width,height:frame.height,frameIndex:frame.index}):null;
+    if(decoded&&!Buffer.from(compositeFrame(decoded,frame.index)).equals(Buffer.from(frame.pixels)))throw new Error('PNG изменился после сохранения слоёв.');
+    const layers=decoded?decoded.layers:[{name:'Кадр '+(frame.index+1),visible:true,locked:false,opacity:255,blendMode:'normal',kind:'normal'}];
+    for(const original of layers){const layer=original.seriesTextId?document.layers.find(l=>l.seriesTextId===original.seriesTextId)||addLayer(document,original.name):addLayer(document,original.name);const id=layer.id;Object.assign(layer,structuredClone(original),{id,frameScope:original.seriesTextId?null:frame.index});const source=decoded?ensureCel(decoded,original.id,frame.index):frame.pixels,cel=ensureCel(document,id,frame.index);for(let y=0;y<frame.height;y++)cel.set(source.subarray(y*frame.width*4,(y+1)*frame.width*4),y*width*4);}
+    document.frames[frame.index].durationMs=Math.max(10,Math.min(10000,Math.round(Number(frame.durationMs)||100)));
+  }
+  document.layers.sort((a,b)=>Number(Boolean(a.seriesTextId))-Number(Boolean(b.seriesTextId)));
+  session.activeLayerId=describeLayers(document,session.frameIndex).at(-1).id; return markSessionSaved(session.id);
+}
+export function switchFrame(sessionId, { frameIndex, durationMs, onion } = {}) {
+  const session=requireSession(sessionId);finishStroke(sessionId);
+  if(onion!=null)session.onion=Boolean(onion);
+  if(frameIndex!=null){if(!(session.frameIndices||[session.frameIndex]).includes(Number(frameIndex)))throw new Error('Кадр серии не найден.');session.frameIndex=Number(frameIndex);session.selection=null;session.activeLayerId=describeLayers(session.document,session.frameIndex).at(-1).id;}
+  if(durationMs!=null){const duration=Math.round(Number(durationMs));if(!Number.isFinite(duration)||duration<10||duration>10000)throw new Error('Длительность кадра: от 10 до 10000 мс.');const before=session.document.frames[session.frameIndex].durationMs;if(before!==duration){session.document.frames[session.frameIndex].durationMs=duration;pushPatch(session.history,session.document,{label:'Длительность кадра',parts:[],frameDurations:[{index:session.frameIndex,before,after:duration}]});}}
+  return sessionState(session);
+}
+export function exportSeries(sessionId) {
+  const session=requireSession(sessionId);finishStroke(sessionId);
+  return (session.frameIndices||[session.frameIndex]).map(index=>({frameIndex:index,width:session.document.width,height:session.document.height,composite:compositeFrame(session.document,index),durationMs:session.document.frames[index].durationMs,editableDocument:encodeEditorDocument(session.document,index)}));
+}
+export function textAcrossFrames(sessionId) {
+  const session=requireSession(sessionId),layer=activeLayer(session);
+  if(layer.kind!=='text'||layer.locked)throw new Error('Выберите незаблокированный текстовый слой.');
+  const beforeLayer=structuredClone(layer),pixels=snapshotCel(session.document,layer.id,session.frameIndex),parts=[];
+  for(const index of session.frameIndices||[session.frameIndex]){const before=snapshotCel(session.document,layer.id,index);ensureCel(session.document,layer.id,index).set(pixels);const part=patchFromSnapshot(session.document,layer.id,index,before);if(part)parts.push(part);session.dirtyFrames?.add(index);}
+  layer.frameScope=null;layer.seriesTextId ||= randomUUID();session.checkAllFrames=true;pushPatch(session.history,session.document,{label:'Надпись на всей серии',parts,frameIndex:session.frameIndex,layerUpdates:[{id:layer.id,before:beforeLayer,after:structuredClone(layer)}]});return sessionState(session);
+}
+
+export function finishStroke(sessionId) {
+  const session = requireSession(sessionId), stroke = session.stroke;
+  if (!stroke) return sessionState(session);
+  const patch = patchFromSnapshot(session.document, stroke.layerId, stroke.frameIndex, stroke.before, stroke.options.erase ? 'Ластик' : 'Карандаш');
+  if (patch) { patch.selectionBefore = stroke.selection; patch.selectionAfter = stroke.selection; pushPatch(session.history, session.document, patch); }
+  session.stroke = null; return sessionState(session, { label: patch?.label });
+}
+function shapePixels(sessionId,options) {
+  const source=exportActivePixels(sessionId),from=normalizePoint(options.from),to=normalizePoint(options.to);
+  if(!from||!to)throw new Error('Укажите начало и конец фигуры.');
+  for(const p of[from,to]){p[0]=Math.max(0,Math.min(source.width-1,p[0]));p[1]=Math.max(0,Math.min(source.height-1,p[1]));}
+  const points=globalThis.SpriteLabShapes.points(options.kind,from,to,Boolean(options.filled)),pixels=globalThis.SpriteLabBrush.stroke(source.pixels,source.width,source.height,{...options,points,color:normalizeColor(options.color),size:normalizeBrushSize(options.size)});
+  if(source.selection)for(let i=0;i<source.selection.length;i++)if(!source.selection[i])pixels.set(source.pixels.subarray(i*4,i*4+4),i*4);
+  return{pixels,layerId:source.layerId};
+}
+export function shape(sessionId,options={}) {
+  const result=shapePixels(sessionId,options);
+  if(options.preview)return previewActivePixels(sessionId,result);
+  return applyCommand(requireSession(sessionId),'Нарисована фигура',layer=>{ensureCel(requireSession(sessionId).document,layer.id,requireSession(sessionId).frameIndex).set(result.pixels);return true;});
+}
+export function rotateSelection(sessionId,options={}) {
+  const session=requireSession(sessionId),source=exportActivePixels(sessionId),result=transformPixels(source.pixels,source.width,source.height,source.selection,options.mode);
+  return applyCommand(session,'Преобразовано выделение',layer=>{ensureCel(session.document,layer.id,session.frameIndex).set(result.pixels);session.selection=result.selection;return true;},false);
+}
 export function paint(sessionId, options = {}) {
-  const session = requireSession(sessionId);
-  const from = normalizePoint(options.from);
+  const session = requireSession(sessionId), layer = activeLayer(session), from = normalizePoint(options.from);
   if (!from) return sessionState(session);
-  const to = normalizePoint(options.to) || from;
-  const erase = Boolean(options.erase);
-  return applyCommand(session, erase ? "Ластик" : "Карандаш", (layer) => paintStroke(
-    session.document,
-    layer.id,
-    session.frameIndex,
-    from,
-    to,
-    { color: normalizeColor(options.color), size: normalizeBrushSize(options.size), shape: options.shape === "round" ? "round" : "square", erase },
-  ));
+  if (layer.locked || layer.kind === 'text') return sessionState(session, { blocked: layer.locked ? 'Слой заблокирован.' : 'Это текстовый слой. Нажмите «В пиксели» перед рисованием.' });
+  if (options.beginStroke || session.stroke && (session.stroke.layerId !== layer.id || session.stroke.frameIndex !== session.frameIndex)) finishStroke(sessionId);
+  if (!session.stroke) session.stroke = { layerId: layer.id, frameIndex: session.frameIndex, before: snapshotCel(session.document, layer.id, session.frameIndex), selection: session.selection ? Uint8Array.from(session.selection) : null, points: [from], options: { ...options, color: normalizeColor(options.color), size: normalizeBrushSize(options.size) } };
+  const stroke = session.stroke; stroke.points.push(normalizePoint(options.to) || from);
+  const result = globalThis.SpriteLabBrush.stroke(stroke.before, session.document.width, session.document.height, { ...stroke.options, points: stroke.points });
+  if (stroke.selection) for (let i=0;i<stroke.selection.length;i++) if(!stroke.selection[i])result.set(stroke.before.subarray(i*4,i*4+4),i*4);
+  ensureCel(session.document, layer.id, session.frameIndex).set(result);
+  if (!options.continueStroke) return finishStroke(sessionId);
+  return sessionState(session);
 }
 
 export function fill(sessionId, options = {}) {
@@ -257,6 +338,9 @@ export function stepHistory(sessionId, direction = "undo") {
     : undoPatch(session.history, session.document);
   if (patch && Object.hasOwn(patch, "selectionBefore")) session.selection = direction === "redo" ? patch.selectionAfter : patch.selectionBefore;
   if (patch?.activeLayerBefore) session.activeLayerId = direction === "redo" ? patch.activeLayerAfter : patch.activeLayerBefore;
+  const owner = patch?.frameIndex ?? patch?.parts?.[0]?.frameIndex ?? patch?.frameDurations?.[0]?.index;
+  if (session.frameIndices?.includes(owner)) session.frameIndex = owner;
+  if(patch?.layerUpdates||patch?.removedLayer||patch?.addedLayer)session.checkAllFrames=true;
   if (!findLayer(session.document, session.activeLayerId)) session.activeLayerId = session.document.layers.at(-1).id;
   return sessionState(session, { label: patch ? patch.label || null : null, empty: !patch });
 }
@@ -265,6 +349,7 @@ export function addEmptyLayer(sessionId, options = {}) {
   const session = requireSession(sessionId);
   const previous = session.activeLayerId;
   const layer = addLayer(session.document, options.name || null);
+  if (session.frameIndices?.length > 1) layer.frameScope = session.frameIndex;
   session.activeLayerId = layer.id;
   pushPatch(session.history, session.document, { label: 'Добавлен слой', parts: [], addedLayer: { ...layer }, layerIndex: session.document.layers.length - 1, activeLayerBefore: previous, activeLayerAfter: layer.id });
   return sessionState(session, { label: `Слой «${layer.name}» добавлен` });
@@ -274,13 +359,14 @@ export function deleteLayer(sessionId, options = {}) {
   const session = requireSession(sessionId);
   const layerId = String(options.layerId || session.activeLayerId);
   const layer = findLayer(session.document, layerId), layerIndex = session.document.layers.indexOf(layer);
-  if (!layer || session.document.layers.length <= 1) return sessionState(session, { blocked: 'Нельзя удалить последний слой.' });
-  const before = snapshotCel(session.document, layerId, session.frameIndex), previous = session.activeLayerId;
+  if (!layer || describeLayers(session.document,session.frameIndex).length <= 1) return sessionState(session, { blocked: 'Нельзя удалить последний слой кадра.' });
+  const previous = session.activeLayerId;
+  const parts = (session.frameIndices || [session.frameIndex]).filter(i=>layer.frameScope==null||layer.frameScope===i).map(i=>({layerId,frameIndex:i,rect:{x:0,y:0,width:session.document.width,height:session.document.height},before:snapshotCel(session.document,layerId,i),after:new Uint8ClampedArray(session.document.width*session.document.height*4)}));
   if (!removeLayer(session.document, layerId)) {
     return sessionState(session, { blocked: "Нельзя удалить последний слой." });
   }
-  if (session.activeLayerId === layerId) session.activeLayerId = session.document.layers.at(-1).id;
-  pushPatch(session.history, session.document, { label: 'Слой удалён', removedLayer: structuredClone(layer), layerIndex, parts: [{ layerId, frameIndex: session.frameIndex, rect: { x: 0, y: 0, width: session.document.width, height: session.document.height }, before, after: new Uint8ClampedArray(before.length) }], activeLayerBefore: previous, activeLayerAfter: session.activeLayerId });
+  if (session.activeLayerId === layerId) session.activeLayerId = describeLayers(session.document,session.frameIndex).at(-1)?.id || session.document.layers.at(-1).id;
+  pushPatch(session.history, session.document, { label: 'Слой удалён', removedLayer: structuredClone(layer), layerIndex, parts, frameIndex:session.frameIndex, activeLayerBefore: previous, activeLayerAfter: session.activeLayerId });
   return sessionState(session, { label: "Слой удалён" });
 }
 
@@ -300,6 +386,7 @@ export function updateLayer(sessionId, options = {}) {
   if (typeof options.blendMode === "string") layer.blendMode = options.blendMode;
   if (typeof options.name === "string" && options.name.trim()) layer.name = options.name.trim().slice(0, 40);
   if (JSON.stringify(before) !== JSON.stringify(layer)) pushPatch(session.history, session.document, { label: 'Свойства слоя', parts: [], layerUpdates: [{ id: layer.id, before, after: structuredClone(layer) }] });
+  session.checkAllFrames=true;
   return sessionState(session);
 }
 
@@ -365,11 +452,14 @@ export function setTextLayer(sessionId, options = {}) {
   if (pixels.length !== document.width * document.height * 4) throw new Error('Неверный размер текстового слоя.');
   const settings = textSettings(options.text), activeBefore = session.activeLayerId;
   const layer = existing || addLayer(document, 'Текст');
+  if (!existing && session.frameIndices?.length > 1) layer.frameScope = session.frameIndex;
   const beforeLayer = structuredClone(layer), before = snapshotCel(document, layer.id, session.frameIndex);
   layer.kind = 'text'; layer.text = settings; layer.name = `Т: ${settings.text.split('\n')[0].slice(0, 32) || 'Текст'}`;
   ensureCel(document, layer.id, session.frameIndex).set(pixels);
   const part = patchFromSnapshot(document, layer.id, session.frameIndex, before);
   const patch = { label: existing ? 'Текст изменён' : 'Добавлен текстовый слой', parts: part ? [part] : [], activeLayerBefore: activeBefore, activeLayerAfter: layer.id };
+  if(existing?.seriesTextId)for(const index of session.frameIndices||[]){if(index===session.frameIndex)continue;const original=snapshotCel(document,layer.id,index);ensureCel(document,layer.id,index).set(pixels);const change=patchFromSnapshot(document,layer.id,index,original);if(change)patch.parts.push(change);session.dirtyFrames?.add(index);}
+  if(existing?.seriesTextId)session.checkAllFrames=true;
   if (existing) patch.layerUpdates = [{ id: layer.id, before: beforeLayer, after: structuredClone(layer) }];
   else { patch.addedLayer = structuredClone(layer); patch.layerIndex = document.layers.length - 1; }
   if (part || !existing || JSON.stringify(beforeLayer) !== JSON.stringify(layer)) pushPatch(session.history, document, patch);

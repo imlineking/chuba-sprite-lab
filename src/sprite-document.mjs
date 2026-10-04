@@ -331,6 +331,7 @@ function writeBlock(document, layerId, frameIndex, rect, block) {
 }
 
 function applyHistoryPatch(document, patch, direction) {
+  if (patch.frameDurations) for (const change of patch.frameDurations) document.frames[change.index].durationMs = change[direction];
   if (!patch.parts) {
     writeBlock(document, patch.layerId, patch.frameIndex, patch.rect, patch[direction]);
     return;

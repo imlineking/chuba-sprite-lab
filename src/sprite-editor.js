@@ -90,7 +90,16 @@ function pixelEditorRenderCanvas() {
   if (pixelEditor.composite) {
     pixelEditor.imageData.data.set((pixelEditor.preview || pixelEditor.composite).subarray(0, pixelEditor.imageData.data.length));
     context.putImageData(pixelEditor.imageData, 0, 0);
+  if (pixelEditor.onion?.length && !pixelEditor.preview) {
+    const ghost = document.createElement('canvas'); ghost.width=pixelEditor.width;ghost.height=pixelEditor.height;const g=ghost.getContext('2d');
+    for (const neighbor of pixelEditor.onion) {const data=g.createImageData(pixelEditor.width,pixelEditor.height);for(let i=0;i<neighbor.composite.length;i+=4){data.data[i]=neighbor.index<pixelEditor.frameIndex?80:220;data.data[i+1]=neighbor.index<pixelEditor.frameIndex?190:80;data.data[i+2]=220;data.data[i+3]=Math.round(neighbor.composite[i+3]*.25);}g.putImageData(data,0,0);context.drawImage(ghost,0,0);}
+  }
   if (pixelEditor.selection) { context.fillStyle = "rgba(255,0,255,.35)"; for (let i = 0; i < pixelEditor.selection.length; i++) if (pixelEditor.selection[i]) context.fillRect(i % pixelEditor.width, Math.floor(i / pixelEditor.width), 1, 1); }
+  if (pixelEditor.cursor.inside && ['pencil','eraser'].includes(pixelEditor.tool) && !pixelEditor.preview) {
+    for (const [x,y,coverage] of window.SpriteLabBrush.footprint(pixelEditor.cursor.x,pixelEditor.cursor.y,pixelEditor.brush,pixelEditor.brushShape,Number($('#pixelBrushHardness').value))) {
+      context.fillStyle = `rgba(80,190,255,${.25*coverage})`; context.fillRect(x,y,1,1);
+    }
+  }
   }
   const wrap = $("#pixelCanvasWrap");
   wrap.style.setProperty("--pixel-cell", `${pixelEditor.zoom}px`);
@@ -205,6 +214,7 @@ function pixelEditorApplyState(answer) {
   pixelEditor.height = answer.height;
   pixelEditor.layers = answer.layers;
   pixelEditor.activeLayerId = answer.activeLayerId;
+  window.spriteLabFramesUI?.sync(answer);
   if (answer.composite) pixelEditor.composite = answer.composite instanceof Uint8ClampedArray
     ? answer.composite
     : new Uint8ClampedArray(answer.composite);
@@ -232,7 +242,7 @@ function pixelEditorFitZoom() {
 
 function pixelEditorSetTool(tool) {
   pixelEditor.tool = tool;
-  const tools = { text: '#pixelToolText', select: "#pixelToolSelect", wand: "#pixelToolWand", lasso: "#pixelToolLasso", pencil: "#pixelToolPencil", eraser: "#pixelToolEraser", fill: "#pixelToolFill", picker: "#pixelToolPicker" };
+  const tools = { line:'#pixelToolLine',rectangle:'#pixelToolRectangle',ellipse:'#pixelToolEllipse',text: '#pixelToolText', select: "#pixelToolSelect", wand: "#pixelToolWand", lasso: "#pixelToolLasso", pencil: "#pixelToolPencil", eraser: "#pixelToolEraser", fill: "#pixelToolFill", picker: "#pixelToolPicker" };
   for (const [name, selector] of Object.entries(tools)) $(selector).classList.toggle("active", name === tool);
   const hints = { select: "Выделите прямоугольник. Перенос и удаление работают с пикселями активного слоя и отменяются Ctrl+Z.", wand: "Палочка: связанная область похожего цвета; допуск — «Разброс». Можно отделить часть слипшегося объекта.", lasso: "Обведите часть объекта, затем перенесите или удалите выделенные пиксели.",
     text: 'Текст: нажмите на кадр, чтобы задать положение. Надпись меняется в панели «Текстовый слой». Перемещение и правка отменяются Ctrl+Z.',
@@ -241,7 +251,7 @@ function pixelEditorSetTool(tool) {
     fill: "Заливка: заливает связанную область под курсором. «Разброс» задаёт, какие цвета считать одинаковыми, а «Стереть кайму» убирает почти прозрачный ореол вокруг спрайта.",
     picker: "Пипетка: берёт цвет из кадра как основной. Не меняет пиксели.",
   };
-  $("#pixelEditorHint").textContent = hints[tool];
+  $("#pixelEditorHint").textContent = hints[tool] || 'Протяните фигуру от начала к концу. Размер, форма кисти, жёсткость и непрозрачность задаются в настройках кисти. Ctrl+Z отменяет фигуру.';
 }
 
 async function pixelEditorOpen() {
@@ -250,7 +260,10 @@ async function pixelEditorOpen() {
   const sourcePath = state.frameOverrides[frameIndex] || state.result.allSourceFramePaths[frameIndex];
   pixelEditorStatus("Открываю кадр…", "busy");
   const record = state.frameDocuments[frameIndex];
-  const answer = await window.spriteLab.openPixelEditor({ path: sourcePath, frameIndex, name: "frame", documentPath: record?.imagePath === sourcePath ? record.path : undefined });
+  const entries = state.intent === 'animation' ? timelineEntries() : [];
+  const indices = [...new Set(entries.map(entry=>entry.src))];
+  const series = indices.length > 1 ? indices.map(index=>{const file=state.frameOverrides[index]||state.result.allSourceFramePaths[index],doc=state.frameDocuments[index];return {index,path:file,documentPath:doc?.imagePath===file?doc.path:undefined,durationMs:entries.find(entry=>entry.src===index)?.d||baseDurationMs()};}) : undefined;
+  const answer = await window.spriteLab.openPixelEditor({ path: sourcePath, series, frameIndex, name: "frame", documentPath: record?.imagePath === sourcePath ? record.path : undefined });
   pixelEditorCancelPreview();
   pixelEditorApplyState(answer);
   pixelEditorMarkApplied();
@@ -277,6 +290,7 @@ function pixelEditorMarkApplied() {
 
 function pixelEditorHasPendingEdits() {
   if (!pixelEditor.sessionId || !pixelEditor.savedPixels) return false;
+  if (pixelEditor.frameIndices?.length > 1) return pixelEditor.seriesDirty || Boolean(pixelEditor.preview) || Boolean(window.spriteLabTextUI?.hasDraft());
   if (JSON.stringify(pixelEditor.layers) !== pixelEditor.savedLayers) return true;
   if (window.spriteLabTextUI?.hasDraft()) return true;
   const pixels = pixelEditor.composite, preview = pixelEditor.preview;
@@ -291,6 +305,7 @@ function pixelEditorAnswerClose(choice) {
 }
 
 async function pixelEditorClose() {
+  window.spriteLabFramesUI?.stop();
   if (!pixelEditorIsOpen()) return true;
   if (pixelEditorCloseDecision || pixelColorBusy || pixelEditorApplying) return false;
   await pixelEditorFlush();
@@ -330,9 +345,9 @@ async function pixelEditorSave() {
     const frameIndex = pixelEditor.frameIndex;
     pixelEditorStatus(t("Применяю правки к проекту…"), "busy");
     await pixelEditorFlush();
-    const saved = await window.spriteLab.savePixelEditor({ sessionId: pixelEditor.sessionId, frameIndex, name: pixelEditor.name });
-    state.frameOverrides[frameIndex] = saved.path;
-    state.frameDocuments[frameIndex] = { path: saved.documentPath, imagePath: saved.path };
+    const saved = await window.spriteLab.savePixelEditor({ sessionId: pixelEditor.sessionId, frameIndex, name: pixelEditor.name, series:pixelEditor.frameIndices?.length>1 });
+    for(const frame of saved.frames||[{...saved,frameIndex}]){state.frameOverrides[frame.frameIndex]=frame.path;state.frameDocuments[frame.frameIndex]={path:frame.documentPath,imagePath:frame.path};if(saved.frames){state.frameMetadata[frame.frameIndex]={...state.frameMetadata[frame.frameIndex],durationMs:frame.durationMs};for(const entry of state.timeline||[])if(entry.src===frame.frameIndex)entry.d=frame.durationMs;}}
+    pixelEditor.seriesDirty=false;
     pixelEditorMarkApplied();
     if (state.intent === "images") {
       state.resultDirty = false;
@@ -360,13 +375,15 @@ async function pixelEditorSave() {
 function pixelEditorSampleCursor(point) {
   pixelEditor.cursor = point;
   pixelEditorUpdateCursorInfo();
+  pixelEditorRenderCanvas();
 }
 
 function pixelEditorPaintTo(point) {
   const erase = pixelEditor.tool === "eraser";
   const from = pixelEditor.lastPoint || point;
   pixelEditor.lastPoint = point;
-  pixelEditorSend({ op: "paint", from: [from.x, from.y], to: [point.x, point.y], color: pixelEditor.color, size: pixelEditor.brush, shape: pixelEditor.brushShape, erase });
+  pixelEditorSend({ op: "paint", from: [from.x, from.y], to: [point.x, point.y], color: pixelEditor.color, size: pixelEditor.brush, shape: pixelEditor.brushShape, hardness: Number($('#pixelBrushHardness').value), opacity: Number($('#pixelBrushOpacity').value), symmetry: $('#pixelBrushSymmetry').value, pixelPerfect: $('#pixelBrushPerfect').checked, continueStroke: true, beginStroke: pixelEditor.strokeStart, erase });
+  pixelEditor.strokeStart = false;
 }
 
 function pixelEditorPointerDown(event) {
@@ -378,6 +395,7 @@ function pixelEditorPointerDown(event) {
   }
   const point = pixelEditorPointFromEvent(event);
   if (!point.inside) return;
+  if(['line','rectangle','ellipse'].includes(pixelEditor.tool)){event.currentTarget.setPointerCapture?.(event.pointerId);pixelEditor.shapeStart=point;return;}
   if (["select", "wand", "lasso"].includes(pixelEditor.tool)) {
     event.currentTarget.setPointerCapture?.(event.pointerId);
     if (pixelEditor.tool === "wand") pixelEditorSend({ op: "selectPixels", mode: "wand", from: [point.x, point.y], tolerance: pixelEditor.tolerance });
@@ -400,6 +418,7 @@ function pixelEditorPointerDown(event) {
   }
   event.currentTarget.setPointerCapture?.(event.pointerId);
   pixelEditor.drawing = true;
+  pixelEditor.strokeStart = true;
   pixelEditor.lastPoint = point;
   if (pixelEditor.tool === "fill") {
     pixelEditorSend({ op: "fill", x: point.x, y: point.y, color: pixelEditor.color, tolerance: pixelEditor.tolerance });
@@ -412,12 +431,14 @@ function pixelEditorPointerDown(event) {
 function pixelEditorPointerMove(event) {
   const point = pixelEditorPointFromEvent(event);
   pixelEditorSampleCursor(point);
+  if(pixelEditor.shapeStart&&point.inside){const start=pixelEditor.shapeStart;void window.spriteLab.pixelEditorOp({op:'shape',preview:true,sessionId:pixelEditor.sessionId,kind:pixelEditor.tool,from:[start.x,start.y],to:[point.x,point.y],color:pixelEditor.color,size:pixelEditor.brush,shape:pixelEditor.brushShape,opacity:Number($('#pixelBrushOpacity').value),hardness:Number($('#pixelBrushHardness').value),filled:$('#pixelShapeFilled').checked}).then(pixels=>{if(pixelEditor.shapeStart===start){pixelEditor.preview=new Uint8ClampedArray(pixels);pixelEditorRenderCanvas();}}).catch(error=>pixelEditorStatus(error.message,'error'));return;}
   if (pixelEditor.selectionStart && point.inside) { pixelEditor.selectionPoints.push([point.x, point.y]); return; }
   if (!pixelEditor.drawing || !point.inside) return;
   pixelEditorPaintTo(point);
 }
 
 function pixelEditorPointerUp(event) {
+  if(pixelEditor.shapeStart){const start=pixelEditor.shapeStart,point=pixelEditorPointFromEvent(event);pixelEditor.shapeStart=null;pixelEditorCancelPreview();pixelEditorSend({op:'shape',kind:pixelEditor.tool,from:[start.x,start.y],to:[point.x,point.y],color:pixelEditor.color,size:pixelEditor.brush,shape:pixelEditor.brushShape,opacity:Number($('#pixelBrushOpacity').value),hardness:Number($('#pixelBrushHardness').value),filled:$('#pixelShapeFilled').checked});return;}
   if (pixelEditor.selectionStart) {
     const point = pixelEditorPointFromEvent(event), start = pixelEditor.selectionStart; pixelEditor.selectionStart = null;
     pixelEditorSend({ op: "selectPixels", mode: pixelEditor.tool === "lasso" ? "lasso" : "rect", from: [start.x, start.y], to: [point.x, point.y], points: pixelEditor.selectionPoints });
@@ -426,6 +447,7 @@ function pixelEditorPointerUp(event) {
   if (!pixelEditor.drawing) return;
   pixelEditor.drawing = false;
   pixelEditor.lastPoint = null;
+  pixelEditorSend({ op: 'endStroke' });
   event.currentTarget.releasePointerCapture?.(event.pointerId);
 }
 
@@ -451,9 +473,10 @@ new ResizeObserver(() => {
 /* ------------------------------------------------------------------ wiring */
 
 function pixelEditorSyncBrush() {
-  pixelEditor.brush = Math.max(1, Math.min(16, Number($("#pixelBrushSize").value) || 1));
+  pixelEditor.brush = Math.max(1, Math.min(64, Number($("#pixelBrushSize").value) || 1));
   pixelEditor.brushShape = $("#pixelBrushShape").value;
   $("#pixelBrushValue").textContent = `${pixelEditor.brush} px`;
+  if (pixelEditorIsOpen()) pixelEditorRenderCanvas();
 }
 
 function pixelEditorSyncTolerance() {
@@ -479,8 +502,11 @@ $("#pixelToolPencil").addEventListener("click", () => pixelEditorSetTool("pencil
 $("#pixelToolEraser").addEventListener("click", () => pixelEditorSetTool("eraser"));
 $("#pixelToolFill").addEventListener("click", () => pixelEditorSetTool("fill"));
 $("#pixelToolPicker").addEventListener("click", () => pixelEditorSetTool("picker"));
+for(const [tool,id]of[['line','pixelToolLine'],['rectangle','pixelToolRectangle'],['ellipse','pixelToolEllipse']])$('#'+id).addEventListener('click',()=>pixelEditorSetTool(tool));
+for(const [id,mode]of[['pixelFlipX','flip-x'],['pixelFlipY','flip-y'],['pixelRotateLeft','rotate-left'],['pixelRotateRight','rotate-right']])$('#'+id).addEventListener('click',()=>pixelEditorSend({op:'rotateSelection',mode}));
 $("#pixelBrushSize").addEventListener("input", pixelEditorSyncBrush);
 $("#pixelBrushShape").addEventListener("change", pixelEditorSyncBrush);
+for (const [field,output] of [['pixelBrushHardness','pixelBrushHardnessValue'],['pixelBrushOpacity','pixelBrushOpacityValue']]) $('#'+field).addEventListener('input',()=>{ $('#'+output).textContent=$('#'+field).value+'%';pixelEditorRenderCanvas(); });
 $("#pixelTolerance").addEventListener("input", pixelEditorSyncTolerance);
 $("#pixelEraseTransparent").addEventListener("click", () => {
   pixelEditorSend({ op: "eraseTransparent", threshold: pixelEditor.tolerance });
@@ -531,7 +557,7 @@ document.addEventListener("keydown", (event) => {
   else if (key === 't') window.spriteLabTextUI?.open();
   else if (key === "delete" && pixelEditor.selection) pixelEditorSend({ op: "movePixels", erase: true });
   else if (key === "[" || key === "]") {
-    $("#pixelBrushSize").value = String(Math.max(1, Math.min(16, pixelEditor.brush + (key === "]" ? 1 : -1))));
+    $("#pixelBrushSize").value = String(Math.max(1, Math.min(64, pixelEditor.brush + (key === "]" ? 1 : -1))));
     pixelEditorSyncBrush();
   } else if (key === "+" || key === "=") pixelEditorSetZoom(pixelEditor.zoom * 1.25);
   else if (key === "-" || key === "_") pixelEditorSetZoom(pixelEditor.zoom * 0.8);

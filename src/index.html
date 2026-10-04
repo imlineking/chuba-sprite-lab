@@ -940,8 +940,9 @@
             <button id="pixelToolFill" class="pixel-tool" type="button" title="Заливка (G)">▨</button>
             <button id="pixelToolSelect" class="pixel-tool" type="button" title="Прямоугольное выделение (M)">▣</button><button id="pixelToolWand" class="pixel-tool" type="button" title="Волшебная палочка (W)">✦</button><button id="pixelToolLasso" class="pixel-tool" type="button" title="Лассо (L)">◌</button>
             <button id="pixelToolPicker" class="pixel-tool" type="button" title="Пипетка (I)">⌖</button>
+            <button id="pixelToolLine" class="pixel-tool" type="button" title="Линия">╱</button><button id="pixelToolRectangle" class="pixel-tool" type="button" title="Прямоугольник">□</button><button id="pixelToolEllipse" class="pixel-tool" type="button" title="Эллипс">○</button>
             <label class="pixel-tool-group">Кисть
-              <input id="pixelBrushSize" type="range" min="1" max="16" step="1" value="1" />
+              <input id="pixelBrushSize" type="number" min="1" max="64" step="1" value="1" title="Размер кисти в пикселях; [ и ] меняют его на один" />
               <span id="pixelBrushValue">1 px</span>
             </label>
             <label class="pixel-tool-group">Форма <select id="pixelBrushShape"><option value="square">Квадрат</option><option value="round">Круг</option></select></label>
@@ -970,9 +971,18 @@
           <div id="pixelCanvasWrap" class="pixel-canvas-wrap">
             <canvas id="pixelCanvas" width="64" height="64"></canvas>
           </div>
+          <div id="pixelFrameBar" class="pixel-frame-bar" hidden><button id="pixelFramePrev" type="button" title="Предыдущий кадр">←</button><select id="pixelFrameSelect" aria-label="Кадр серии" data-i18n-skip></select><button id="pixelFrameNext" type="button" title="Следующий кадр">→</button><button id="pixelFramePlay" type="button">▶ Просмотр</button><label>мс <input id="pixelFrameDuration" type="number" min="10" max="10000" value="100"></label><label><input id="pixelFrameOnion" type="checkbox"> Соседние кадры</label></div>
         </div>
 
         <aside class="pixel-editor-side">
+          <section class="pixel-panel"><details><summary>Настройки кисти</summary>
+            <label>Жёсткость края, % <input id="pixelBrushHardness" type="range" min="0" max="100" value="100"><output id="pixelBrushHardnessValue">100%</output></label>
+            <label>Непрозрачность мазка, % <input id="pixelBrushOpacity" type="range" min="0" max="100" value="100"><output id="pixelBrushOpacityValue">100%</output></label>
+            <label>Симметрия <select id="pixelBrushSymmetry"><option value="none">Нет</option><option value="x">Слева / справа</option><option value="y">Сверху / снизу</option><option value="both">Обе оси</option></select></label>
+            <label><input id="pixelBrushPerfect" type="checkbox"> Pixel Perfect · убрать углы мазка 1 px</label>
+            <label><input id="pixelShapeFilled" type="checkbox"> Заливать фигуры</label>
+            <small>Для пиксельной графики оставьте жёсткость 100%. Непрозрачность действует на целый мазок, отдельно от слоя. Один мазок — одна отмена.</small>
+          </details></section>
           <section class="pixel-panel">
             <details id="pixelOCRDetails"><summary>Распознать надпись</summary>
               <small>Выделите надпись прямоугольником или лассо. OCR работает на этом компьютере; результат можно исправить.</small>
@@ -1013,6 +1023,7 @@
               <div class="pixel-text-pair"><label>X, px <input id="pixelTextX" type="number" min="-32768" max="32768" value="4"></label><label>Y, px <input id="pixelTextY" type="number" min="-32768" max="32768" value="4"></label></div>
               <p class="pixel-editor-hint">X и Y — начало надписи. Инструмент T: нажмите на кадр для переноса. Всё за краем кадра обрезается.</p>
               <div class="pixel-color-actions"><button id="pixelTextApply" class="button primary" type="button" disabled>Применить текст</button><button id="pixelTextCancel" class="button secondary" type="button">Отмена просмотра</button><button id="pixelTextRasterize" class="button secondary" type="button" disabled title="После преобразования надпись правится кистью; Ctrl+Z возвращает текст">В пиксели</button></div>
+              <button id="pixelTextAcrossFrames" class="button secondary" type="button" title="Одинаковая надпись и положение во всех кадрах; Ctrl+Z отменяет">Надпись на всю серию</button>
             </details>
           </section>
           <section id="pixelColorForm" class="pixel-panel pixel-color-form hidden" aria-label="Замена цвета кадра">
@@ -1066,6 +1077,7 @@
           <section class="pixel-panel">
             <header>Подсказка</header>
             <div class="pixel-selection-actions"><label>Сдвиг X <input id="pixelSelectionX" type="number" value="0" /></label><label>Y <input id="pixelSelectionY" type="number" value="0" /></label><button id="pixelMoveSelection" type="button">Перенести</button><button id="pixelSeparateSelection" type="button" title="Перенести выбранные пиксели на отдельный слой с заданным сдвигом">На новый слой</button><button id="pixelCutSelection" type="button">Удалить выделенное</button><button id="pixelClearSelection" type="button">Снять выделение</button></div>
+            <div class="pixel-color-actions"><button id="pixelFlipX" type="button">Отразить по X</button><button id="pixelFlipY" type="button">Отразить по Y</button><button id="pixelRotateLeft" type="button">Повернуть −90°</button><button id="pixelRotateRight" type="button">Повернуть +90°</button></div>
             <p id="pixelEditorHint" class="pixel-editor-hint">Откройте кадр из полосы кадров.</p>
             <p class="pixel-editor-hint">Ctrl+Z — отменить, Ctrl+Shift+Z — вернуть, Ctrl+S — применить к проекту, Esc — закрыть.</p>
           </section>
@@ -1262,6 +1274,8 @@
     <script src="./color-styles.js"></script>
     <script src="./pixel-colors.js"></script>
     <script src="./sprite-editor.js"></script>
+    <script src="./brush-engine.js"></script>
+    <script src="./pixel-frames-ui.js"></script>
     <script src="./pixel-color-ui.js"></script>
     <script src="./text-layer.js"></script>
     <script src="./pixel-text-ui.js"></script>

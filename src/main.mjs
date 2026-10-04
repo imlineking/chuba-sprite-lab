@@ -545,6 +545,12 @@ async function writeFramePng({ frameIndex = 0, name = "frame", png }) {
 // Opening reads the pixels here: a file:// image drawn into the window canvas cannot be read back,
 // so the raw buffer has to come from the main process.
 ipcMain.handle("editor:open", async (_event, request = {}) => {
+  if (Array.isArray(request.series) && request.series.length) {
+    if(request.series.length>512)throw new Error('Разделите серию: редактор принимает до 512 кадров.');
+    const frames=[];let total=0;
+    for(const item of request.series){const {data,info}=await sharp(path.resolve(String(item.path))).toColourspace('srgb').ensureAlpha().raw().toBuffer({resolveWithObject:true});total+=data.length;if(total>256*1024*1024)throw new Error('Серия превышает 256 МБ.');frames.push({index:item.index,durationMs:item.durationMs,width:info.width,height:info.height,pixels:data,editableDocument:item.documentPath?JSON.parse(await fs.readFile(item.documentPath,'utf8')):null});}
+    return editorSession.openSeries({frames,frameIndex:request.frameIndex,name:request.name});
+  }
   const filePath = path.resolve(String(request.path || ""));
   if (!filePath || !await pathExists(filePath)) throw new Error("Кадр для редактирования не найден.");
   const { data, info } = await sharp(filePath).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -562,6 +568,11 @@ ipcMain.handle("editor:open", async (_event, request = {}) => {
 // One entry point for the editing commands: the interface sends the operation name, and every answer
 // has the same state shape so the window has a single redraw path.
 const editorOperations = {
+  shape: request => editorSession.shape(request.sessionId, request),
+  rotateSelection: request => editorSession.rotateSelection(request.sessionId, request),
+  switchFrame: request => editorSession.switchFrame(request.sessionId, request),
+  textAcrossFrames: request => editorSession.textAcrossFrames(request.sessionId),
+  endStroke: request => editorSession.finishStroke(request.sessionId),
   replacePixels: request => editorSession.replaceActivePixels(request.sessionId, request),
   text: request => editorSession.setTextLayer(request.sessionId, request),
   textPreview: request => editorSession.previewTextLayer(request.sessionId, request),
@@ -587,6 +598,7 @@ const editorOperations = {
 ipcMain.handle("editor:op", async (_event, request = {}) => {
   const operation = editorOperations[String(request.op || "")];
   if (!operation) throw new Error(`Неизвестная операция редактора: ${request.op || "—"}`);
+  if (request.op !== 'paint' && request.op !== 'endStroke') editorSession.finishStroke(request.sessionId);
   return operation(request);
 });
 ipcMain.handle('fonts:list', () => installedFonts());
@@ -839,6 +851,7 @@ ipcMain.handle("autopilot:plan", async (_event, request = {}) => {
 });
 
 ipcMain.handle("editor:save", async (_event, request = {}) => {  const frame = editorSession.exportFrame(request.sessionId);
+  if(request.series){const frames=[];for(const item of editorSession.exportSeries(request.sessionId)){const png=await sharp(Buffer.from(item.composite),{raw:{width:item.width,height:item.height,channels:4}}).png({compressionLevel:9}).toBuffer();const saved=await writeFramePng({frameIndex:item.frameIndex,name:request.name||frame.name,png});const documentPath=saved.path+'.csframe';await fs.writeFile(documentPath,JSON.stringify(item.editableDocument));frames.push({...saved,documentPath,frameIndex:item.frameIndex,durationMs:item.durationMs});}editorSession.markSessionSaved(request.sessionId);return{...frames.find(item=>item.frameIndex===frame.frameIndex),frames};}
   const png = await sharp(Buffer.from(frame.composite.buffer, frame.composite.byteOffset, frame.composite.byteLength), {
     raw: { width: frame.width, height: frame.height, channels: 4 },
   }).png({ compressionLevel: 9 }).toBuffer();
