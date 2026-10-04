@@ -1,3 +1,5 @@
+import "./i18n-catalog.js";
+import "./i18n-core.js";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, net, Notification, screen, shell } from "electron";
 import crypto from "node:crypto";
 import fsSync from "node:fs";
@@ -43,6 +45,16 @@ for (const stream of [process.stdout, process.stderr]) {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, "..");
 let mainWindow = null;
+let interfaceLocale="ru";
+ipcMain.handle("interface:locale",(event,locale)=>{
+  if(event.sender !== mainWindow?.webContents || !["ru","en"].includes(locale)) throw new Error("Недопустимый язык интерфейса.");
+  interfaceLocale=locale;
+  companion?.update({locale});
+  return locale;
+});
+function interfaceDialog(method, owner, options) {
+  return dialog[method](owner,globalThis.SpriteLabI18n.dialogOptions(options,interfaceLocale));
+}
 let companion = startupShell.companion;
 if (companion) companion.mainWindow = () => mainWindow;
 let profileSaveQueue=Promise.resolve();
@@ -279,7 +291,7 @@ function createWindow() {
       if (!await mainWindow.webContents.executeJavaScript("window.spriteLabPrepareEditorClose?.() ?? true")) return;
       const dirty = await mainWindow.webContents.executeJavaScript("Boolean(window.spriteLabHasUnsavedChanges?.())");
       if (!dirty) { allowClose = true; mainWindow.close(); return; }
-      const { response } = await dialog.showMessageBox(mainWindow, {
+      const { response } = await interfaceDialog("showMessageBox",mainWindow, {
         type: "question",
         title: "Несохранённый проект",
         message: "Сохранить изменения проекта перед выходом?",
@@ -396,7 +408,7 @@ async function resolveExportConflict(request) {
     while (await pathExists(path.join(request.outputDir, `${baseName}-${version}`))) version += 1;
     return { ...request, name: `${baseName}-${version}` };
   }
-  const choice = await dialog.showMessageBox(mainWindow, {
+  const choice = await interfaceDialog("showMessageBox",mainWindow, {
     type: "question",
     title: "Папка набора уже существует",
     message: `Набор «${baseName}» уже существует.`,
@@ -414,7 +426,7 @@ async function resolveExportConflict(request) {
 }
 
 ipcMain.handle("source:any", async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await interfaceDialog("showOpenDialog",mainWindow, {
     title: "Выберите видео или изображения",
     properties: ["openFile", "multiSelections"],
     filters: [
@@ -434,7 +446,7 @@ ipcMain.handle("source:add-images", async (_event, existingPaths = []) => {
   for (const item of existing) {
     if (!supportedImageExtensions.has(path.extname(item).toLowerCase()) || !(await fs.stat(item)).isFile()) throw new Error("Добавлять можно только существующие изображения.");
   }
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await interfaceDialog("showOpenDialog",mainWindow, {
     title: "Добавьте кадры или отдельные объекты",
     properties: ["openFile", "multiSelections"],
     filters: [{ name: "Изображения", extensions: [...supportedImageExtensions].map((ext) => ext.slice(1)) }],
@@ -452,7 +464,7 @@ ipcMain.handle("source:use-image-object", async (_event, filePath) => {
 });
 
 ipcMain.handle("source:sheet", async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await interfaceDialog("showOpenDialog",mainWindow, {
     title: "Выберите готовый спрайт-лист",
     properties: ["openFile"],
     filters: [{ name: "Спрайт-лист / JSON атласа", extensions: [...supportedImageExtensions].map((ext) => ext.slice(1)).concat("json") }],
@@ -479,7 +491,7 @@ ipcMain.handle("source:analyze-frames", async (_event, request = {}) => {
 });
 
 ipcMain.handle("source:folder", async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await interfaceDialog("showOpenDialog",mainWindow, {
     title: "Выберите папку с кадрами",
     properties: ["openDirectory"],
   });
@@ -511,7 +523,7 @@ ipcMain.handle("source:dropped", async (_event, payload) => {
 ipcMain.handle("profile:save", async (_event, request = {}) => {
   const profile = request?.profile;
   if (!profile || profile.format !== "chuba-sprite-lab-profile") throw new Error("Рецепт сборки не сформирован.");
-  const result = await dialog.showSaveDialog(mainWindow, {
+  const result = await interfaceDialog("showSaveDialog",mainWindow, {
     title: "Сохранить рецепт сборки",
     defaultPath: `${safeOutputName(profile.name || "sprite-recipe")}.recipe.json`,
     filters: [{ name: "Рецепт сборки Chuba Sprite Lab", extensions: ["json"] }],
@@ -863,7 +875,7 @@ ipcMain.handle("editor:save", async (_event, request = {}) => {  const frame = e
 });
 
 ipcMain.handle("output:folder", async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await interfaceDialog("showOpenDialog",mainWindow, {
     title: "Куда сохранить готовый спрайт-лист",
     properties: ["openDirectory", "createDirectory"],
   });
@@ -880,7 +892,7 @@ async function loadProjectPath(filePath) {
   try { loaded = await loadPortableProject(projectPath); }
   catch (error) {
     if (!await pathExists(projectPath + ".bak")) throw error;
-    const answer = await dialog.showMessageBox(mainWindow, { type: "warning", message: "Проект не читается. Открыть предыдущую сохранённую копию?", detail: error.message, buttons: ["Восстановить", "Отмена"], cancelId: 1 });
+    const answer = await interfaceDialog("showMessageBox",mainWindow, { type: "warning", message: "Проект не читается. Открыть предыдущую сохранённую копию?", detail: error.message, buttons: ["Восстановить", "Отмена"], cancelId: 1 });
     if (answer.response !== 0) return null;
     loaded = await loadPortableProject(projectPath, { backup: true });
   }
@@ -888,7 +900,7 @@ async function loadProjectPath(filePath) {
   const missing = await missingProjectFiles(project);
   const replacements = new Map();
   for (const file of missing) {
-    const answer = await dialog.showOpenDialog(mainWindow, { title: "Не найден файл: " + path.basename(file).replace(/^[a-f0-9]{64}-/, "") + " — выберите замену", properties: ["openFile"] });
+    const answer = await interfaceDialog("showOpenDialog",mainWindow, { title: `Не найден файл: ${path.basename(file).replace(/^[a-f0-9]{64}-/, "")} — выберите замену`, properties: ["openFile"] });
     if (answer.canceled || !answer.filePaths[0]) return null;
     replacements.set(file, answer.filePaths[0]);
   }
@@ -901,7 +913,7 @@ async function loadProjectPath(filePath) {
 ipcMain.handle("project:load-path", async (_event, filePath) => loadProjectPath(filePath));
 
 ipcMain.handle("project:load", async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await interfaceDialog("showOpenDialog",mainWindow, {
     title: "Открыть проект Chuba Sprite Lab",
     properties: ["openFile"],
     filters: [{ name: "Проект Chuba Sprite Lab", extensions: ["cslab"] }],
@@ -915,7 +927,7 @@ ipcMain.handle("project:save", async (_event, request = {}) => {
   if (!project || project.format !== "chuba-sprite-lab-project" || !project.source) throw new Error("Проект не содержит исходника.");
   let projectPath = request.projectPath ? path.resolve(String(request.projectPath)) : null;
   if (!projectPath || request.saveAs) {
-    const result = await dialog.showSaveDialog(mainWindow, {
+    const result = await interfaceDialog("showSaveDialog",mainWindow, {
       title: "Сохранить проект Chuba Sprite Lab",
       defaultPath: project.name ? `${safeOutputName(project.name)}.cslab` : "sprite-project.cslab",
       filters: [{ name: "Проект Chuba Sprite Lab", extensions: ["cslab"] }],
@@ -930,7 +942,7 @@ ipcMain.handle("project:save", async (_event, request = {}) => {
 });
 
 ipcMain.handle("overlay:choose", async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await interfaceDialog("showOpenDialog",mainWindow, {
     title: "Выберите PNG-элемент для привязки",
     properties: ["openFile"],
     filters: [{ name: "PNG с прозрачностью", extensions: ["png", "webp"] }],
@@ -950,7 +962,7 @@ ipcMain.handle("overlay:choose", async () => {
 });
 
 ipcMain.handle("ai:choose-mask", async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await interfaceDialog("showOpenDialog",mainWindow, {
     title: "Белая область на PNG-маске будет дорисована LaMa",
     properties: ["openFile"],
     filters: [{ name: "PNG-маска", extensions: ["png"] }],
@@ -1026,7 +1038,7 @@ ipcMain.handle("frame-edit:online", async (_event, request = {}) => {
 
 ipcMain.handle("frame-edit:replace", async (_event, request = {}) => {
   const targetPath = assertExternalEditPath(request.path);
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await interfaceDialog("showOpenDialog",mainWindow, {
     title: "Выберите сохранённый кадр",
     properties: ["openFile"],
     filters: [{ name: "Изображение", extensions: ["png", "webp", "jpg", "jpeg"] }],

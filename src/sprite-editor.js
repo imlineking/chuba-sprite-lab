@@ -124,7 +124,7 @@ function pixelEditorRenderLayers() {
     const pick = document.createElement("button");
     pick.type = "button";
     pick.className = "pixel-layer-name";
-    pick.textContent = layer.name;
+    pick.textContent = layer.name; pick.setAttribute("data-i18n-skip", "");
     pick.title = layer.kind === 'text' ? 'Выбрать и изменить текст' : 'Сделать слоем для рисования';
     pick.addEventListener("click", async () => { await pixelEditorSend({ op: "updateLayer", layerId: layer.id, active: true }); if (layer.kind === 'text') window.spriteLabTextUI?.edit(layer.id); });
 

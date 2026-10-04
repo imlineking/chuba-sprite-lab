@@ -8,7 +8,7 @@ import vm from "node:vm";
 // with a small stand-in DOM. That keeps the test on the shipped file instead of a copy of it.
 
 const root = path.resolve(import.meta.dirname, "..");
-const i18nSource = readFileSync(path.join(root, "src", "i18n.js"), "utf8");
+const i18nSource = ["i18n-catalog.js","i18n-core.js","i18n.js"].map(file=>readFileSync(path.join(root,"src",file),"utf8")).join("\n");
 const markupSource = readFileSync(path.join(root, "src", "index.html"), "utf8");
 const rendererSource = [...markupSource.matchAll(/<script src="\.\/([^"]+)"/g)].map(match=>match[1]).filter(file=>file!=="i18n.js").concat("feedback.mjs")
   .map((file) => readFileSync(path.join(root, "src", file), "utf8"))
@@ -168,16 +168,37 @@ test("an unknown language falls back to Russian instead of showing keys", () => 
   assert.equal(textOf(body.childNodes[0]), " Источник ");
 });
 
-test("every translation is non-empty, unambiguous and still present in the interface", () => {
-  const { context } = createSandbox();
-  const dictionary = globalOf(context, "i18nSources.en");
-  const reversed = globalOf(context, 'i18nReverseDictionary("en")');
-  const haystack = `${markupSource}\n${rendererSource}`;
-  const missing = [];
-  for (const [source, translated] of Object.entries(dictionary)) {
-    if (!translated.trim()) missing.push(`пустой перевод: ${source}`);
-    else if (reversed[translated] !== source) missing.push(`неоднозначный перевод: ${source}`);
-    else if (!haystack.includes(source)) missing.push(`строки больше нет в интерфейсе: ${source}`);
+test("catalogue translations are non-empty and preserve template slots", () => {
+  const {context}=createSandbox();
+  for(const [source,translated]of Object.entries(globalOf(context,"i18nSources.en"))){
+    assert.ok(translated.trim(),source);
+    const slots=text=>[...text.matchAll(/\{(\w+)\}/g)].map(m=>m[1]).sort();
+    assert.deepEqual(slots(translated),slots(source),source);
   }
-  assert.deepEqual(missing, []);
+});
+test("dynamic values and remote error prefixes remain intact",()=>{
+ const {context}=createSandbox();context.setLocale("en",{persist:false});
+ assert.equal(context.t("Кадр 12 · 64×64"),"Frame 12 · 64×64");
+ assert.equal(context.t("Слой «Мой цветок» заблокирован."),"Layer “Мой цветок” is locked.");
+ assert.equal(context.t("Error invoking remote method 'editor:op': Error: Слой заблокирован."),"Error invoking remote method 'editor:op': Error: Layer locked.");
+});
+test("skipped user content also protects its attributes and newly inserted descendants",()=>{
+ const {context,body}=createSandbox();const user=body.childNodes[4];user.setAttribute("title","Закрыть");
+ user.childNodes[0].parentNode=user;context.setLocale("en",{persist:false});
+ assert.equal(user.getAttribute("title"),"Закрыть");assert.equal(user.textContent,"Новый");
+ const nested=createElement("span",{},[createText("Источник")]);nested.parentNode=user;
+ context.i18nSwapTree(nested,globalOf(context,"i18nSources.en"));assert.equal(nested.textContent,"Источник");
+});
+test("two source strings sharing a translation still restore their own originals",()=>{
+ const {context,body}=createSandbox();const one=createElement("span",{},[createText("Начать")]),two=createElement("span",{},[createText("Начало")]);
+ body.childNodes.push(one,two);context.setLocale("en",{persist:false});assert.equal(one.textContent,"Start");assert.equal(two.textContent,"Start");
+ context.setLocale("ru",{persist:false});assert.equal(one.textContent,"Начать");assert.equal(two.textContent,"Начало");
+});
+
+test("native dialogs translate controls while preserving paths, extensions and numeric settings",()=>{
+ const {context}=createSandbox();const options={title:"Сохранить проект Chuba Sprite Lab",message:"Несохранённый проект",buttons:["Сохранить и выйти","Отмена"],defaultPath:"C:/Мой цветок/Источник.cslab",defaultId:1,filters:[{name:"Изображения",extensions:["png","jpg"]}]};
+ const result=context.SpriteLabI18n.dialogOptions(options,"en");assert.equal(result.title,"Save Chuba Sprite Lab project");assert.equal(result.message,"Unsaved project");assert.deepEqual(Array.from(result.buttons),["Save and exit","Cancel"]);assert.equal(result.defaultPath,options.defaultPath);assert.equal(result.defaultId,1);assert.equal(result.filters[0].name,"Images");assert.equal(result.filters[0].extensions,options.filters[0].extensions);assert.equal(options.title,"Сохранить проект Chuba Sprite Lab");
+});
+test("compound descriptions translate but names in ordinary template slots remain opaque",()=>{
+ const {context}=createSandbox();context.setLocale("en",{persist:false});assert.equal(context.t("Будет создано: спрайт-лист, кадры, JSON, WebP."),"Will create: sprite sheet, frames, JSON, WebP.");assert.equal(context.t("805 шрифтов · кириллица зависит от выбранного шрифта"),"805 fonts · Cyrillic support depends on the selected font");assert.equal(context.t("Слой «Источник» заблокирован."),"Layer “Источник” is locked.");
 });

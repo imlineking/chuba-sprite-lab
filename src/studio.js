@@ -658,7 +658,7 @@ function renderAnimationBar() {
     const hasSource = active ? Boolean(state.source) : Boolean(animation.document?.source);
     select.innerHTML = "";
     const dot = document.createElement("i"); dot.className = hasSource ? "ready" : "empty";
-    const label = document.createElement("span"); label.textContent = animation.name;
+    const label = document.createElement("span"); label.textContent = animation.name; label.setAttribute("data-i18n-skip", "");
     select.append(dot, label);
     select.title = animation.virtual ? "Текущая анимация. Добавьте ещё, чтобы собрать их в один атлас" : active ? "Активная анимация · двойной щелчок — переименовать" : hasSource ? `Переключиться на «${animation.name}»` : `«${animation.name}»: источник ещё не добавлен`;
     select.setAttribute("aria-pressed", String(active));
@@ -855,7 +855,7 @@ function updateAnimationExportNote() {
   const missing = state.animations.filter((animation) => !ready.includes(animation));
   note.textContent = `В один атлас войдут анимации: ${ready.map((animation) => animation.name).join(", ")}. В JSON каждая получит тег.${missing.length ? ` Без источника (пропустим): ${missing.map((animation) => animation.name).join(", ")}.` : ""}`;
   note.classList.remove("hidden");
-  if (!state.busy && state.source && state.source.kind !== "video-batch") $("#exportButtonTitle").textContent = `ЭКСПОРТИРОВАТЬ ${ready.length} АНИМАЦ${ready.length >= 5 ? "ИЙ" : "ИИ"}`;
+  if (!state.busy && state.source && state.source.kind !== "video-batch") $("#exportButtonTitle").textContent = i18nState.locale === "en" ? t("Экспортировать {number} анимаций", {number:ready.length}).toUpperCase() : `ЭКСПОРТИРОВАТЬ ${ready.length} АНИМАЦ${ready.length >= 5 ? "ИЙ" : "ИИ"}`;
 }
 
 /* ------------------------------------------------------ window drag & drop */
@@ -932,7 +932,7 @@ function renderImageSheetControls() {
   const list = $("#imageSheetList"); list.replaceChildren();
   images.slice(0, 60).forEach((image) => {
     const item = document.createElement("li");
-    const name = document.createElement("span"); name.textContent = image.name;
+    const name = document.createElement("span"); name.textContent = image.name; name.setAttribute("data-i18n-skip", "");
     const meta = document.createElement("small"); meta.textContent = `${image.format === "jpeg" ? "JPG" : image.format.toUpperCase()} · ${image.width}×${image.height}${image.hasAlpha ? " · α" : ""}`;
     item.append(name, meta); list.append(item);
   });

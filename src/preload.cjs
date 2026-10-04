@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("spriteLab", {
+  setLocale:(locale)=>ipcRenderer.invoke("interface:locale",locale),
   getUserProfile:()=>ipcRenderer.invoke("user:profile"),
   saveUserProfile:(name)=>ipcRenderer.invoke("user:save-profile",name),
   chooseSource: () => ipcRenderer.invoke("source:any"),

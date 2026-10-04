@@ -12,6 +12,8 @@ test("desktop bubble immediately says Loading and animates 1,2,3,2,1 dots until 
   const document = { body: get("body"), documentElement: get("html"), querySelector: get,
     createElement: node, addEventListener() {} };
   vm.runInNewContext(await fs.readFile(new URL("../src/companion.js", import.meta.url), "utf8"), {
+    // Translation itself is covered by i18n.test and the actual two-window UI check.
+    setLocale() {}, t: text => text,
     document, location: { search: "?surface=bubble" }, URLSearchParams,
     window: { desktopCompanion: { onState: callback => { onState = callback; }, action: async () => true } },
     ResizeObserver: class { observe() {} }, setInterval: callback => { tick = callback; },

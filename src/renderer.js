@@ -433,7 +433,7 @@ function loadCustomExportProfiles() {
   select.querySelectorAll("option[data-custom-profile]").forEach((option) => option.remove());
   Object.entries(customExportProfiles).forEach(([key, profile]) => {
     const option = document.createElement("option");
-    option.value = key; option.dataset.customProfile = "true"; option.textContent = profile.label;
+    option.value = key; option.dataset.customProfile = "true"; option.textContent = profile.label; option.setAttribute("data-i18n-skip", "");
     select.append(option);
   });
 }
@@ -1221,7 +1221,7 @@ function renderBatchQueue() {
   state.batchItems.forEach((item, index) => {
     const row = document.createElement("article"); row.className = `batch-item ${item.status || "pending"}`;
     const led = document.createElement("i");
-    const title = document.createElement("strong"); title.textContent = item.name;
+    const title = document.createElement("strong"); title.textContent = item.name; title.setAttribute("data-i18n-skip", "");
     const detail = document.createElement("small"); detail.textContent = item.detail || ({ pending: "Ожидает", processing: "Обработка…", done: "Готово", failed: "Ошибка" })[item.status] || "Ожидает";
     const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "×"; remove.title = "Убрать из очереди"; remove.disabled = state.busy;
     remove.addEventListener("click", () => {

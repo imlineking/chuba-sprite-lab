@@ -66,6 +66,5 @@ test("the shipped stylesheets are all linked and all linked files exist", () => 
   for (const file of [...linked, ...scripts]) assert.ok(read(path.join("src", file)).length > 0, `${file} не читается`);
   // Theme applies before first paint. The remaining scripts share renderer globals.
   assert.equal(scripts[0], "theme.js");
-  assert.equal(scripts[1], "i18n.js");
-  assert.equal(scripts[2], "renderer.js");
+  assert.deepEqual(scripts.slice(1,5),["i18n-catalog.js","i18n-core.js","i18n.js","renderer.js"]);
 });
