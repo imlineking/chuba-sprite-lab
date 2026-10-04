@@ -115,8 +115,8 @@ function pixelEditorRenderLayers() {
     pick.type = "button";
     pick.className = "pixel-layer-name";
     pick.textContent = layer.name;
-    pick.title = "Сделать слоем для рисования";
-    pick.addEventListener("click", () => pixelEditorSend({ op: "updateLayer", layerId: layer.id, active: true }));
+    pick.title = layer.kind === 'text' ? 'Выбрать и изменить текст' : 'Сделать слоем для рисования';
+    pick.addEventListener("click", async () => { await pixelEditorSend({ op: "updateLayer", layerId: layer.id, active: true }); if (layer.kind === 'text') window.spriteLabTextUI?.edit(layer.id); });
 
     const visible = document.createElement("button");
     visible.type = "button";
@@ -178,7 +178,7 @@ function pixelEditorSend(request) {
       if (answer && answer.sessionId && pixelEditor.sessionId === sessionId) {
         pixelEditorCancelPreview();
         pixelEditorApplyState(answer);
-        if (["frameColor", "frameAdjust", "undo", "redo"].includes(request.op)) {
+        if (["text", "removeLayer", "updateLayer", "frameColor", "frameAdjust", "undo", "redo"].includes(request.op)) {
           pixelEditor.palette = pixelEditorPaletteFromComposite(pixelEditor.composite);
           pixelEditorRenderPalette();
         }
@@ -214,6 +214,7 @@ function pixelEditorApplyState(answer) {
   $("#pixelEditorSize").textContent = `${answer.width} × ${answer.height}`;
   pixelEditorRenderCanvas();
   pixelEditorRenderLayers();
+  window.spriteLabTextUI?.sync();
   pixelEditorUpdateCursorInfo();
   if (answer.blocked) pixelEditorStatus(answer.blocked, "warn");
   else if (answer.label) pixelEditorStatus(answer.label, "done");
@@ -231,9 +232,10 @@ function pixelEditorFitZoom() {
 
 function pixelEditorSetTool(tool) {
   pixelEditor.tool = tool;
-  const tools = { select: "#pixelToolSelect", wand: "#pixelToolWand", lasso: "#pixelToolLasso", pencil: "#pixelToolPencil", eraser: "#pixelToolEraser", fill: "#pixelToolFill", picker: "#pixelToolPicker" };
+  const tools = { text: '#pixelToolText', select: "#pixelToolSelect", wand: "#pixelToolWand", lasso: "#pixelToolLasso", pencil: "#pixelToolPencil", eraser: "#pixelToolEraser", fill: "#pixelToolFill", picker: "#pixelToolPicker" };
   for (const [name, selector] of Object.entries(tools)) $(selector).classList.toggle("active", name === tool);
   const hints = { select: "Выделите прямоугольник. Перенос и удаление работают с пикселями активного слоя и отменяются Ctrl+Z.", wand: "Палочка: связанная область похожего цвета; допуск — «Разброс». Можно отделить часть слипшегося объекта.", lasso: "Обведите часть объекта, затем перенесите или удалите выделенные пиксели.",
+    text: 'Текст: нажмите на кадр, чтобы задать положение. Надпись меняется в панели «Текстовый слой». Перемещение и правка отменяются Ctrl+Z.',
     pencil: "Карандаш: рисует основным цветом. Удерживайте кнопку мыши, чтобы вести линию.",
     eraser: "Ластик: стирает пиксели выбранного слоя до прозрачности.",
     fill: "Заливка: заливает связанную область под курсором. «Разброс» задаёт, какие цвета считать одинаковыми, а «Стереть кайму» убирает почти прозрачный ореол вокруг спрайта.",
@@ -247,7 +249,8 @@ async function pixelEditorOpen() {
   const frameIndex = state.selectedFrameIndex;
   const sourcePath = state.frameOverrides[frameIndex] || state.result.allSourceFramePaths[frameIndex];
   pixelEditorStatus("Открываю кадр…", "busy");
-  const answer = await window.spriteLab.openPixelEditor({ path: sourcePath, frameIndex, name: "frame" });
+  const record = state.frameDocuments[frameIndex];
+  const answer = await window.spriteLab.openPixelEditor({ path: sourcePath, frameIndex, name: "frame", documentPath: record?.imagePath === sourcePath ? record.path : undefined });
   pixelEditorCancelPreview();
   pixelEditorApplyState(answer);
   pixelEditorMarkApplied();
@@ -260,6 +263,7 @@ async function pixelEditorOpen() {
   pixelEditorSetColor(pixelEditor.color);
   pixelEditorStatus(t(state.intent === "images" ? "Правки применяются к проекту. PNG сохраняется в главном окне." : "Примените правки к проекту, затем пересоберите лист перед экспортом."), "ready");
   setModalOpen($("#pixelEditorModal"), true, $("#pixelToolPencil"), $("#openPixelEditor"));
+  window.spriteLabTextUI?.reset();
   if (state.intent === "images") $("#pixelAdjustDetails").open = true;
   // Measure after the dialog is laid out; hidden elements have no viewport.
   await new Promise(resolve => requestAnimationFrame(resolve));
@@ -274,6 +278,7 @@ function pixelEditorMarkApplied() {
 function pixelEditorHasPendingEdits() {
   if (!pixelEditor.sessionId || !pixelEditor.savedPixels) return false;
   if (JSON.stringify(pixelEditor.layers) !== pixelEditor.savedLayers) return true;
+  if (window.spriteLabTextUI?.hasDraft()) return true;
   const pixels = pixelEditor.composite, preview = pixelEditor.preview;
   return pixels.some((n, i) => n !== pixelEditor.savedPixels[i] || (preview && preview[i] !== n));
 }
@@ -318,8 +323,8 @@ async function pixelEditorSave() {
   pixelEditorApplying = true;
   $("#pixelSaveFrame").disabled = true;
   try {
-    if (pixelEditor.preview) {
-      const answer = pixelColorDraft ? await pixelColorCommit() : pixelAdjustDraft ? await pixelAdjustmentCommit() : null;
+    if (pixelEditor.preview || window.spriteLabTextUI?.hasDraft()) {
+      const answer = window.spriteLabTextUI?.hasDraft() ? await window.spriteLabTextUI.commit() : pixelColorDraft ? await pixelColorCommit() : pixelAdjustDraft ? await pixelAdjustmentCommit() : null;
       if (!answer || answer.blocked) return false;
     }
     const frameIndex = pixelEditor.frameIndex;
@@ -327,6 +332,7 @@ async function pixelEditorSave() {
     await pixelEditorFlush();
     const saved = await window.spriteLab.savePixelEditor({ sessionId: pixelEditor.sessionId, frameIndex, name: pixelEditor.name });
     state.frameOverrides[frameIndex] = saved.path;
+    state.frameDocuments[frameIndex] = { path: saved.documentPath, imagePath: saved.path };
     pixelEditorMarkApplied();
     if (state.intent === "images") {
       state.resultDirty = false;
@@ -365,6 +371,7 @@ function pixelEditorPaintTo(point) {
 
 function pixelEditorPointerDown(event) {
   if (event.button !== 0 || !pixelEditor.sessionId) return;
+  if (pixelEditor.tool === 'text') { const point = pixelEditorPointFromEvent(event); if (point.inside) window.spriteLabTextUI?.position(point); return; }
   if (pixelEditor.preview) {
     pixelEditorStatus("Примените или отмените предпросмотр перед рисованием.", "warn");
     return;
@@ -506,10 +513,10 @@ $("#pixelCanvasWrap").addEventListener("wheel", pixelEditorWheel, { passive: fal
 
 document.addEventListener("keydown", (event) => {
   if (!pixelEditorIsOpen()) return;
-  const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement;
+  const typing = event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLTextAreaElement;
   const key = event.code?.startsWith("Key") ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
   if ((event.ctrlKey || event.metaKey) && key === "s") { event.preventDefault(); void pixelEditorSave().catch((error) => pixelEditorStatus(error?.message || "Не удалось сохранить кадр", "error")); return; }
-  if ((event.ctrlKey || event.metaKey) && key === "z") { event.preventDefault(); if (pixelEditor.preview) pixelEditorCancelPreview(); else pixelEditorSend({ op: event.shiftKey ? "redo" : "undo" }); return; }
+  if ((event.ctrlKey || event.metaKey) && key === "z") { if (typing && event.target instanceof HTMLTextAreaElement) return; event.preventDefault(); if (pixelEditor.preview) pixelEditorCancelPreview(); else pixelEditorSend({ op: event.shiftKey ? "redo" : "undo" }); return; }
   if ((event.ctrlKey || event.metaKey) && key === "y") { event.preventDefault(); pixelEditorSend({ op: "redo" }); return; }
   if (key === "escape" && pixelEditorCloseDecision) { event.preventDefault(); pixelEditorAnswerClose("keep"); return; }
   if (typing || event.ctrlKey || event.metaKey) return;
@@ -521,6 +528,7 @@ document.addEventListener("keydown", (event) => {
   else if (key === "m") pixelEditorSetTool("select");
   else if (key === "w") pixelEditorSetTool("wand");
   else if (key === "l") pixelEditorSetTool("lasso");
+  else if (key === 't') window.spriteLabTextUI?.open();
   else if (key === "delete" && pixelEditor.selection) pixelEditorSend({ op: "movePixels", erase: true });
   else if (key === "[" || key === "]") {
     $("#pixelBrushSize").value = String(Math.max(1, Math.min(16, pixelEditor.brush + (key === "]" ? 1 : -1))));

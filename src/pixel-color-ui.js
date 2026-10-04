@@ -10,6 +10,7 @@ function pixelEditorCancelPreview() {
   const hadPreview = Boolean(pixelEditor.preview);
   cancelAnimationFrame(pixelColorPreviewTask);
   pixelColorDraft=null;pixelAdjustDraft=null;pixelEditor.preview=null;
+  window.spriteLabTextUI?.cancel();
   $('#pixelColorForm').classList.add('hidden');$('#pixelAdjustDetails').open=false;
   pixelEditorRenderCanvas();
   if (pixelEditor.sessionId && hadPreview) pixelEditorStatus(t('Предпросмотр отменён · применённые изменения остаются'), 'ready');
@@ -139,6 +140,7 @@ function pixelAdjustmentPreview() {
 $('#pixelAdjustDetails').addEventListener('toggle',()=>{
   const details=$('#pixelAdjustDetails');
   if(!details.open){if(pixelAdjustDraft)pixelEditorCancelPreview();return;}
+  window.spriteLabTextUI?.cancel();
   cancelAnimationFrame(pixelColorPreviewTask);pixelColorDraft=null;$('#pixelColorForm').classList.add('hidden');pixelAdjustDraft={...pixelAdjustDefaults,tintHsv:[0,0,1]};
   for(const key of Object.keys(pixelAdjustLabels)){$('#pixelAdjust-'+key).value='0';$('#pixelAdjustValue-'+key).textContent='0';}
   $('#pixelAdjustTint').value='#ffffff';$('#pixelAdjustTint').setCustomValidity('');

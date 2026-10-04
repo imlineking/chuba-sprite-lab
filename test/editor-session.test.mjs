@@ -99,7 +99,9 @@ test("a locked layer refuses to draw and says why", () => {
   updateLayer(session.sessionId, { layerId: session.layers[0].id, locked: true });
   const answer = paint(session.sessionId, { from: [0, 0], to: [0, 0], color: [255, 0, 0, 255] });
   assert.match(answer.blocked, /заблокирован/);
-  assert.equal(answer.canUndo, false);
+  assert.equal(answer.canUndo, true); // Changing the layer lock is now undoable, blocked drawing adds nothing.
+  assert.equal(stepHistory(session.sessionId).layers[0].locked, false);
+  assert.equal(readState(session.sessionId).canUndo, false);
   assert.equal(answer.composite[0], 0);
 });
 

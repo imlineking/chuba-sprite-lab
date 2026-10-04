@@ -30,6 +30,7 @@ import { planWithCopilot, comparePlanners, plannerStatus } from "./copilot-plann
 import { readProfile } from "./build-profile.mjs";
 import { formatFeedbackDraft } from "./feedback.mjs";
 import * as editorSession from "./editor-session.mjs";
+import { installedFonts } from './windows-fonts.mjs';
 import * as autoPilot from "./auto-pilot.mjs";
 import { assertDownloadUrl, canDownload, modelById, modelFiles, rejectedModels, validateModelFile, verificationOf } from "./ai-models.mjs";
 
@@ -547,18 +548,23 @@ ipcMain.handle("editor:open", async (_event, request = {}) => {
   const filePath = path.resolve(String(request.path || ""));
   if (!filePath || !await pathExists(filePath)) throw new Error("Кадр для редактирования не найден.");
   const { data, info } = await sharp(filePath).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const editableDocument = request.documentPath ? JSON.parse(await fs.readFile(path.resolve(String(request.documentPath)), 'utf8')) : null;
   return editorSession.openSession({
     width: info.width,
     height: info.height,
     name: request.name || path.basename(filePath, path.extname(filePath)),
     frameIndex: request.frameIndex,
     pixels: data,
+    editableDocument,
   });
 });
 
 // One entry point for the editing commands: the interface sends the operation name, and every answer
 // has the same state shape so the window has a single redraw path.
 const editorOperations = {
+  text: request => editorSession.setTextLayer(request.sessionId, request),
+  textPreview: request => editorSession.previewTextLayer(request.sessionId, request),
+  rasterizeText: request => editorSession.rasterizeTextLayer(request.sessionId),
   frameColor: (request) => editorSession.changeFrameColor(request.sessionId, request),
   frameAdjust: (request) => editorSession.adjustFrame(request.sessionId, request),
   paint: (request) => editorSession.paint(request.sessionId, request),
@@ -582,6 +588,7 @@ ipcMain.handle("editor:op", async (_event, request = {}) => {
   if (!operation) throw new Error(`Неизвестная операция редактора: ${request.op || "—"}`);
   return operation(request);
 });
+ipcMain.handle('fonts:list', () => installedFonts());
 
 /* ------------------------------------------------------------------- models and auto mode */
 
@@ -814,7 +821,10 @@ ipcMain.handle("editor:save", async (_event, request = {}) => {  const frame = e
   const png = await sharp(Buffer.from(frame.composite.buffer, frame.composite.byteOffset, frame.composite.byteLength), {
     raw: { width: frame.width, height: frame.height, channels: 4 },
   }).png({ compressionLevel: 9 }).toBuffer();
-  return { ...await writeFramePng({ frameIndex: frame.frameIndex, name: request.name || frame.name, png }), width: frame.width, height: frame.height };
+  const saved = await writeFramePng({ frameIndex: frame.frameIndex, name: request.name || frame.name, png });
+  const documentPath = saved.path + '.csframe';
+  await fs.writeFile(documentPath, JSON.stringify(editorSession.exportEditableDocument(request.sessionId)), 'utf8');
+  return { ...saved, documentPath, width: frame.width, height: frame.height };
 });
 
 ipcMain.handle("output:folder", async () => {

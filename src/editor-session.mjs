@@ -9,6 +9,9 @@
 // Every mutating call answers with the same state shape, so the interface can redraw from one place.
 
 import { randomUUID } from "node:crypto";
+import './text-layer.js';
+import { encodeEditorDocument, decodeEditorDocument } from './editor-document.mjs';
+const textSettings = globalThis.SpriteLabText.normalize;
 import {
   addLayer,
   compositeFrame,
@@ -53,6 +56,8 @@ function describeLayers(document) {
     locked: layer.locked,
     opacity: layer.opacity,
     blendMode: layer.blendMode,
+    kind: layer.kind,
+    text: layer.kind === 'text' ? structuredClone(layer.text) : undefined,
   }));
 }
 
@@ -117,6 +122,7 @@ function applyCommand(session, label, command, constrain = true) {
   const layer = activeLayer(session);
   if (!layer) return sessionState(session);
   if (layer.locked) return sessionState(session, { blocked: `Слой «${layer.name}» заблокирован.` });
+  if (layer.kind === 'text') return sessionState(session, { blocked: 'Это текстовый слой. Измените надпись или нажмите «В пиксели» перед рисованием.' });
   const before = snapshotCel(session.document, layer.id, session.frameIndex);
   const selectionBefore = session.selection ? Uint8Array.from(session.selection) : null;
   const touched = command(layer);
@@ -133,14 +139,15 @@ function applyCommand(session, label, command, constrain = true) {
   return sessionState(session, { label });
 }
 
-export function openSession({ width, height, name = "Кадр", frameIndex = 0, pixels = null } = {}) {
+export function openSession({ width, height, name = "Кадр", frameIndex = 0, pixels = null, editableDocument = null } = {}) {
   // The document uses the source frame number as its own frame index, so a later version can hold
   // several frames of one character without moving any pixels around.
   const frameNumber = Math.max(0, Math.round(Number(frameIndex) || 0));
-  const document = createDocument({ width, height, frames: frameNumber + 1 });
+  const document = editableDocument ? decodeEditorDocument(editableDocument, { width, height, frameIndex: frameNumber }) : createDocument({ width, height, frames: frameNumber + 1 });
   const base = document.layers[0];
-  base.name = "Кадр";
-  if (pixels) {
+  if (!editableDocument) base.name = "Кадр";
+  if (editableDocument && pixels && !Buffer.from(compositeFrame(document, frameNumber)).equals(Buffer.from(pixels))) throw new Error('Пиксели файла изменились после сохранения слоёв. Откройте изменённый PNG как новый кадр.');
+  if (pixels && !editableDocument) {
     const cel = ensureCel(document, base.id, frameNumber);
     const source = pixels instanceof Uint8ClampedArray ? pixels : new Uint8ClampedArray(pixels);
     cel.set(source.subarray(0, Math.min(cel.length, source.length)));
@@ -151,7 +158,7 @@ export function openSession({ width, height, name = "Кадр", frameIndex = 0, 
     frameIndex: frameNumber,
     document,
     history: createHistory({ limit: editorHistoryLimit }),
-    activeLayerId: base.id,
+    activeLayerId: document.layers.at(-1).id,
     createdAt: Date.now(),
   };
   sessions.set(session.id, session);
@@ -256,18 +263,24 @@ export function stepHistory(sessionId, direction = "undo") {
 
 export function addEmptyLayer(sessionId, options = {}) {
   const session = requireSession(sessionId);
+  const previous = session.activeLayerId;
   const layer = addLayer(session.document, options.name || null);
   session.activeLayerId = layer.id;
+  pushPatch(session.history, session.document, { label: 'Добавлен слой', parts: [], addedLayer: { ...layer }, layerIndex: session.document.layers.length - 1, activeLayerBefore: previous, activeLayerAfter: layer.id });
   return sessionState(session, { label: `Слой «${layer.name}» добавлен` });
 }
 
 export function deleteLayer(sessionId, options = {}) {
   const session = requireSession(sessionId);
   const layerId = String(options.layerId || session.activeLayerId);
+  const layer = findLayer(session.document, layerId), layerIndex = session.document.layers.indexOf(layer);
+  if (!layer || session.document.layers.length <= 1) return sessionState(session, { blocked: 'Нельзя удалить последний слой.' });
+  const before = snapshotCel(session.document, layerId, session.frameIndex), previous = session.activeLayerId;
   if (!removeLayer(session.document, layerId)) {
     return sessionState(session, { blocked: "Нельзя удалить последний слой." });
   }
   if (session.activeLayerId === layerId) session.activeLayerId = session.document.layers.at(-1).id;
+  pushPatch(session.history, session.document, { label: 'Слой удалён', removedLayer: structuredClone(layer), layerIndex, parts: [{ layerId, frameIndex: session.frameIndex, rect: { x: 0, y: 0, width: session.document.width, height: session.document.height }, before, after: new Uint8ClampedArray(before.length) }], activeLayerBefore: previous, activeLayerAfter: session.activeLayerId });
   return sessionState(session, { label: "Слой удалён" });
 }
 
@@ -276,6 +289,7 @@ export function updateLayer(sessionId, options = {}) {
   const layerId = String(options.layerId || session.activeLayerId);
   const layer = findLayer(session.document, layerId);
   if (!layer) return sessionState(session, { blocked: "Слой не найден." });
+  const before = structuredClone(layer);
   if (options.active) session.activeLayerId = layerId;
   if (typeof options.visible === "boolean") layer.visible = options.visible;
   if (typeof options.locked === "boolean") layer.locked = options.locked;
@@ -285,6 +299,7 @@ export function updateLayer(sessionId, options = {}) {
   }
   if (typeof options.blendMode === "string") layer.blendMode = options.blendMode;
   if (typeof options.name === "string" && options.name.trim()) layer.name = options.name.trim().slice(0, 40);
+  if (JSON.stringify(before) !== JSON.stringify(layer)) pushPatch(session.history, session.document, { label: 'Свойства слоя', parts: [], layerUpdates: [{ id: layer.id, before, after: structuredClone(layer) }] });
   return sessionState(session);
 }
 
@@ -312,6 +327,55 @@ export function exportFrame(sessionId) {
   };
 }
 
+export function exportEditableDocument(sessionId) {
+  const session = requireSession(sessionId);
+  return encodeEditorDocument(session.document, session.frameIndex);
+}
+
+export function setTextLayer(sessionId, options = {}) {
+  const session = requireSession(sessionId), document = session.document;
+  const existing = options.layerId ? findLayer(document, String(options.layerId)) : null;
+  if (options.layerId && (!existing || existing.kind !== 'text')) throw new Error('Текстовый слой не найден.');
+  if (existing?.locked) return sessionState(session, { blocked: 'Текстовый слой заблокирован.' });
+  const pixels = new Uint8ClampedArray(options.pixels || []);
+  if (pixels.length !== document.width * document.height * 4) throw new Error('Неверный размер текстового слоя.');
+  const settings = textSettings(options.text), activeBefore = session.activeLayerId;
+  const layer = existing || addLayer(document, 'Текст');
+  const beforeLayer = structuredClone(layer), before = snapshotCel(document, layer.id, session.frameIndex);
+  layer.kind = 'text'; layer.text = settings; layer.name = `Т: ${settings.text.split('\n')[0].slice(0, 32) || 'Текст'}`;
+  ensureCel(document, layer.id, session.frameIndex).set(pixels);
+  const part = patchFromSnapshot(document, layer.id, session.frameIndex, before);
+  const patch = { label: existing ? 'Текст изменён' : 'Добавлен текстовый слой', parts: part ? [part] : [], activeLayerBefore: activeBefore, activeLayerAfter: layer.id };
+  if (existing) patch.layerUpdates = [{ id: layer.id, before: beforeLayer, after: structuredClone(layer) }];
+  else { patch.addedLayer = structuredClone(layer); patch.layerIndex = document.layers.length - 1; }
+  if (part || !existing || JSON.stringify(beforeLayer) !== JSON.stringify(layer)) pushPatch(session.history, document, patch);
+  session.activeLayerId = layer.id;
+  return sessionState(session, { label: patch.label });
+}
+
+export function rasterizeTextLayer(sessionId) {
+  const session = requireSession(sessionId), layer = activeLayer(session);
+  if (layer.kind !== 'text') return sessionState(session);
+  if (layer.locked) return sessionState(session, { blocked: 'Текстовый слой заблокирован.' });
+  const before = structuredClone(layer);
+  layer.kind = 'normal'; layer.text = undefined;
+  pushPatch(session.history, session.document, { label: 'Текст переведён в пиксели', parts: [], layerUpdates: [{ id: layer.id, before, after: structuredClone(layer) }] });
+  return sessionState(session, { label: 'Текст переведён в пиксели · отмена возвращает редактируемый текст' });
+}
+
+export function previewTextLayer(sessionId, options = {}) {
+  const session = requireSession(sessionId), document = session.document;
+  const existing = options.layerId ? findLayer(document, options.layerId) : null;
+  if (options.layerId && existing?.kind !== 'text') throw new Error('Текстовый слой не найден.');
+  const pixels = new Uint8ClampedArray(options.pixels || []);
+  if (pixels.length !== document.width * document.height * 4) throw new Error('Неверный размер текстового слоя.');
+  const layer = existing || addLayer(document, 'Просмотр текста');
+  const before = snapshotCel(document, layer.id, session.frameIndex);
+  ensureCel(document, layer.id, session.frameIndex).set(pixels);
+  try { return compositeFrame(document, session.frameIndex); }
+  finally { if (existing) ensureCel(document, layer.id, session.frameIndex).set(before); else removeLayer(document, layer.id); }
+}
+
 export function closeSession(sessionId) {
   return sessions.delete(String(sessionId || ""));
 }
@@ -331,6 +395,7 @@ export function selectPixels(sessionId, options = {}) {
 }
 export function transformSelection(sessionId, options = {}) {
   const session = requireSession(sessionId);
+  if (activeLayer(session)?.kind === 'text') return sessionState(session, { blocked: 'Перемещайте надпись инструментом T. Для правки пикселей нажмите «В пиксели».' });
   if (!session.selection?.some(Boolean)) return sessionState(session, { blocked: "Сначала выделите пиксели." });
   if (options.newLayer) {
     const source = activeLayer(session);

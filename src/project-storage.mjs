@@ -9,6 +9,9 @@ export function assertProject(project) {
 }
 export function mapProjectPaths(project, map) {
   const result = structuredClone(project);
+  // A caller may share objects between the active document and animation snapshots.
+  // Break those aliases before mapping: each path must be rewritten exactly once.
+  for (const animation of result.animations || []) if (animation.document) animation.document = structuredClone(animation.document);
   const documents = [result, ...(result.animations || []).map(item => item.document).filter(Boolean)];
   for (const doc of documents) {
     if (doc.source) {
@@ -16,6 +19,7 @@ export function mapProjectPaths(project, map) {
       if (doc.source.sheetPath) doc.source.sheetPath = map(doc.source.sheetPath);
     }
     doc.frameOverrides = Object.fromEntries(Object.entries(doc.frameOverrides || {}).map(([index, file]) => [index, map(file)]));
+    if (doc.frameDocuments) doc.frameDocuments = Object.fromEntries(Object.entries(doc.frameDocuments).map(([index, item]) => [index, { path: map(item.path), imagePath: map(item.imagePath) }]));
     for (const record of Object.values(doc.preparedCleanup || {})) if (record.imagePath) record.imagePath = map(record.imagePath);
     doc.attachments = (doc.attachments || []).map(item => {
       if (!item.path) return item;

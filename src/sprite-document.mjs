@@ -340,6 +340,14 @@ function applyHistoryPatch(document, patch, direction) {
       document.layers.splice(Math.min(patch.layerIndex, document.layers.length), 0, { ...patch.addedLayer });
     } else if (direction === "before") removeLayer(document, patch.addedLayer.id);
   }
+  if (patch.removedLayer) {
+    if (direction === 'before' && !findLayer(document, patch.removedLayer.id)) document.layers.splice(Math.min(patch.layerIndex, document.layers.length), 0, structuredClone(patch.removedLayer));
+    else if (direction === 'after') removeLayer(document, patch.removedLayer.id);
+  }
+  for (const update of patch.layerUpdates || []) {
+    const layer = findLayer(document, update.id);
+    if (layer) Object.assign(layer, structuredClone(update[direction]));
+  }
   for (const part of patch.parts) {
     if (findLayer(document, part.layerId)) writeBlock(document, part.layerId, part.frameIndex, part.rect, part[direction]);
   }

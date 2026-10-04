@@ -722,7 +722,7 @@
             <div id="filmstripNote" class="filmstrip-note hidden"></div>
             <button id="imageAutoCleanup" class="filmstrip-action image-only" type="button" title="Найдёт фон, уберёт белые остатки и перекрасит светлую кромку; покажет до и после для всех файлов">Очистить фон и край</button>
             <button id="imageHealBatch" class="filmstrip-action image-only" type="button" title="Сначала восстановит повреждённые детали и удалит запечённую шахматную сетку, затем очистит фон">Восстановить · Подорожник</button>
-            <button id="openPixelEditor" class="filmstrip-action edit" type="button" title="Рисовать и стирать от 1 пикселя, менять яркость, контраст и тепло">Рисовать и стереть · пиксели</button>
+            <button id="openPixelEditor" class="filmstrip-action edit" type="button" title="Кисти от 1 пикселя, текстовые слои, яркость, контраст и тепло">Пиксели · текст · цвет</button>
             <button id="regionEditImage" class="filmstrip-action" type="button" title="Выделите прямоугольник или лассо, выберите цвет пипеткой и удалите только его внутри выделения">Выделение и фон</button>
             <button id="saveImagePng" class="filmstrip-action image-only" type="button">Сохранить PNG</button>
             <button id="saveAllImagePng" class="filmstrip-action image-only" type="button">Сохранить все PNG</button>
@@ -926,7 +926,7 @@
     <div id="pixelEditorModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="pixelEditorTitle">
       <article class="pixel-editor-card">
         <header class="pixel-editor-head">
-          <h2 id="pixelEditorTitle">Пиксельный редактор</h2>
+          <h2 id="pixelEditorTitle">Пиксели и текст</h2>
           <span id="pixelEditorBadge" class="pixel-editor-badge">КАДР 1</span>
           <span id="pixelEditorSize" class="pixel-editor-size">—</span>
           <button id="closePixelEditor" class="about-close" type="button" aria-label="Закрыть">×</button>
@@ -934,6 +934,7 @@
 
         <div class="pixel-editor-stage">
           <div class="pixel-toolbar" role="toolbar" aria-label="Инструменты пиксельного редактора">
+            <button id="pixelToolText" class="pixel-tool" type="button" title="Текстовый слой (T)" aria-label="Текстовый слой">T</button>
             <button id="pixelToolPencil" class="pixel-tool" type="button" title="Карандаш (P)">✎</button>
             <button id="pixelToolEraser" class="pixel-tool" type="button" title="Ластик (E)">⌫</button>
             <button id="pixelToolFill" class="pixel-tool" type="button" title="Заливка (G)">▨</button>
@@ -972,6 +973,24 @@
         </div>
 
         <aside class="pixel-editor-side">
+          <section class="pixel-panel pixel-text-panel">
+            <header>Текстовый слой <button id="pixelAddText" class="pixel-tool-button" type="button">＋ Текст</button></header>
+            <details id="pixelTextDetails"><summary>Надпись и оформление</summary>
+              <p class="pixel-editor-hint">Отдельный слой текущего кадра. Предпросмотр → применить. Слои сохраняются в проекте, PNG содержит готовую надпись.</p>
+              <label>Текст <textarea id="pixelTextContent" rows="3" maxlength="2000" spellcheck="false">Текст</textarea></label>
+              <label>Шрифт Windows <select id="pixelTextFont" data-i18n-skip><option>Arial</option></select></label>
+              <button id="pixelTextRefresh" class="pixel-tool-button" type="button" title="Обновить установленные шрифты без перезапуска">Обновить шрифты</button>
+              <small id="pixelTextFontStatus" role="status"></small>
+              <div class="pixel-text-pair"><label>Размер, px <input id="pixelTextSize" type="number" min="1" max="512" value="24"></label><label>Выравнивание <select id="pixelTextAlign"><option value="left">Слева</option><option value="center">По центру</option><option value="right">Справа</option></select></label></div>
+              <div class="pixel-text-pair"><label><input id="pixelTextBold" type="checkbox"> Жирный</label><label><input id="pixelTextItalic" type="checkbox"> Курсив</label></div>
+              <div class="pixel-text-pair"><label>Цвет <input id="pixelTextColor" type="color" value="#ffffff"></label><label>Обводка <input id="pixelTextStrokeColor" type="color" value="#000000"></label></div>
+              <div class="pixel-text-pair"><label>Обводка, px <input id="pixelTextStroke" type="number" min="0" max="32" value="0"></label><label>Буквы, px <input id="pixelTextSpacing" type="number" min="-32" max="128" value="0"></label></div>
+              <label>Межстрочный отступ, px <input id="pixelTextLineGap" type="number" min="-256" max="512" value="4"></label>
+              <div class="pixel-text-pair"><label>X, px <input id="pixelTextX" type="number" min="-32768" max="32768" value="4"></label><label>Y, px <input id="pixelTextY" type="number" min="-32768" max="32768" value="4"></label></div>
+              <p class="pixel-editor-hint">X и Y — начало надписи. Инструмент T: нажмите на кадр для переноса. Всё за краем кадра обрезается.</p>
+              <div class="pixel-color-actions"><button id="pixelTextApply" class="button primary" type="button" disabled>Применить текст</button><button id="pixelTextCancel" class="button secondary" type="button">Отмена просмотра</button><button id="pixelTextRasterize" class="button secondary" type="button" disabled title="После преобразования надпись правится кистью; Ctrl+Z возвращает текст">В пиксели</button></div>
+            </details>
+          </section>
           <section id="pixelColorForm" class="pixel-panel pixel-color-form hidden" aria-label="Замена цвета кадра">
             <strong id="pixelColorSource"></strong>
             <div id="pixelColorField" class="pixel-color-field" role="slider" tabindex="0" aria-label="Насыщенность и яркость цвета"><span id="pixelColorPoint"></span></div>
@@ -1220,6 +1239,8 @@
     <script src="./pixel-colors.js"></script>
     <script src="./sprite-editor.js"></script>
     <script src="./pixel-color-ui.js"></script>
+    <script src="./text-layer.js"></script>
+    <script src="./pixel-text-ui.js"></script>
     <script src="./auto-pilot.js"></script>
     <script src="./mask-region-ui.js"></script>
     <div id="imageBatchModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="imageBatchTitle">

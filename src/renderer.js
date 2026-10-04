@@ -10,7 +10,7 @@ const state = {
   maskEditorSnapshot: [], maskEditorImage: null, maskEditorPixels: null,
   attachments: [], attachmentAsset: null, attachmentSourceImage: null, attachmentAssetImage: null,
   attachmentPoints: [], attachmentPointCount: 1, attachmentEditingId: null, attachmentReferenceFrame: 0,
-  frameOverrides: {}, preparedCleanup: {}, externalEdit: null, externalEditTimer: null,
+  frameOverrides: {}, frameDocuments: {}, preparedCleanup: {}, externalEdit: null, externalEditTimer: null,
   solidKeyMode: "black", projectPath: null, history: [], historyIndex: -1, historyTimer: null, historyApplying: false,
   warnings: [], warningIndex: 0, warningRefs: new Map(), batchItems: [], pendingSession: null, preferredEditor: "photopea",
   viewportPanX: 0, viewportPanY: 0, spaceHand: false, handToolLocked: false, viewportPanning: false, panPointerId: null,
@@ -112,6 +112,7 @@ function buildAnimationDocument() {
     maskEdits: state.maskEdits,
     attachments: state.attachments,
     frameOverrides: state.frameOverrides,
+    frameDocuments: state.frameDocuments,
     preparedCleanup: state.preparedCleanup,
     frameMetadata: structuredClone(state.frameMetadata), anchorReference: state.anchorReference,
     frameTransforms: state.frameTransforms,
@@ -188,6 +189,7 @@ async function applyProjectDocument(project, source, projectPath = null, { keepA
   state.maskEdits = structuredClone(project.maskEdits || []);
   state.attachments = structuredClone(project.attachments || []);
   state.frameOverrides = { ...(project.frameOverrides || {}) };
+  state.frameDocuments = structuredClone(project.frameDocuments || {});
   state.preparedCleanup = structuredClone(project.preparedCleanup || {});
   state.frameMetadata = structuredClone(project.frameMetadata || project.source?.frameMetadata || {}); state.anchorReference = project.anchorReference || 0;
   state.frameTransforms = structuredClone(project.frameTransforms || {});
@@ -217,6 +219,7 @@ function captureHistoryState(label = "Изменение") {
     maskEdits: structuredClone(state.maskEdits),
     attachments: structuredClone(state.attachments),
     frameOverrides: { ...state.frameOverrides },
+    frameDocuments: structuredClone(state.frameDocuments),
     preparedCleanup: structuredClone(state.preparedCleanup),
     frameMetadata: structuredClone(state.frameMetadata), anchorReference: state.anchorReference,
     frameTransforms: structuredClone(state.frameTransforms),
@@ -270,6 +273,7 @@ function applyHistorySnapshot(snapshot) {
   state.maskEdits = structuredClone(snapshot.maskEdits || []);
   state.attachments = structuredClone(snapshot.attachments || []);
   state.frameOverrides = { ...(snapshot.frameOverrides || {}) };
+  state.frameDocuments = structuredClone(snapshot.frameDocuments || {});
   state.preparedCleanup = structuredClone(snapshot.preparedCleanup || {});
   state.frameMetadata = structuredClone(snapshot.frameMetadata || {}); state.anchorReference = snapshot.anchorReference || 0;
   state.frameTransforms = structuredClone(snapshot.frameTransforms || {});
@@ -316,6 +320,7 @@ async function saveProjectFile(saveAs = false) {
     state.projectPath = result.projectPath;
     rememberRecentProject(result.projectPath);
     state.frameOverrides = { ...(result.project.frameOverrides || {}) };
+    state.frameDocuments = structuredClone(result.project.frameDocuments || {});
     state.preparedCleanup = structuredClone(result.project.preparedCleanup || {});
     state.attachments = structuredClone(result.project.attachments || state.attachments);
     renderAttachmentList();
@@ -739,7 +744,7 @@ function setSource(source) {
   state.excludedFrames.clear();
   state.maskEdits = [];
   state.attachments = [];
-  state.frameOverrides = {}; state.preparedCleanup = {};
+  state.frameOverrides = {}; state.frameDocuments = {}; state.preparedCleanup = {};
   state.frameTransforms = {}; state.frameMetadata = structuredClone(source?.frameMetadata || {}); state.anchorReference = 0;
   if (source?.frameMetadata) { $("#autoSize").checked = true; $("#maxFrames").value = String(Math.min(1000, source.paths.length)); }
   state.timeline = null;

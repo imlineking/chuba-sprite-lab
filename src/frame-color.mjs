@@ -17,6 +17,7 @@ function outputPatch(document, frameIndex, pixels, output, label) {
   }
   if(!offsets.length)return null;
   const visible=document.layers.filter(layer=>layer.visible&&layer.opacity>0&&document.cels.has(celKey(layer.id,frameIndex)));
+  for (const layer of visible) if (layer.kind === 'text' && offsets.some(i => document.cels.get(celKey(layer.id,frameIndex))[i+3])) throw new Error('Правка всего кадра затрагивает текст. Измените цвет в текстовом слое или выберите его и нажмите «В пиксели» перед общей цветокоррекцией.');
   for(const layer of visible)if(layer.locked && offsets.some(i=>document.cels.get(celKey(layer.id,frameIndex))[i+3]))throw new Error(`Слой «${layer.name}» заблокирован. Разблокируйте его для правки всего кадра.`);
   const rect={x:minX,y:minY,width:maxX-minX+1,height:maxY-minY+1};
   const parts=[];
