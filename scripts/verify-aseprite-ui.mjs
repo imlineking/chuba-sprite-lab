@@ -67,23 +67,18 @@ try {
 
 
 
-  const codecs=await import('../src/animated-images.mjs'),processor=await import('../src/processor.mjs'),describe=await import('../src/source-describe.mjs');
-  const pixels=Buffer.alloc(48*48*4),second=Buffer.alloc(pixels.length);for(let y=8;y<24;y++)for(let x=6;x<20;x++)pixels.set([255,0,0,255],(y*48+x)*4);for(let y=10;y<26;y++)for(let x=24;x<38;x++)second.set([0,255,0,255],(y*48+x)*4);
-  const frames=[{pixels,durationMs:80},{pixels:second,durationMs:230},{pixels:second,durationMs:110}];
-  const codecReports={};
-  for(const format of ['gif','apng']){
-    const bytes=format==='gif'?await codecs.encodeGIF(frames,48,48,{loop:2}):codecs.encodeAPNG(frames,48,48,{loop:2});const file=path.join(output,'timing.'+format);await fs.writeFile(file,bytes);
-    const mime=format==='gif'?'image/gif':'image/png';
-    const result=await evaluate('(async()=>{const data=Uint8Array.from(atob('+JSON.stringify(bytes.toString('base64'))+'),c=>c.charCodeAt(0));const decoder=new ImageDecoder({data,type:'+JSON.stringify(mime)+'});await decoder.tracks.ready;const track=decoder.tracks.selectedTrack;const frames=[];for(let i=0;i<track.frameCount;i++){const result=await decoder.decode({frameIndex:i});const c=document.createElement("canvas");c.width=48;c.height=48;const x=c.getContext("2d");x.drawImage(result.image,0,0);frames.push({duration:result.image.duration,pixels:Array.from(x.getImageData(0,0,48,48).data)});result.image.close();}const out={count:track.frameCount,repetitionCount:track.repetitionCount,frames};decoder.close();return out;})()');
-    assert.equal(result.count,3);assert.equal(result.repetitionCount,1);assert.deepEqual(result.frames.map(f=>f.duration/1000),[80,230,110]);for(let i=0;i<3;i++)assert.deepEqual(result.frames[i].pixels,[...frames[i].pixels]);
-    codecReports[format]={browserFrames:result.count,durations:result.frames.map(f=>f.duration/1000),repetitionCount:result.repetitionCount};
-    const descriptor=await describe.describePaths(root,'frames',[file]);assert.equal(descriptor.paths.length,3);assert.deepEqual(Object.values(descriptor.frameMetadata).map(f=>f.durationMs),[80,230,110]);
-    await evaluate('(async()=>{setSource(await spriteLab.restoreProject({source:'+JSON.stringify({kind:'frames',paths:descriptor.paths,frameMetadata:descriptor.frameMetadata,animatedImport:true,maskPrepared:true})+'}));await pixelEditorOpen();})()');
-    assert.equal(await evaluate('state.intent'),'animation');assert.equal(await evaluate('pixelEditor.frameIndices.length'),3);await evaluate('await pixelEditorClose()');
-    const exported=await processor.processSprites({source:descriptor,outputDir:output,name:'export-'+format,appRoot:root,options:{keyMode:'alpha',autoSize:false,cellWidth:48,cellHeight:48,padding:0,preserveFrameCanvas:true,anchor:'center',exports:{sheet:false,frames:false,metadata:false,preview:false,gif:format==='gif',apng:format==='apng'}}});
-    assert.equal(exported.previewPaths.length,1);const parsed=await codecs.readAnimatedImage(exported.previewPaths[0]);assert.equal(parsed.frames.length,3);assert.equal(parsed.loop,2);assert.deepEqual(parsed.frames.map(f=>f.durationMs),[80,230,110]);
-  }
-  await pause(500);assert.equal(await evaluate('state.intent'), 'animation');await evaluate('setTab("export");$(".export-details").open=true');for(const theme of ['light','dark']){await evaluate('document.documentElement.dataset.theme='+JSON.stringify(theme));await evaluate("document.querySelector('.export-details').scrollIntoView({block:'center'});document.getAnimations().forEach(a=>a.finish())");await pause(600);await screenshot('exports-'+theme+'.png');}
+  const ase=await import('../src/aseprite-import.mjs'),descriptor=await import('../src/source-describe.mjs'),model=await import('../src/sprite-document.mjs');
+  const official=[];for(const name of ['link','tags3','2f-index-3x3','point2frames','slices','z-order','groups3abc']){const file=path.join(root,'.diagnostics/ase-fixtures',name+'.aseprite'),image=ase.decodeAseprite(await fs.readFile(file));official.push({name,frames:image.frames.length,layers:image.frames[0].document.layers.length,tags:image.tags.length,slices:image.slices.length});}
+  const source=await descriptor.describePaths(root,'frames',[input]);assert.ok(Object.keys(source.frameDocuments).length>0);
+  await evaluate('(async()=>{setSource(await spriteLab.restoreProject({source:'+JSON.stringify(source)+'}));await pixelEditorOpen();})()');
+  assert.equal(await evaluate('state.intent'),'animation');assert.equal(await evaluate('pixelEditor.frameIndices.length'),source.paths.length);
+  const expected=ase.decodeAseprite(await fs.readFile(input));assert.equal(await evaluate('pixelEditor.layers.length'),expected.frames[0].document.layers.length);
+  await evaluate('document.getAnimations().forEach(a=>a.finish())');await pause(500);await screenshot('aseprite-layers.png');
+  await evaluate('await pixelEditorSave();await pixelEditorClose()');
+  for(let i=0;i<source.paths.length;i++){const doc=await evaluate('state.frameDocuments['+i+']'),raw=await sharp(doc.imagePath).ensureAlpha().raw().toBuffer();assert.deepEqual(raw,expected.frames[i].pixels);const decoded=(await import('../src/editor-document.mjs')).decodeEditorDocument(JSON.parse(await fs.readFile(doc.path,'utf8')),{width:expected.width,height:expected.height});assert.deepEqual(Buffer.from(model.compositeFrame(decoded,0)),raw);}
+  const project=await evaluate('buildProjectDocument()');
+  const storage=await import('../src/project-storage.mjs'),projectPath=path.join(output,'aseprite.cslab');await storage.savePortableProject(projectPath,project);const {project:restored}=await storage.loadPortableProject(projectPath);assert.deepEqual(await storage.missingProjectFiles(restored),[]);
+  await evaluate('(async()=>{const p='+JSON.stringify(restored)+';await applyProjectDocument(p,await spriteLab.restoreProject({source:p.source}));})()');await evaluate('await pixelEditorOpen()');assert.equal(await evaluate('pixelEditor.layers.length'),expected.frames[0].document.layers.length);await evaluate('await pixelEditorClose()');
   assert.deepEqual(exceptions,[]);assert.equal(crypto.createHash('sha256').update(await fs.readFile(input)).digest('hex'),originalHash);
-  await fs.writeFile(path.join(output,'report.json'),JSON.stringify({ok:true,codecReports,sourceImportDurations:true,applicationExport:true,sourceUnchanged:true,exceptions},null,2));console.log(JSON.stringify({ok:true,output}));
+  await fs.writeFile(path.join(output,'report.json'),JSON.stringify({ok:true,official,editableLayers:true,portableProject:true,sourceUnchanged:true,exceptions},null,2));console.log(JSON.stringify({ok:true,output}));
 } finally {socket?.close();child.kill();}

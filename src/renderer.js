@@ -44,7 +44,7 @@ function sourceDescriptor(source = state.source) {
   return {
     kind: source.kind,
     paths: source.kind === "sheet" && source.sheetMode !== "metadata" ? [source.sheetPath] : [...(source.paths || [])],
-    ...(source.frameMetadata || source.importedMetadata || source.sheetMode === "metadata" ? { frameMetadata: source.frameMetadata, importedMetadata: source.importedMetadata, importedAnimations: source.importedAnimations, sheetCells: source.sheetCells, sheetFrameNames: source.sheetFrameNames, maskPrepared: source.maskPrepared === true } : {}),
+    ...(source.frameMetadata || source.importedMetadata || source.sheetMode === "metadata" ? { frameDocuments: source.frameDocuments, animatedImport: source.animatedImport, frameMetadata: source.frameMetadata, importedMetadata: source.importedMetadata, importedAnimations: source.importedAnimations, sheetCells: source.sheetCells, sheetFrameNames: source.sheetFrameNames, maskPrepared: source.maskPrepared === true } : {}),
     sheetPath: source.sheetPath || null,
     sheetMode: source.sheetMode || null,
     sheetOptions: source.kind === "sheet" ? {
@@ -745,7 +745,7 @@ function setSource(source) {
   state.excludedFrames.clear();
   state.maskEdits = [];
   state.attachments = [];
-  state.frameOverrides = {}; state.frameDocuments = {}; state.preparedCleanup = {};
+  state.frameOverrides = {}; state.frameDocuments = structuredClone(source?.frameDocuments || {}); state.preparedCleanup = {};
   state.frameTransforms = {}; state.frameMetadata = structuredClone(source?.frameMetadata || {}); state.anchorReference = 0;
   if (source?.frameMetadata) { $("#autoSize").checked = true; $("#maxFrames").value = String(Math.min(1000, source.paths.length)); }
   state.timeline = null;

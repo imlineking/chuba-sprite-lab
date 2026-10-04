@@ -1,14 +1,14 @@
 // Independent images keep their original canvas. No slicing, rescaling or timeline.
-window.startImageEditing = function startImageEditing() {
+window.startImageEditing = function startImageEditing(animation = false) {
   if (state.source?.kind !== "frames") return false;
-  state.intent = "images"; document.body.dataset.intent = "images";
+  state.intent = animation ? "animation" : "images"; document.body.dataset.intent = state.intent;
   $("#sourceBadge").textContent = "PNG";
   $("#sourceTitle").textContent = state.source.title.replace(/кадров/g, "изображений");
   // Do not carry an animation's resize/style settings into a plain cleanup task.
   if (state.result?.imageWorkspace) return true;
   const paths = state.source.paths;
   const urls = paths.map(file => "file:///" + file.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/"));
-  state.result = { imageWorkspace: true, frameCount: paths.length, allSourceFramePaths: [...paths], allSourceFrameUrls: urls, sourceFrameIndexes: paths.map((_, i) => i), frameUrls: urls, copyableFrameIndexes: [], skipped: {}, warnings: [], frameIssues: [], atlasIssues: [] };
+  state.result = { imageWorkspace: !animation, frameCount: paths.length, allSourceFramePaths: [...paths], allSourceFrameUrls: urls, sourceFrameIndexes: paths.map((_, i) => i), frameUrls: urls, copyableFrameIndexes: [], skipped: {}, warnings: [], frameIssues: [], atlasIssues: [] };
   state.timeline = null;
   state.warnings = []; showWarnings([], []);
   buildFilmstrip(state.result);

@@ -17,6 +17,7 @@ export function mapProjectPaths(project, map) {
     if (doc.source) {
       doc.source.paths = (doc.source.paths || []).map(map);
       if (doc.source.sheetPath) doc.source.sheetPath = map(doc.source.sheetPath);
+      if(doc.source.frameDocuments)doc.source.frameDocuments=Object.fromEntries(Object.entries(doc.source.frameDocuments).map(([index,item])=>[index,{path:map(item.path),imagePath:map(item.imagePath)}]));
     }
     doc.frameOverrides = Object.fromEntries(Object.entries(doc.frameOverrides || {}).map(([index, file]) => [index, map(file)]));
     if (doc.frameDocuments) doc.frameDocuments = Object.fromEntries(Object.entries(doc.frameDocuments).map(([index, item]) => [index, { path: map(item.path), imagePath: map(item.imagePath) }]));

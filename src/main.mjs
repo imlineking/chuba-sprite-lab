@@ -418,7 +418,7 @@ ipcMain.handle("source:any", async () => {
     title: "Выберите видео или изображения",
     properties: ["openFile", "multiSelections"],
     filters: [
-      { name: "Видео и изображения", extensions: ["mp4", "webm", "mov", "mkv", "avi", "gif", "apng", ...supportedImageExtensions].map((ext) => ext.replace(/^\./, "")) },
+      { name: "Видео и изображения", extensions: ["mp4", "webm", "mov", "mkv", "avi", "gif", "apng", "ase", "aseprite", ...supportedImageExtensions].map((ext) => ext.replace(/^\./, "")) },
     ],
   });
   if (result.canceled || !result.filePaths.length) return null;
