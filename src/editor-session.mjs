@@ -13,6 +13,7 @@ import './text-layer.js';
 import './brush-engine.js';
 import './drawing-shapes.js';
 import { transformPixels } from './pixel-transform.mjs';
+import { makePalette,quantize,validatePalette } from './document-palette.mjs';
 import { encodeEditorDocument, decodeEditorDocument } from './editor-document.mjs';
 const textSettings = globalThis.SpriteLabText.normalize;
 import {
@@ -67,10 +68,11 @@ function describeLayers(document, frameIndex) {
 // One state shape for open, paint, fill, undo and layer changes: the window draws the composite and
 // rebuilds the panels from the rest, so no operation needs its own update path.
 function sessionState(session, extra = {}) {
+  if(session.document.colorMode==='indexed')for(const layer of session.document.layers){const cel=session.document.cels.get(layer.id+'#'+session.frameIndex);if(cel)cel.set(quantize(cel,session.document.palette).pixels);}
   const composite = compositeFrame(session.document, session.frameIndex);
   if (session.savedFrames) {
-    for(const index of session.checkAllFrames ? session.frameIndices : [session.frameIndex]) {
-      const saved = session.savedFrames.get(index), settings = JSON.stringify(describeLayers(session.document,index)),pixels=index===session.frameIndex?composite:compositeFrame(session.document,index);
+    for(const index of session.checkAllFrames ? (session.frameIndices||[session.frameIndex]) : [session.frameIndex]) {
+      const saved = session.savedFrames.get(index), settings = JSON.stringify([describeLayers(session.document,index),session.document.colorMode,session.document.palette]),pixels=index===session.frameIndex?composite:compositeFrame(session.document,index);
       if (!saved || !Buffer.from(pixels).equals(saved.pixels) || settings !== saved.settings || session.document.frames[index].durationMs !== saved.durationMs) session.dirtyFrames.add(index);
       else session.dirtyFrames.delete(index);
     }
@@ -82,6 +84,7 @@ function sessionState(session, extra = {}) {
     frameIndex: session.frameIndex,
     width: session.document.width,
     height: session.document.height,
+    colorMode:session.document.colorMode,documentPalette:session.document.palette,
     layers: describeLayers(session.document,session.frameIndex),
     activeLayerId: session.activeLayerId,
     selection: session.selection || null,
@@ -184,7 +187,7 @@ export function openSession({ width, height, name = "Кадр", frameIndex = 0, 
 
 export function markSessionSaved(sessionId) {
   const session = requireSession(sessionId); session.savedFrames = new Map(); session.dirtyFrames = new Set();
-  for (const i of session.frameIndices || [session.frameIndex]) session.savedFrames.set(i, { pixels: Buffer.from(compositeFrame(session.document,i)), settings: JSON.stringify(describeLayers(session.document,i)), durationMs: session.document.frames[i].durationMs });
+  for (const i of session.frameIndices || [session.frameIndex]) session.savedFrames.set(i, { pixels: Buffer.from(compositeFrame(session.document,i)), settings: JSON.stringify([describeLayers(session.document,i),session.document.colorMode,session.document.palette]), durationMs: session.document.frames[i].durationMs });
   return sessionState(session);
 }
 export function openSeries({ frames, frameIndex = 0, name = 'Серия' }) {
@@ -203,6 +206,8 @@ export function openSeries({ frames, frameIndex = 0, name = 'Серия' }) {
     for(const original of layers){const layer=original.seriesTextId?document.layers.find(l=>l.seriesTextId===original.seriesTextId)||addLayer(document,original.name):addLayer(document,original.name);const id=layer.id;Object.assign(layer,structuredClone(original),{id,frameScope:original.seriesTextId?null:frame.index});const source=decoded?ensureCel(decoded,original.id,frame.index):frame.pixels,cel=ensureCel(document,id,frame.index);for(let y=0;y<frame.height;y++)cel.set(source.subarray(y*frame.width*4,(y+1)*frame.width*4),y*width*4);}
     document.frames[frame.index].durationMs=Math.max(10,Math.min(10000,Math.round(Number(frame.durationMs)||100)));
   }
+  const indexed=frames.every(f=>f.editableDocument?.colorMode==='indexed'&&JSON.stringify(f.editableDocument.palette)===JSON.stringify(frames[0].editableDocument.palette));
+  if(indexed){document.colorMode='indexed';document.palette=validatePalette(frames[0].editableDocument.palette);}
   document.layers.sort((a,b)=>Number(Boolean(a.seriesTextId))-Number(Boolean(b.seriesTextId)));
   session.activeLayerId=describeLayers(document,session.frameIndex).at(-1).id; return markSessionSaved(session.id);
 }
@@ -216,6 +221,22 @@ export function switchFrame(sessionId, { frameIndex, durationMs, onion } = {}) {
 export function exportSeries(sessionId) {
   const session=requireSession(sessionId);finishStroke(sessionId);
   return (session.frameIndices||[session.frameIndex]).map(index=>({frameIndex:index,width:session.document.width,height:session.document.height,composite:compositeFrame(session.document,index),durationMs:session.document.frames[index].durationMs,editableDocument:encodeEditorDocument(session.document,index)}));
+}
+export function paletteDocument(sessionId,options={}){
+  const session=requireSession(sessionId),before=structuredClone(session.document),after=structuredClone(before);let changed=0;
+  if(options.mode==='rgba')after.colorMode='rgba';
+  else if(options.replaceIndex!=null){
+    if(before.colorMode!=='indexed')throw new Error('Сначала преобразуйте документ в индексированный режим.');
+    const index=Number(options.replaceIndex);if(!Number.isInteger(index)||index<0||index>=after.palette.length)throw new Error('Цвет палитры не найден.');
+    const palette=validatePalette(after.palette),replacement=normalizeColor(options.color);palette[index]=replacement;
+    for(const [key,cel]of after.cels){const result=quantize(cel,before.palette);for(let i=0;i<result.indices.length;i++)if(result.indices[i]===index){cel.set(replacement,i*4);changed++;}after.cels.set(key,cel);}after.palette=palette;
+  }else{
+    after.palette=options.palette?validatePalette(options.palette):makePalette([...after.cels.values()],options.limit||32);after.colorMode='indexed';
+    for(const [key,cel]of after.cels){const result=quantize(cel,after.palette);changed+=result.changed;after.cels.set(key,result.pixels);}
+    for(const layer of after.layers)if(layer.kind==='text'){layer.kind='normal';delete layer.text;delete layer.seriesTextId;}
+  }
+  if(options.preview)return{composite:compositeFrame(after,session.frameIndex),palette:after.palette,colorMode:after.colorMode,changed};
+  pushPatch(session.history,session.document,{label:'Палитра документа',frameIndex:session.frameIndex,documentStates:{before,after}});session.checkAllFrames=true;return sessionState(session);
 }
 export function textAcrossFrames(sessionId) {
   const session=requireSession(sessionId),layer=activeLayer(session);
@@ -340,7 +361,7 @@ export function stepHistory(sessionId, direction = "undo") {
   if (patch?.activeLayerBefore) session.activeLayerId = direction === "redo" ? patch.activeLayerAfter : patch.activeLayerBefore;
   const owner = patch?.frameIndex ?? patch?.parts?.[0]?.frameIndex ?? patch?.frameDurations?.[0]?.index;
   if (session.frameIndices?.includes(owner)) session.frameIndex = owner;
-  if(patch?.layerUpdates||patch?.removedLayer||patch?.addedLayer)session.checkAllFrames=true;
+  if(patch?.layerUpdates||patch?.removedLayer||patch?.addedLayer||patch?.documentStates)session.checkAllFrames=true;
   if (!findLayer(session.document, session.activeLayerId)) session.activeLayerId = session.document.layers.at(-1).id;
   return sessionState(session, { label: patch ? patch.label || null : null, empty: !patch });
 }
@@ -445,6 +466,7 @@ export function previewActivePixels(sessionId, options = {}) {
 
 export function setTextLayer(sessionId, options = {}) {
   const session = requireSession(sessionId), document = session.document;
+  if(document.colorMode==='indexed')throw new Error('Переключите документ в RGBA перед добавлением редактируемого текста.');
   const existing = options.layerId ? findLayer(document, String(options.layerId)) : null;
   if (options.layerId && (!existing || existing.kind !== 'text')) throw new Error('Текстовый слой не найден.');
   if (existing?.locked) return sessionState(session, { blocked: 'Текстовый слой заблокирован.' });

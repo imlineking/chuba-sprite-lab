@@ -568,6 +568,7 @@ ipcMain.handle("editor:open", async (_event, request = {}) => {
 // One entry point for the editing commands: the interface sends the operation name, and every answer
 // has the same state shape so the window has a single redraw path.
 const editorOperations = {
+  paletteDocument:request=>editorSession.paletteDocument(request.sessionId,request),
   shape: request => editorSession.shape(request.sessionId, request),
   rotateSelection: request => editorSession.rotateSelection(request.sessionId, request),
   switchFrame: request => editorSession.switchFrame(request.sessionId, request),

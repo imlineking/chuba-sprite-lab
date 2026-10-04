@@ -1070,6 +1070,23 @@
             <div id="pixelPalette" class="pixel-palette" tabindex="0" aria-label="Палитра sRGB текущего кадра"></div>
             <p class="pixel-editor-hint">Нажмите цвет: заменить во всём кадре, удалить или взять для кисти.</p>
           </section>
+          <section class="pixel-panel pixel-text-panel"><details>
+            <summary>Палитра документа и тайлы</summary>
+            <p id="pixelDocumentPaletteMode" class="pixel-editor-hint">RGBA · свободные цвета</p>
+            <label>Цветов, включая прозрачный <input id="pixelDocumentPaletteLimit" type="number" min="2" max="256" value="32"></label>
+            <p class="pixel-editor-hint">Палитра общая для всей серии. Преобразование может менять цвета и полутона; текст станет пикселями. Слои сохраняются. Просмотрите результат перед применением; Ctrl+Z отменяет.</p>
+            <div class="pixel-color-actions"><button id="pixelDocumentPalettePrepare" class="button secondary" type="button">Просмотр индексации</button><button id="pixelDocumentPaletteRGBA" class="button secondary" type="button">Вернуть RGBA</button></div>
+            <div id="pixelDocumentPaletteColors" style="display:flex;flex-wrap:wrap;gap:3px"></div>
+            <label>Индекс цвета <input id="pixelDocumentPaletteIndex" type="number" min="0" max="255" value="1"></label>
+            <label>Новый цвет <input id="pixelDocumentPaletteColor" type="color" value="#669933"></label>
+            <label>Альфа цвета <input id="pixelDocumentPaletteAlpha" type="number" min="0" max="255" value="255"></label>
+            <button id="pixelDocumentPaletteReplace" class="button secondary" type="button" disabled>Заменить цвет палитры</button>
+            <p id="pixelDocumentPaletteStatus" class="pixel-editor-hint" role="status"></p>
+            <div class="pixel-color-actions"><button id="pixelDocumentPaletteApply" class="button secondary" type="button" disabled>Применить палитру</button><button id="pixelDocumentPaletteCancel" class="button secondary" type="button">Отменить просмотр</button></div>
+            <label><input id="pixelTileWrap" type="checkbox"> Бесшовный тайл · кисть через края</label>
+            <p class="pixel-editor-hint">Кисть и ластик продолжаются на противоположном краю. Повтор 3×3 показывает стыки. Готовые тайлы собирайте через «Спрайт-лист» с одинаковой ячейкой.</p>
+            <canvas id="pixelTilePreview" hidden style="width:100%;image-rendering:pixelated" aria-label="Повтор тайла 3 на 3"></canvas>
+          </details></section>
           <section class="pixel-panel">
             <header>Слои <span id="pixelLayerCount">1</span>
               <button id="pixelAddLayer" class="pixel-tool-button" type="button" title="Добавить слой">＋</button>
@@ -1280,6 +1297,7 @@
     <script src="./brush-engine.js"></script>
     <script src="./pixel-frames-ui.js"></script>
     <script src="./pixel-color-ui.js"></script>
+    <script src="./pixel-palette-ui.js"></script>
     <script src="./text-layer.js"></script>
     <script src="./pixel-text-ui.js"></script>
     <script src="./pixel-ocr-ui.js"></script>

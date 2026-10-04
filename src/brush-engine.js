@@ -18,7 +18,7 @@
     for (;;) { points.push([x,y]); if(x===tx&&y===ty)break;const d=e*2;if(d>-dy){e-=dy;x+=sx;}if(d<dx){e+=dx;y+=sy;} }
     return points;
   }
-  function stroke(data, width, height, { points = [], color = [0,0,0,255], size = 1, shape = 'square', hardness = 100, opacity = 100, erase = false, symmetry = 'none', pixelPerfect = false } = {}) {
+  function stroke(data, width, height, { points = [], color = [0,0,0,255], size = 1, shape = 'square', hardness = 100, opacity = 100, erase = false, symmetry = 'none', pixelPerfect = false, wrap = false } = {}) {
     if (data.length !== width * height * 4 || points.length > 100000) throw new Error('Недопустимый мазок.');
     points = points.map(p => [Math.round(clamp(p[0],0,width-1)),Math.round(clamp(p[1],0,height-1))]);
     const path = []; for(let i=0;i<points.length;i++){ const segment=i?line(points[i-1],points[i]).slice(1):[points[i]];path.push(...segment); }
@@ -26,7 +26,7 @@
     const coverage = new Float32Array(width*height);
     for (const [x,y] of path) {
       const centres=[[x,y]]; if(['x','both'].includes(symmetry))centres.push([width-1-x,y]);if(['y','both'].includes(symmetry))centres.push([x,height-1-y]);if(symmetry==='both')centres.push([width-1-x,height-1-y]);
-      for(const [cx,cy] of centres)for(const [px,py,value]of footprint(cx,cy,size,shape,hardness))if(px>=0&&py>=0&&px<width&&py<height)coverage[py*width+px]=Math.max(coverage[py*width+px],value);
+      for(const [cx,cy] of centres)for(const [px,py,value]of footprint(cx,cy,size,shape,hardness)){const tx=wrap?((px%width)+width)%width:px,ty=wrap?((py%height)+height)%height:py;if(tx>=0&&ty>=0&&tx<width&&ty<height)coverage[ty*width+tx]=Math.max(coverage[ty*width+tx],value);}
     }
     const output = new Uint8ClampedArray(data), strength = clamp(opacity ?? 100,0,100)/100;
     for(let i=0;i<coverage.length;i++) {

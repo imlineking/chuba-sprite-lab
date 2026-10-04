@@ -76,6 +76,7 @@ function pixelEditorPointFromEvent(event) {
 /* ------------------------------------------------------------------ drawing */
 
 function pixelEditorRenderCanvas() {
+  window.spriteLabPaletteUI?.repeat();
   const canvas = $("#pixelCanvas");
   if (!pixelEditor.width || !pixelEditor.height) return;
   if (canvas.width !== pixelEditor.width || canvas.height !== pixelEditor.height) {
@@ -187,7 +188,7 @@ function pixelEditorSend(request) {
       if (answer && answer.sessionId && pixelEditor.sessionId === sessionId) {
         pixelEditorCancelPreview();
         pixelEditorApplyState(answer);
-        if (["text", "removeLayer", "updateLayer", "frameColor", "frameAdjust", "undo", "redo"].includes(request.op)) {
+        if (["paletteDocument", "text", "removeLayer", "updateLayer", "frameColor", "frameAdjust", "undo", "redo"].includes(request.op)) {
           pixelEditor.palette = pixelEditorPaletteFromComposite(pixelEditor.composite);
           pixelEditorRenderPalette();
         }
@@ -213,6 +214,7 @@ function pixelEditorApplyState(answer) {
   pixelEditor.width = answer.width;
   pixelEditor.height = answer.height;
   pixelEditor.layers = answer.layers;
+  pixelEditor.colorMode=answer.colorMode;pixelEditor.documentPalette=answer.documentPalette;
   pixelEditor.activeLayerId = answer.activeLayerId;
   window.spriteLabFramesUI?.sync(answer);
   if (answer.composite) pixelEditor.composite = answer.composite instanceof Uint8ClampedArray
@@ -224,6 +226,7 @@ function pixelEditorApplyState(answer) {
   $("#pixelEditorSize").textContent = `${answer.width} × ${answer.height}`;
   pixelEditorRenderCanvas();
   pixelEditorRenderLayers();
+  window.spriteLabPaletteUI?.sync();
   window.spriteLabTextUI?.sync();
   pixelEditorUpdateCursorInfo();
   if (answer.blocked) pixelEditorStatus(answer.blocked, "warn");
@@ -285,13 +288,13 @@ async function pixelEditorOpen() {
 
 function pixelEditorMarkApplied() {
   pixelEditor.savedPixels = pixelEditor.composite.slice();
-  pixelEditor.savedLayers = JSON.stringify(pixelEditor.layers);
+  pixelEditor.savedLayers = JSON.stringify(pixelEditor.layers);pixelEditor.savedPalette=JSON.stringify([pixelEditor.colorMode,pixelEditor.documentPalette]);
 }
 
 function pixelEditorHasPendingEdits() {
   if (!pixelEditor.sessionId || !pixelEditor.savedPixels) return false;
   if (pixelEditor.frameIndices?.length > 1) return pixelEditor.seriesDirty || Boolean(pixelEditor.preview) || Boolean(window.spriteLabTextUI?.hasDraft());
-  if (JSON.stringify(pixelEditor.layers) !== pixelEditor.savedLayers) return true;
+  if (JSON.stringify(pixelEditor.layers) !== pixelEditor.savedLayers || JSON.stringify([pixelEditor.colorMode,pixelEditor.documentPalette])!==pixelEditor.savedPalette) return true;
   if (window.spriteLabTextUI?.hasDraft()) return true;
   const pixels = pixelEditor.composite, preview = pixelEditor.preview;
   return pixels.some((n, i) => n !== pixelEditor.savedPixels[i] || (preview && preview[i] !== n));
@@ -339,7 +342,7 @@ async function pixelEditorSave() {
   $("#pixelSaveFrame").disabled = true;
   try {
     if (pixelEditor.preview || window.spriteLabTextUI?.hasDraft()) {
-      const answer = window.spriteLabTextUI?.hasDraft() ? await window.spriteLabTextUI.commit() : window.spriteLabTextRepairUI?.hasDraft() ? await window.spriteLabTextRepairUI.commit() : pixelColorDraft ? await pixelColorCommit() : pixelAdjustDraft ? await pixelAdjustmentCommit() : null;
+      const answer = window.spriteLabTextUI?.hasDraft() ? await window.spriteLabTextUI.commit() : window.spriteLabTextRepairUI?.hasDraft() ? await window.spriteLabTextRepairUI.commit() : window.spriteLabPaletteUI?.hasDraft() ? await window.spriteLabPaletteUI.commit() : pixelColorDraft ? await pixelColorCommit() : pixelAdjustDraft ? await pixelAdjustmentCommit() : null;
       if (!answer || answer.blocked) return false;
     }
     const frameIndex = pixelEditor.frameIndex;
@@ -382,7 +385,7 @@ function pixelEditorPaintTo(point) {
   const erase = pixelEditor.tool === "eraser";
   const from = pixelEditor.lastPoint || point;
   pixelEditor.lastPoint = point;
-  pixelEditorSend({ op: "paint", from: [from.x, from.y], to: [point.x, point.y], color: pixelEditor.color, size: pixelEditor.brush, shape: pixelEditor.brushShape, hardness: Number($('#pixelBrushHardness').value), opacity: Number($('#pixelBrushOpacity').value), symmetry: $('#pixelBrushSymmetry').value, pixelPerfect: $('#pixelBrushPerfect').checked, continueStroke: true, beginStroke: pixelEditor.strokeStart, erase });
+  pixelEditorSend({ op: "paint", from: [from.x, from.y], to: [point.x, point.y], color: pixelEditor.color, size: pixelEditor.brush, shape: pixelEditor.brushShape, hardness: Number($('#pixelBrushHardness').value), opacity: Number($('#pixelBrushOpacity').value), symmetry: $('#pixelBrushSymmetry').value, pixelPerfect: $('#pixelBrushPerfect').checked, wrap:$('#pixelTileWrap').checked, continueStroke: true, beginStroke: pixelEditor.strokeStart, erase });
   pixelEditor.strokeStart = false;
 }
 
