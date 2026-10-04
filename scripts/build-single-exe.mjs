@@ -22,6 +22,8 @@ const license = path.join(here, "7zip-LICENSE.txt");
 if (path.dirname(output) === path.parse(output).root) throw new Error("Output must not be a filesystem root");
 await fsp.access(path.join(portable, "Chuba Sprite Lab.exe"));
 await fsp.access(license);
+await fsp.access(path.join(root, "assets", "app.ico"));
+await fsp.mkdir(path.dirname(archive), { recursive: true });
 await fsp.mkdir(path.dirname(output), { recursive: true });
 if (fs.existsSync(output)) throw new Error(`Output already exists: ${output}`);
 if (fs.existsSync(partial)) throw new Error(`Unfinished output exists: ${partial}`);
@@ -31,7 +33,7 @@ const packed = spawnSync(extractor, ["a", "-t7z", "-mx=1", "-bd", archive, "*"],
 if (packed.status !== 0) throw new Error(`Portable archiving failed: ${packed.status ?? "unknown"}`);
 const verified = spawnSync(extractor, ["t", "-bd", archive], { stdio: "inherit", windowsHide: true });
 if (verified.status !== 0) throw new Error(`Portable archive verification failed: ${verified.status ?? "unknown"}`);
-const compile = spawnSync(csc, ["/nologo", "/target:winexe", "/platform:x64", "/r:System.Windows.Forms.dll", `/out:${stub}`, path.join(here, "single-exe-launcher.cs")], { stdio: "inherit", windowsHide: true });
+const compile = spawnSync(csc, ["/nologo", "/target:winexe", "/platform:x64", "/r:System.Windows.Forms.dll", `/win32icon:${path.join(root, "assets", "app.ico")}`, `/out:${stub}`, path.join(here, "single-exe-launcher.cs")], { stdio: "inherit", windowsHide: true });
 if (compile.status !== 0) throw new Error(`C# launcher compilation failed: ${compile.status}`);
 const writer = fs.createWriteStream(partial, { flags: "wx" });
 let offset = 0n;
