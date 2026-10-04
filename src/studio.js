@@ -806,6 +806,7 @@ function optionsFromDocument(doc, base = {}) {
       shadingSteps: number("pixelateShading", 4),
       detail: number("pixelateDetail", 0),
     } : null,
+    colorAdjust: {style: values.colorStyle || "none", styleStrength: number("colorStyleStrength", 100)},
     toning: checks.toningEnabled ? { color: values.toningColor || "#8bb8ff", strength: number("toningStrength", 35) } : null,
     aiEdits: doc.maskEdits || [], previewFrameIndex: 0,
     fringeCleanup: Boolean(checks.fringeCleanup), fringeStrength: number("fringeStrength", 55),

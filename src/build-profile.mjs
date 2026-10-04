@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveMattingModelId } from "./ai-models.mjs";
 import { validateImageGeometry } from "./image-geometry.mjs";
+import './color-styles.js';
 import { parseCustomPalette, pixelDithers, pixelModes, pixelPalettes } from "./pixelate.mjs";
 
 // A build profile is the complete recipe of one export: the sources plus every
@@ -25,7 +26,7 @@ export const profileOptionKeys = new Set([
   "fringeCleanup", "fringeStrength", "edgeDecontaminate", "keyColor", "aiProvider", "aiQuality", "aiForceModel", "pixelate", "frameParallelism", "attachments", "attachmentPlacements",
   "frameOverrides", "frameTransforms", "preparedCleanup", "fitEachFrame", "timeline", "loopMode",
   "loopRange", "packing", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo",
-  "cleanOutput", "animationName", "auxAI", "keyScope", "aiModel", "edgeRefine", "toning", "imageGeometry", "atlasGap", "atlasExtrude", "atlasRotate", "preserveFrameCanvas", "pixelScale", "atlasBackground", "atlasBackgroundColor", "frameMetadata", "anchorReference", "seriesReview",
+  "cleanOutput", "animationName", "auxAI", "keyScope", "aiModel", "edgeRefine", "toning", "colorAdjust", "imageGeometry", "atlasGap", "atlasExtrude", "atlasRotate", "preserveFrameCanvas", "pixelScale", "atlasBackground", "atlasBackgroundColor", "frameMetadata", "anchorReference", "seriesReview",
 ]);
 
 const sourceKinds = ["video", "frames", "sheet"];
@@ -108,6 +109,19 @@ function normalizeOptions(value, problem, label, baseDir) {
       if (options.edgeRefine.contourWidth !== undefined && ![2, 4].includes(options.edgeRefine.contourWidth)) problem(`${label}.edgeRefine.contourWidth: ожидалось 2 или 4.`);
       if (options.edgeRefine.whiteThreshold !== undefined && boundedInteger(options.edgeRefine.whiteThreshold, 64, 255) === null) problem(`${label}.edgeRefine.whiteThreshold: ожидалось целое 64…255.`);
       if (options.edgeRefine.neutralTolerance !== undefined && boundedInteger(options.edgeRefine.neutralTolerance, 0, 96) === null) problem(`${label}.edgeRefine.neutralTolerance: ожидалось целое 0…96.`);
+    }
+  }
+  if (options.colorAdjust !== undefined && options.colorAdjust !== null) {
+    if (!isPlainObject(options.colorAdjust)) problem(`${label}.colorAdjust: ожидался объект или null.`);
+    else for (const [key, item] of Object.entries(options.colorAdjust)) {
+      if (key === 'style') {
+        if (!globalThis.SpriteLabColorStyles.styles.some(style=>style.id===item)) problem(`${label}.colorAdjust.style: неизвестный стиль.`);
+      } else if (key === 'tint') {
+        if (!/^#[0-9a-f]{6}$/i.test(item)) problem(`${label}.colorAdjust.tint: ожидался #RRGGBB.`);
+      } else if (['brightness','contrast','warmth','saturation','shadows','highlights','tintStrength','styleStrength'].includes(key)) {
+        const min=['styleStrength','tintStrength'].includes(key)?0:-100;
+        if (!Number.isFinite(Number(item)) || Number(item)<min || Number(item)>100) problem(`${label}.colorAdjust.${key}: ожидалось число ${min}…100.`);
+      } else problem(`${label}.colorAdjust.${key}: неизвестная настройка.`);
     }
   }
   if (options.toning !== undefined && options.toning !== null) {

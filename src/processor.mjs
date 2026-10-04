@@ -15,7 +15,7 @@ import { applyImageGeometry } from "./image-geometry.mjs";
 import { toneRgba } from "./toning.mjs";
 import { decontaminateEdges } from "./edge-decontaminate.mjs";
 import { refineEdgeRgba } from "./edge-refine.mjs";
-import { adjustImageRgba } from "./color-adjust.mjs";
+import { adjustImageRgba, hasColorAdjust } from "./color-adjust.mjs";
 import { findBodyAnchor } from "./body-anchor.mjs";
 import { compositeAttachments, trackAttachmentPlacements } from "./attachment-tracker.mjs";
 import { planAtlas } from "./atlas-packing.mjs";
@@ -870,7 +870,7 @@ async function applyEdgeRefine(frame, options) {
 }
 
 async function applyImageColorAdjust(frame, options) {
-  if (!options || ![options.brightness, options.contrast, options.warmth].some(value => Number(value))) return frame;
+  if (!options || !hasColorAdjust(options)) return frame;
   const { data, info } = await sharp(frame.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const adjusted = adjustImageRgba(data, options);
   return { ...frame, buffer: await sharp(adjusted, { raw: info }).png().toBuffer() };
@@ -1171,7 +1171,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
   let nextToSchedule = 0;
   const prepareFrame = async (index) => {
     const frameOptions = resolvePreparedCleanup(options, index, inputFrames[index]);
-    const stageOptions = Object.fromEntries(["keyMode", "tolerance", "blackOutline", "blackFeather", "keyScope", "keyColor", "fringeCleanup", "fringeStrength", "edgeDecontaminate", "edgeRefine", "imageGeometry", "pixelate", "toning", "auxAI", "aiModel", "aiProvider", "aiQuality", "aiForceModel", "aiCutoff", "aiSoftness", "aiModelDirs"].map(k => [k, frameOptions[k]]));
+    const stageOptions = Object.fromEntries(["keyMode", "tolerance", "blackOutline", "blackFeather", "keyScope", "keyColor", "fringeCleanup", "fringeStrength", "edgeDecontaminate", "edgeRefine", "imageGeometry", "pixelate", "toning", "colorAdjust", "auxAI", "aiModel", "aiProvider", "aiQuality", "aiForceModel", "aiCutoff", "aiSoftness", "aiModelDirs"].map(k => [k, frameOptions[k]]));
     const stageKey = stableStringify({ file: await fileSignature(inputFrames[index]), options: stageOptions, edits: (frameOptions.aiEdits || []).filter(e => e.applyAll || Number(e.frameIndex) === index), assets: await Promise.all([auxiliary.inpaintMaskPath, ...(attachmentPlacements[index] || []).map(p => p.path || p.imagePath)].filter(Boolean).map(fileSignature)), autoKeyColor, placement: attachmentPlacements[index], maskPrepared: source.maskPrepared });
     const cachedStage = preparedStageCache.get(stageKey);
     if (cachedStage) return cachedStage;
@@ -1202,6 +1202,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
     // background instead of the sprite. Per frame, so it stays inside the same pool.
     if (pixelateOptions && !sharedPalette) keyed = await applyPixelation(keyed, pixelateOptions);
     if (options.toning && !sharedPalette) keyed = await applyToning(keyed, options.toning);
+    if (options.colorAdjust && !sharedPalette) keyed = await applyImageColorAdjust(keyed, options.colorAdjust);
     return preparedStageCache.set(stageKey, keyed);
   };
   for (let index = 0; index < inputFrames.length; index += 1) {
@@ -1294,7 +1295,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
   onProgress?.({ stage: "normalize", value: 0.55, message: "Выравниваю кадры…" });
   if (sharedPalette) {
     const sharedColors = await buildSeriesPalette(prepared.map(f => f.buffer), pixelateOptions.colors);
-    for (let i = 0; i < prepared.length; i++) { throwIfAborted(signal); prepared[i] = await applyPixelation(prepared[i], { ...pixelateOptions, sharedColors }); if (options.toning) prepared[i] = await applyToning(prepared[i], options.toning); }
+    for (let i = 0; i < prepared.length; i++) { throwIfAborted(signal); prepared[i] = await applyPixelation(prepared[i], { ...pixelateOptions, sharedColors }); if (options.toning) prepared[i] = await applyToning(prepared[i], options.toning); if (options.colorAdjust) prepared[i] = await applyImageColorAdjust(prepared[i], options.colorAdjust); }
     report.sharedPalette = sharedColors;
   }
   const normalized = await renderFrames(prepared, options);
@@ -2382,6 +2383,12 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
   if (options.imageGeometry) keyed = await applyImageGeometry(keyed, options.imageGeometry);
   if (options.pixelate && Number(options.pixelate.size) > 1) keyed = await applyPixelation(keyed, options.pixelate);
   if (options.toning) keyed = await applyToning(keyed, options.toning);
+  let colorBasePath = null;
+  if (options.captureColorBase && !options.frameTransforms?.[previewFrameIndex]) {
+    const base = await scalePixelFrame(keyed, options.pixelScale || 1);
+    colorBasePath = path.join(previewRoot, 'color-base.png');
+    await fs.writeFile(colorBasePath, base.buffer);
+  }
   if (options.colorAdjust) keyed = await applyImageColorAdjust(keyed, options.colorAdjust);
   keyed = await scalePixelFrame(keyed, options.pixelScale || 1);
   const transform = resolveFrameTransform(options, previewFrameIndex);
@@ -2402,6 +2409,7 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
   return {
     beforePath: inputPath,
     afterPath,
+    colorBasePath,
     imageSize: { width: keyed.info.width, height: keyed.info.height },
     bounds: keyed.bounds,
     keyColor: keyed.keyColor,

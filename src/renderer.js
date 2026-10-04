@@ -33,7 +33,7 @@ const exportPresets = {
   artist: { sheet: false, frames: true, metadata: false, preview: true },
   engine: { sheet: true, frames: false, metadata: true, preview: false },
 };
-const preferenceValueIds = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "keyScope", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness", "aiProvider", "aiQuality", "fringeStrength", "edgeRefineMode", "edgeRefineWidth", "edgeRefineDepth", "trimStart", "trimEnd", "pixelateSize", "pixelateColors", "pixelateShading", "pixelateDetail", "pixelatePalette", "pixelateCustomColors", "pixelateMode", "pixelateDither", "toningColor", "toningStrength", "locale"];
+const preferenceValueIds = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "keyScope", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness", "aiProvider", "aiQuality", "fringeStrength", "edgeRefineMode", "edgeRefineWidth", "edgeRefineDepth", "trimStart", "trimEnd", "pixelateSize", "pixelateColors", "pixelateShading", "pixelateDetail", "pixelatePalette", "pixelateCustomColors", "pixelateMode", "pixelateDither", "toningColor", "toningStrength", "colorStyle", "colorStyleStrength", "locale"];
 const preferenceCheckIds = ["autoSize", "autoColumns", "pixelPerfect", "removeDuplicates", "whiteOutput", "openAfterExport", "fringeCleanup", "edgeDecontaminate", "edgeRefineWhiteOnly", "aiAutoCutoff", "pixelateEnabled", "toningEnabled", "sheetFitEach", "auxRife", "auxEsrgan", "auxDepth"];
 
 function sourceDescriptor(source = state.source) {
@@ -729,6 +729,7 @@ function setSource(source) {
   state.quickToken += 1;
   state.source = source;
   state.intent = ""; document.body.dataset.intent = "";
+  if (source?.kind === "frames") $("#colorStyle").value = "none";
   if (source?.kind === "frames") for (const id of ["pixelateEnabled", "toningEnabled", "auxRife", "auxEsrgan", "auxDepth"]) $("#" + id).checked = false;
   state.result = null;
   state.framePreview = null;
@@ -1014,6 +1015,7 @@ function collectOptions() {
       shadingSteps: Number($("#pixelateShading").value),
       detail: Number($("#pixelateDetail").value),
     } : null,
+    colorAdjust: {style: $("#colorStyle").value, styleStrength: Number($("#colorStyleStrength").value)},
     toning: $("#toningEnabled").checked ? { color: $("#toningColor").value, strength: Number($("#toningStrength").value) } : null,
   };
 }
@@ -2270,6 +2272,7 @@ function loadPreferences() {
     $("#aiSoftnessValue").textContent = `${$("#aiSoftness").value} px`;
     $("#fringeStrengthValue").textContent = $("#fringeStrength").value;
     $("#toningStrengthValue").textContent = `${$("#toningStrength").value}%`;
+    $("#colorStyleStrengthValue").textContent = `${$("#colorStyleStrength").value}%`;
     Object.entries(saved.checks || {}).forEach(([id, value]) => { if ($(`#${id}`)) $(`#${id}`).checked = Boolean(value); });
     $("#fringeStrengthRow").classList.toggle("hidden", !$("#fringeCleanup").checked);
     state.solidKeyMode = saved.solidKeyMode || state.solidKeyMode;
@@ -2430,9 +2433,10 @@ $("#aiQuality").addEventListener("change", () => {
 $("#pixelateEnabled").addEventListener("change", () => {
   savePreferences(); markPreviewDirty(); scheduleFramePreview(0); pushHistory($("#pixelateEnabled").checked ? "Пиксель-арт включён" : "Пиксель-арт выключен");
 });
-for (const id of ["toningEnabled", "toningColor", "toningStrength"]) {
-  $(`#${id}`).addEventListener(id === "toningStrength" ? "input" : "change", () => {
+for (const id of ["toningEnabled", "toningColor", "toningStrength", "colorStyle", "colorStyleStrength"]) {
+  $(`#${id}`).addEventListener(["toningStrength", "colorStyleStrength"].includes(id) ? "input" : "change", () => {
     $("#toningStrengthValue").textContent = `${$("#toningStrength").value}%`;
+    $("#colorStyleStrengthValue").textContent = `${$("#colorStyleStrength").value}%`;
     savePreferences(); markPreviewDirty(); scheduleFramePreview(180); scheduleHistory("Тонировка изменена");
   });
 }

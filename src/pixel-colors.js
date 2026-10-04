@@ -68,7 +68,7 @@
         out[i+c]=Math.round(255*Math.max(0,Math.min(1,value*(1-strength+strength*tint[c]))));
       }
     }
-    return out;
+    return globalThis.SpriteLabColorStyles ? globalThis.SpriteLabColorStyles.apply(out, options) : out;
   }
   globalThis.SpriteLabPixelColors=Object.freeze({palette,matches,preview,hsvToRgb,rgbToHsv,adjust});
 })();

@@ -14,6 +14,19 @@
 
 const i18nSources = {
   en: {
+    "Без стиля": "No style",
+    "Тёплый": "Warm",
+    "Холодный": "Cool",
+    "Приглушённый": "Muted",
+    "Красный / жёлтый → зелёный / синий": "Red / yellow → green / blue",
+    "Зелёный / синий → красный / жёлтый": "Green / blue → red / yellow",
+    "Цветовой стиль": "Colour style",
+    "Готовый стиль": "Preset style",
+    "Сила стиля": "Style strength",
+    "Цветовой стиль и тонировка": "Colour style and tint",
+    "общие для всех кадров · прозрачность сохраняется": "shared across frames · transparency preserved",
+    "Одинаковая карта цвета для всей серии. Стиль меняет оттенки, сохраняя яркость и альфу. Сравните результат перед сохранением.": "One colour map for the series. The style changes hues while preserving luminance and alpha. Compare before saving.",
+    "Живой просмотр цвета · обновите просмотр перед применением или сохранением.": "Live colour preview · refresh before applying or saving.",
     "4 ряда ↑": "4 rows ↑",
     "Развернуть ↓": "Expand ↓",
     "Нажмите цвет: заменить во всём кадре, удалить или взять для кисти.": "Click a colour to replace it throughout the frame, erase it, or use it for the brush.",

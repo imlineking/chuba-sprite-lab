@@ -4,7 +4,7 @@ let pixelPaletteExpanded=true;
 let pixelColorBusy=false;
 let pixelColorPreviewTask=0;
 let pixelAdjustDraft=null;
-const pixelAdjustDefaults={brightness:0,saturation:0,contrast:0,warmth:0,shadows:0,highlights:0,tintStrength:0,tint:'#ffffff'};
+const pixelAdjustDefaults={brightness:0,saturation:0,contrast:0,warmth:0,shadows:0,highlights:0,tintStrength:0,tint:'#ffffff',style:'none',styleStrength:100};
 
 function pixelEditorCancelPreview() {
   const hadPreview = Boolean(pixelEditor.preview);
@@ -128,7 +128,7 @@ for(const [key,label] of Object.entries(pixelAdjustLabels)) {
 }
 function pixelAdjustmentPreview() {
   cancelAnimationFrame(pixelColorPreviewTask);
-  const active=pixelAdjustDraft&&Object.keys(pixelAdjustLabels).some(key=>Number(pixelAdjustDraft[key]));
+  const active=pixelAdjustDraft&&(window.SpriteLabColorStyles.active(pixelAdjustDraft)||Object.keys(pixelAdjustLabels).some(key=>Number(pixelAdjustDraft[key])));
   if(!active){pixelEditor.preview=null;pixelEditorRenderCanvas();$('#pixelAdjustApply').disabled=true;return;}
   $('#pixelAdjustApply').disabled=false;
   pixelColorPreviewTask=requestAnimationFrame(()=>{
@@ -141,7 +141,14 @@ $('#pixelAdjustDetails').addEventListener('toggle',()=>{
   if(!details.open){if(pixelAdjustDraft)pixelEditorCancelPreview();return;}
   cancelAnimationFrame(pixelColorPreviewTask);pixelColorDraft=null;$('#pixelColorForm').classList.add('hidden');pixelAdjustDraft={...pixelAdjustDefaults,tintHsv:[0,0,1]};
   for(const key of Object.keys(pixelAdjustLabels)){$('#pixelAdjust-'+key).value='0';$('#pixelAdjustValue-'+key).textContent='0';}
-  $('#pixelAdjustTint').value='#ffffff';$('#pixelAdjustTint').setCustomValidity('');pixelTintSync();pixelAdjustmentPreview();
+  $('#pixelAdjustTint').value='#ffffff';$('#pixelAdjustTint').setCustomValidity('');
+  $('#pixelAdjustStyle').value='none';$('#pixelAdjustStyleStrength').value='100';$('#pixelAdjustStyleValue').textContent='100%';
+  pixelTintSync();pixelAdjustmentPreview();
+});
+for (const id of ['pixelAdjustStyle','pixelAdjustStyleStrength']) $('#'+id).addEventListener(id.endsWith('Strength')?'input':'change',()=>{
+  if(!pixelAdjustDraft)return;
+  pixelAdjustDraft.style=$('#pixelAdjustStyle').value;pixelAdjustDraft.styleStrength=Number($('#pixelAdjustStyleStrength').value);
+  $('#pixelAdjustStyleValue').textContent=pixelAdjustDraft.styleStrength+'%';pixelAdjustmentPreview();
 });
 function pixelTintSync() {
   if(!pixelAdjustDraft)return;

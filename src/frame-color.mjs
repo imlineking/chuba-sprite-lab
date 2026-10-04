@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { captureRect, celKey, compositeFrame } from "./sprite-document.mjs";
+import "./color-styles.js";
 import "./pixel-colors.js";
 
 // One reversible operation on the visible RGBA composite. Hidden layers and other frames

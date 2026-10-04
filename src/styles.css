@@ -1083,6 +1083,11 @@ body[data-intent="images"] .filmstrip-actions { grid-template-columns: repeat(au
 .batch-color-adjust input { width: clamp(65px, 8vw, 110px); accent-color: currentColor; }
 .batch-color-adjust output { min-width: 22px; text-align: right; }
 .batch-color-adjust button { border: 0; background: transparent; color: var(--text); text-decoration: underline; cursor: pointer; }
+.color-style-field select { min-width: 0; width: 100%; max-width: 100%; }
+.batch-color-adjust .color-style-field { flex: 1 1 245px; min-width: 0; }
+.batch-color-adjust .color-style-field select { flex: 1; max-width: 320px; padding: 7px; }
+.pixel-color-label.color-style-field { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.pixel-color-label.color-style-field select { padding: 7px; }
 .batch-preview-scope { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-block: 16px; }
 .batch-preview-scope label { display: flex; gap: 10px; align-items: center; }
 .batch-preview-scope select { width: auto; min-width: 210px; min-height: 38px; padding: 8px 12px; border: 1px solid var(--line-bright); border-radius: 9px; background: var(--shell-field); color: var(--text); font: inherit; font-size: 13px; }

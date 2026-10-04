@@ -77,7 +77,7 @@ function batchAssemblyRequest(previewOnly, outputDir) {
   const indexes = imageBatchIndexes(), paths = indexes.map(i => imageBatchDraft.results[i].imagePath);
   const atlas = imageBatchDraft.outputKind === "atlas", options = collectOptions();
   return { source: { kind: "frames", paths, title: "Обработанные спрайты", maskPrepared: true }, name: $("#spriteName").value || "sprites", previewOnly, outputDir,
-    options: { ...options, maxFrames: indexes.length, frameMetadata: Object.fromEntries(indexes.map((src, i) => [i, state.frameMetadata[src] || {}])), anchorReference: Math.max(0, indexes.indexOf(state.anchorReference)), keyMode: "alpha", frameOverrides: {}, preparedCleanup: {}, aiEdits: [], edgeRefine: { mode: "none" }, fringeCleanup: false, edgeDecontaminate: false, attachments: [], frameTransforms: {}, pixelate: null, toning: null, imageGeometry: null, preserveFrameCanvas: true, atlasBackground: imageBatchDraft.atlasBackground || "transparent", atlasBackgroundColor: imageBatchDraft.atlasBackgroundColor || "#ff00ff", pixelScale: imageBatchDraft.pixelScale || 1, packing: atlas ? "maxrects" : "grid", atlasExtrude: atlas ? Number($("#atlasExtrude").value) : 0, atlasRotate: atlas && $("#atlasRotate").checked, atlasOverflow: "split", removeDuplicates: false, excludedFrames: [], auxAI: {}, outputBackground: "transparent", timeline: indexes.map((src, i) => ({ src: i, durationMs: state.timeline?.find(e => e.src === src)?.d })), exports: { sheet: true, metadata: true, frames: false, preview: false } } };
+    options: { ...options, maxFrames: indexes.length, frameMetadata: Object.fromEntries(indexes.map((src, i) => [i, state.frameMetadata[src] || {}])), anchorReference: Math.max(0, indexes.indexOf(state.anchorReference)), keyMode: "alpha", frameOverrides: {}, preparedCleanup: {}, aiEdits: [], edgeRefine: { mode: "none" }, fringeCleanup: false, edgeDecontaminate: false, attachments: [], frameTransforms: {}, pixelate: null, toning: null, colorAdjust: null, imageGeometry: null, preserveFrameCanvas: true, atlasBackground: imageBatchDraft.atlasBackground || "transparent", atlasBackgroundColor: imageBatchDraft.atlasBackgroundColor || "#ff00ff", pixelScale: imageBatchDraft.pixelScale || 1, packing: atlas ? "maxrects" : "grid", atlasExtrude: atlas ? Number($("#atlasExtrude").value) : 0, atlasRotate: atlas && $("#atlasRotate").checked, atlasOverflow: "split", removeDuplicates: false, excludedFrames: [], auxAI: {}, outputBackground: "transparent", timeline: indexes.map((src, i) => ({ src: i, durationMs: state.timeline?.find(e => e.src === src)?.d })), exports: { sheet: true, metadata: true, frames: false, preview: false } } };
 }
 
 async function prepareBatchAssembly() {
@@ -118,9 +118,10 @@ for (const id of ["imageBatchOutput", "imageBatchScale", "imageBatchAtlasBackgro
 });
 let imageBatchReturnFocus = null;
 let imageBatchReviewIndex = 0;
+let imageBatchColorPreviewToken = 0;
 const imageBatchUrl = file => "file:///" + file.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/");
 function persistImageBatchDraft() {
-  const references = [imageBatchDraft?.directory, ...(state.source?.paths || []), ...state.history.flatMap(h => h.source?.paths || []), ...state.animations.flatMap(a => a.source?.paths || []), ...Object.values(imageBatchDraft?.results || {}).map(r => r.imagePath), ...Object.values(state.frameOverrides || {}), ...state.history.flatMap(h => Object.values(h.frameOverrides || {}))].filter(Boolean);
+  const references = [imageBatchDraft?.directory, ...Object.values(imageBatchDraft?.colorBases || {}), ...(state.source?.paths || []), ...state.history.flatMap(h => h.source?.paths || []), ...state.animations.flatMap(a => a.source?.paths || []), ...Object.values(imageBatchDraft?.results || {}).map(r => r.imagePath), ...Object.values(state.frameOverrides || {}), ...state.history.flatMap(h => Object.values(h.frameOverrides || {}))].filter(Boolean);
   window.spriteLab.retainPreviews?.(references).catch(() => {});
   try { localStorage.setItem("spriteLab.pendingImageBatch", JSON.stringify(imageBatchDraft)); } catch { /* UI still keeps the preview. */ }
 }
@@ -130,6 +131,7 @@ function imageBatchIndexes() {
   return imageBatchDraft.paths.map((_, index) => index).filter(index => scope === "all" || imageBatchDraft.selected.includes(index));
 }
 function showImageBatchPair(index) {
+  imageBatchColorPreviewToken++;
   imageBatchReviewIndex = index;
   $("#imageBatchBefore").src = imageBatchUrl(imageBatchDraft.paths[index]);
   const item = imageBatchDraft.results[index];
@@ -138,7 +140,25 @@ function showImageBatchPair(index) {
   if (item?.healingPath) $("#imageBatchHealing").src = imageBatchUrl(item.healingPath);
   else $("#imageBatchHealing").removeAttribute("src");
   renderImageBatchMatteReview();
+  if (!item && imageBatchDraft.colorBases?.[index]) void previewBatchColor(index);
   window.renderBatchCleanupSuggestion?.();
+}
+async function previewBatchColor(index) {
+  const token = ++imageBatchColorPreviewToken;
+  const base = imageBatchDraft.colorBases?.[index];
+  if (!base) return;
+  const options = { ...imageBatchDraft.adjustments };
+  const image = new Image(); image.src = imageBatchUrl(base);
+  try {
+    await image.decode();
+    if (token !== imageBatchColorPreviewToken || index !== imageBatchReviewIndex || imageBatchDraft.results[index]) return;
+    const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    pixels.data.set(window.SpriteLabPixelColors.adjust(pixels.data, options)); context.putImageData(pixels, 0, 0);
+    $('#imageBatchAfter').src = canvas.toDataURL('image/png');
+    $('#imageBatchMatteSummary').textContent = 'Живой просмотр цвета · обновите просмотр перед применением или сохранением.';
+  } catch { /* A retired preview can be regenerated with Prepare. */ }
 }
 function renderImageBatchMatteReview() {
   const review = imageBatchDraft?.results[imageBatchReviewIndex]?.matteReview;
@@ -149,7 +169,7 @@ function renderImageBatchMatteReview() {
   before.classList.toggle("hidden", showGameSize && before.complete && Boolean(before.naturalWidth));
   after.classList.toggle("hidden", showGameSize && after.complete && Boolean(after.naturalWidth));
   beforeCanvas.classList.add("hidden"); afterCanvas.classList.add("hidden");
-  if (!review) { $("#imageBatchMatteSummary").textContent = "Выберите подготовленный файл."; return; }
+  if (!review) { $("#imageBatchMatteSummary").textContent = imageBatchDraft?.colorBases?.[imageBatchReviewIndex] ? "Живой просмотр цвета · обновите просмотр перед применением или сохранением." : "Выберите подготовленный файл."; return; }
   const notes = [`RGBA ${review.width} × ${review.height}`, `${review.partial.toLocaleString("ru-RU")} пикс. с частичной прозрачностью`];
   if (review.palePartial) notes.push(`${review.palePartial.toLocaleString("ru-RU")} светлых на полупрозрачной кромке — проверьте, это могут быть детали`);
   if (review.innerPartial) notes.push(`${review.innerPartial.toLocaleString("ru-RU")} частично прозрачных внутри объекта`);
@@ -223,7 +243,7 @@ function renderImageBatchDraft() {
   $("#imageBatchContourWidth").disabled = state.busy;
   window.renderBatchCleanupSuggestion?.();
   $$("#imageBatchTasks button").forEach(control => { control.disabled = state.busy; });
-  $$(".batch-color-adjust input, #imageBatchResetColor").forEach(control => { control.disabled = state.busy || imageBatchDraft.configuration?.readyOnly; });
+  $$(".batch-color-adjust input, .batch-color-adjust select, #imageBatchResetColor").forEach(control => { control.disabled = state.busy || imageBatchDraft.configuration?.readyOnly; });
   $$("#imageBatchPixelation input, #imageBatchPixelation select").forEach(control => {
     control.disabled = state.busy || imageBatchDraft.configuration?.readyOnly || (control.id !== "imageBatchPixelateEnabled" && !imageBatchDraft.pixelate);
   });
@@ -253,12 +273,12 @@ window.openImageBatchPreview = function (configuration = {}) {
   imageBatchReturnFocus = document.activeElement;
   const paths = configuration.paths || state.source.paths;
   const exportAtlases = Boolean(configuration.exportAtlases);
-  const configurationKey = JSON.stringify({version:13, readyOnly:configuration.readyOnly, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
+  const configurationKey = JSON.stringify({version:14, readyOnly:configuration.readyOnly, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
   let saved; try { saved = JSON.parse(localStorage.getItem("spriteLab.pendingImageBatch")); } catch { /* No prior job. */ }
   if (!imageBatchDraft || JSON.stringify(imageBatchDraft.paths) !== JSON.stringify(paths) || imageBatchDraft.configurationKey !== configurationKey) {
     const adjustments = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths)
       ? imageBatchDraft.adjustments || { brightness: 0, contrast: 0, warmth: 0 }
-      : { brightness: 0, contrast: 0, warmth: 0 };
+      : { brightness: 0, contrast: 0, warmth: 0, ...(initialOptions.colorAdjust || {}) };
     const pixelate = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths) ? imageBatchDraft.pixelate || null : null;
     const imageGeometry = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths) ? imageBatchDraft.imageGeometry || null : null;
     imageBatchDraft = saved && JSON.stringify(saved.paths) === JSON.stringify(paths) && saved.configurationKey === configurationKey && saved.results && saved.failures && saved.selected ? saved : { paths: [...paths], selected: [Math.min(state.selectedFrameIndex,paths.length-1)], results: {}, failures: {}, settings: {}, directory: null, configurationKey, configuration, adjustments, pixelate, imageGeometry };
@@ -273,6 +293,9 @@ window.openImageBatchPreview = function (configuration = {}) {
     imageBatchDraft.paths.forEach((file, index) => { imageBatchDraft.results[index] ||= { input: file, imagePath: state.frameOverrides[index] || file, route: ["готовый файл · без очистки"] }; });
   }
   imageBatchDraft.adjustments ||= { brightness: 0, contrast: 0, warmth: 0 };
+  $("#imageBatchStyle").value = imageBatchDraft.adjustments.style || "none";
+  $("#imageBatchStyleStrength").value = String(imageBatchDraft.adjustments.styleStrength ?? 100);
+  $("#imageBatchStyleValue").textContent = $("#imageBatchStyleStrength").value + "%";
   $("#imageBatchPixelateEnabled").checked = Boolean(imageBatchDraft.pixelate);
   $("#imageBatchSharedPalette").checked = imageBatchDraft.pixelate?.paletteScope !== "frame";
   $("#imageBatchPixelateSize").value = String(imageBatchDraft.pixelate?.size || 3);
@@ -337,6 +360,7 @@ async function prepareImageBatch(mode = "all", requestedIndexes = null) {
   state.busy = true; updateActionState(); renderImageBatchDraft();
   $("#prepareImageBatch").textContent = "Обрабатываю…";
   settings.batchCleanupByIndex = imageBatchDraft.cleanupChoices || {};
+  settings.captureColorBase = true;
   $("#cancelJob").classList.remove("hidden");
   setStatus(`Готовлю просмотр: ${indexes.length} изображений…`, "busy", .02);
   try {
@@ -397,6 +421,11 @@ function imageBatchColorChanged() {
     imageBatchDraft.adjustments[key] = Number(element.value);
     document.getElementById("imageBatch" + key[0].toUpperCase() + key.slice(1) + "Value").textContent = element.value;
   }
+  imageBatchDraft.adjustments.style = $("#imageBatchStyle").value;
+  imageBatchDraft.adjustments.styleStrength = Number($("#imageBatchStyleStrength").value);
+  $("#imageBatchStyleValue").textContent = $("#imageBatchStyleStrength").value + "%";
+  imageBatchDraft.colorBases ||= {};
+  for (const [index, result] of Object.entries(imageBatchDraft.results)) if (result.colorBasePath) imageBatchDraft.colorBases[index] = result.colorBasePath;
   imageBatchDraft.results = {}; imageBatchDraft.failures = {}; imageBatchDraft.settings = {}; imageBatchDraft.exported = {}; imageBatchDraft.exportFailures = {};
   persistImageBatchDraft(); renderImageBatchDraft(); showImageBatchPair(imageBatchReviewIndex);
   $("#imageBatchSummary").textContent = "Цвет изменён · обновите просмотр, затем примените PNG";
@@ -404,6 +433,7 @@ function imageBatchColorChanged() {
 }
 function imageBatchPixelationChanged() {
   if (!imageBatchDraft || state.busy) return;
+  imageBatchDraft.colorBases = {};
   const sizeControl = $("#imageBatchPixelateSize");
   const size = Math.max(2, Math.min(32, Math.round(Number(sizeControl.value) || 3)));
   sizeControl.value = String(size);
@@ -426,6 +456,7 @@ function renderImageBatchGeometryHint() {
 }
 function imageBatchGeometryChanged() {
   if (!imageBatchDraft || state.busy) return;
+  imageBatchDraft.colorBases = {};
   const dimensions = {};
   for (const dimension of ["Width", "Height"]) {
     const control = document.getElementById("imageBatch" + dimension);
@@ -446,8 +477,11 @@ for (const id of ["imageBatchPixelateEnabled", "imageBatchPixelateSize", "imageB
   document.getElementById(id).addEventListener("change", imageBatchPixelationChanged);
 }
 for (const key of ["Brightness", "Contrast", "Warmth"]) document.getElementById("imageBatch" + key).addEventListener("input", imageBatchColorChanged);
+$("#imageBatchStyle").addEventListener("change", imageBatchColorChanged);
+$("#imageBatchStyleStrength").addEventListener("input", imageBatchColorChanged);
 $("#imageBatchResetColor").addEventListener("click", () => {
   for (const key of ["Brightness", "Contrast", "Warmth"]) document.getElementById("imageBatch" + key).value = "0";
+  $("#imageBatchStyle").value = "none"; $("#imageBatchStyleStrength").value = "100";
   imageBatchColorChanged();
 });
 $("#prepareImageBatch").addEventListener("click", () => prepareImageBatch());
@@ -463,7 +497,7 @@ async function exportReviewedImageAtlases(indexes) {
   try {
     const outputDir = state.outputFolder || await window.spriteLab.automaticOutput(imageBatchDraft.paths[0]);
     state.outputFolder=outputDir; $('#outputFolder').textContent=outputDir;
-    const options={...configuration.options, keyMode:'alpha', fringeCleanup:false, edgeDecontaminate:false, edgeRefine:{mode:'none'}, pixelate:null, toning:null, imageGeometry:null, frameOverrides:{}, preparedCleanup:{}, maskEdits:[], aiEdits:[], frameTransforms:{},attachments:[],attachmentPlacements:null};
+    const options={...configuration.options, keyMode:'alpha', fringeCleanup:false, edgeDecontaminate:false, edgeRefine:{mode:'none'}, pixelate:null, toning:null, colorAdjust:null, imageGeometry:null, frameOverrides:{}, preparedCleanup:{}, maskEdits:[], aiEdits:[], frameTransforms:{},attachments:[],attachmentPlacements:null};
     const result=await window.spriteLab.imageBatch({paths:pending.map(index=>imageBatchDraft.results[index].imagePath),outputDir,options,splitObjects:configuration.splitObjects});
     for(const item of result.results) {
       const index=pending.find(value=>imageBatchDraft.results[value].imagePath===item.input);
