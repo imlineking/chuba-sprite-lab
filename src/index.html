@@ -973,6 +973,24 @@
         </div>
 
         <aside class="pixel-editor-side">
+          <section class="pixel-panel">
+            <details id="pixelOCRDetails"><summary>Распознать надпись</summary>
+              <small>Выделите надпись прямоугольником или лассо. OCR работает на этом компьютере; результат можно исправить.</small>
+              <label>Язык <select id="pixelOCRLanguage"><option value="eng+rus">Русский + английский</option><option value="rus">Русский</option><option value="eng">Английский</option></select></label>
+              <div class="pixel-color-actions"><button id="pixelOCRRun" class="button secondary" type="button">Распознать выделение</button><button id="pixelOCRStop" class="button secondary" type="button" disabled>Остановить</button></div>
+              <small id="pixelOCRStatus" role="status"></small>
+              <label>Исправьте текст <textarea id="pixelOCRResult" rows="3" maxlength="2000" spellcheck="false" data-i18n-skip></textarea></label>
+              <button id="pixelOCRUse" class="button primary" type="button" disabled>В текстовый слой</button>
+            </details>
+          </section>
+          <section class="pixel-panel">
+            <details><summary>Заменить нарисованную надпись</summary>
+              <small>Палочкой или лассо выделите только старые буквы на пиксельном слое. За пределами маски изображение сохраняется. Скрытый рисунок восстанавливается приблизительно; затем добавьте новый текст.</small>
+              <label>Восстановить фон <select id="pixelTextRepairMethod"><option value="neighbors">Из соседних пикселей · ровный фон</option><option value="lama">LaMa · рисунок и текстура</option></select></label>
+              <div class="pixel-color-actions"><button id="pixelTextRepairRun" class="button secondary" type="button">Подготовить замену</button><button id="pixelTextRepairApply" class="button primary" type="button" disabled>Удалить старые буквы</button><button id="pixelTextRepairCancel" class="button secondary" type="button">Отмена просмотра</button></div>
+              <small id="pixelTextRepairStatus" role="status"></small>
+            </details>
+          </section>
           <section class="pixel-panel pixel-text-panel">
             <header>Текстовый слой <button id="pixelAddText" class="pixel-tool-button" type="button">＋ Текст</button></header>
             <details id="pixelTextDetails"><summary>Надпись и оформление</summary>
@@ -981,6 +999,12 @@
               <label>Шрифт Windows <select id="pixelTextFont" data-i18n-skip><option>Arial</option></select></label>
               <button id="pixelTextRefresh" class="pixel-tool-button" type="button" title="Обновить установленные шрифты без перезапуска">Обновить шрифты</button>
               <small id="pixelTextFontStatus" role="status"></small>
+              <details id="pixelFontMatchDetails"><summary>Найти похожий шрифт</summary>
+                <small>Выделите одну строку исходной надписи и введите её точный текст. Сравнение формы даёт кандидатов, а не гарантированное название шрифта.</small>
+                <label>Текст образца <input id="pixelFontSample" type="text" maxlength="80" data-i18n-skip></label>
+                <div class="pixel-color-actions"><button id="pixelFontFind" class="button secondary" type="button">Подобрать шрифты</button><button id="pixelFontStop" class="button secondary" type="button" disabled>Остановить подбор</button></div>
+                <small id="pixelFontMatchStatus" role="status"></small><div id="pixelFontCandidates"></div>
+              </details>
               <div class="pixel-text-pair"><label>Размер, px <input id="pixelTextSize" type="number" min="1" max="512" value="24"></label><label>Выравнивание <select id="pixelTextAlign"><option value="left">Слева</option><option value="center">По центру</option><option value="right">Справа</option></select></label></div>
               <div class="pixel-text-pair"><label><input id="pixelTextBold" type="checkbox"> Жирный</label><label><input id="pixelTextItalic" type="checkbox"> Курсив</label></div>
               <div class="pixel-text-pair"><label>Цвет <input id="pixelTextColor" type="color" value="#ffffff"></label><label>Обводка <input id="pixelTextStrokeColor" type="color" value="#000000"></label></div>
@@ -1241,6 +1265,10 @@
     <script src="./pixel-color-ui.js"></script>
     <script src="./text-layer.js"></script>
     <script src="./pixel-text-ui.js"></script>
+    <script src="./pixel-ocr-ui.js"></script>
+    <script src="./font-match.js"></script>
+    <script src="./pixel-font-ui.js"></script>
+    <script src="./pixel-text-repair-ui.js"></script>
     <script src="./auto-pilot.js"></script>
     <script src="./mask-region-ui.js"></script>
     <div id="imageBatchModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="imageBatchTitle">

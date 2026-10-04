@@ -11,6 +11,7 @@ function pixelEditorCancelPreview() {
   cancelAnimationFrame(pixelColorPreviewTask);
   pixelColorDraft=null;pixelAdjustDraft=null;pixelEditor.preview=null;
   window.spriteLabTextUI?.cancel();
+  window.spriteLabTextRepairUI?.cancel();
   $('#pixelColorForm').classList.add('hidden');$('#pixelAdjustDetails').open=false;
   pixelEditorRenderCanvas();
   if (pixelEditor.sessionId && hadPreview) pixelEditorStatus(t('Предпросмотр отменён · применённые изменения остаются'), 'ready');

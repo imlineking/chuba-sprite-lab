@@ -102,6 +102,7 @@
   }
   function reset() { cancel(); editingId = null; $('#pixelTextDetails').open = false; sync(); }
   window.spriteLabTextUI = { open, cancel, sync, reset, commit, hasDraft: () => Boolean(draft),
+    fromRecognition: settings => { open(true); write(settings); preview(); },
     edit: layerId => { if (active()?.id === layerId) open(); },
     position: point => { if (!$('#pixelTextDetails').open) open(); $('#pixelTextX').value = point.x; $('#pixelTextY').value = point.y; preview(); },
   };

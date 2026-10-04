@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld("spriteLab", {
   // and receives one state object back.
   openPixelEditor: (request) => ipcRenderer.invoke("editor:open", request),
   installedFonts: () => ipcRenderer.invoke('fonts:list'),
+  recognizeText: request => ipcRenderer.invoke('editor:ocr', request),
+  repairLettering: request => ipcRenderer.invoke('editor:repair-text', request),
   pixelEditorOp: (request) => ipcRenderer.invoke("editor:op", request),
   savePixelEditor: (request) => ipcRenderer.invoke("editor:save", request),
   // Local AI models: what is installed, what can be downloaded, and the auto-mode plan.

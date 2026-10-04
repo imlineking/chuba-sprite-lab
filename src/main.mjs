@@ -562,6 +562,7 @@ ipcMain.handle("editor:open", async (_event, request = {}) => {
 // One entry point for the editing commands: the interface sends the operation name, and every answer
 // has the same state shape so the window has a single redraw path.
 const editorOperations = {
+  replacePixels: request => editorSession.replaceActivePixels(request.sessionId, request),
   text: request => editorSession.setTextLayer(request.sessionId, request),
   textPreview: request => editorSession.previewTextLayer(request.sessionId, request),
   rasterizeText: request => editorSession.rasterizeTextLayer(request.sessionId),
@@ -589,6 +590,26 @@ ipcMain.handle("editor:op", async (_event, request = {}) => {
   return operation(request);
 });
 ipcMain.handle('fonts:list', () => installedFonts());
+const ocrJobs = new Map();
+ipcMain.handle('editor:ocr', async (_event, request = {}) => {
+  const id = String(request.sessionId || '');
+  if (request.cancel) { ocrJobs.get(id)?.abort(); return { cancelled: true }; }
+  if (ocrJobs.has(id)) throw new Error('Распознавание уже выполняется.');
+  const snapshot = editorSession.readState(id), controller = new AbortController();
+  ocrJobs.set(id, controller);
+  try {
+    const langPath = path.join(app.isPackaged ? process.resourcesPath : appRoot, 'vendor', 'ocr');
+    return await executeProcessing('recognizeText', { pixels: snapshot.composite, selection: snapshot.selection, width: snapshot.width, height: snapshot.height, language: request.language, langPath, signal: controller.signal });
+  } finally { if (ocrJobs.get(id) === controller) ocrJobs.delete(id); }
+});
+ipcMain.handle('editor:repair-text', async (_event, request = {}) => {
+  const snapshot = editorSession.exportActivePixels(request.sessionId);
+  const before = editorSession.readState(request.sessionId);
+  const result = await executeProcessing('repairLettering', { ...snapshot, method: request.method, appRoot, aiModelDirs: [modelsDirectory()], resourcesPath: process.resourcesPath });
+  const current = editorSession.readState(request.sessionId);
+  if (current.activeLayerId !== before.activeLayerId || !Buffer.from(current.composite).equals(Buffer.from(before.composite)) || !Buffer.from(current.selection || []).equals(Buffer.from(before.selection || []))) throw new Error('Кадр или выделение изменились. Подготовьте восстановление заново.');
+  return { ...result, layerId: snapshot.layerId, composite: editorSession.previewActivePixels(request.sessionId, { ...result, layerId: snapshot.layerId }) };
+});
 
 /* ------------------------------------------------------------------- models and auto mode */
 

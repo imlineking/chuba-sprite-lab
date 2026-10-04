@@ -503,3 +503,7 @@ html[data-theme] .pixel-color-actions .button { min-height: 40px; padding: 8px 6
 
 .pixel-editor-info { grid-column: 1; grid-row: 1; }
 .pixel-editor-foot .pixel-editor-save { grid-column: 2; grid-row: 1; }
+.pixel-panel details > small, .pixel-panel details > label { display: block; margin: 8px 0; font-size: 12px; line-height: 1.5; }
+.pixel-panel details textarea, .pixel-panel details select, .pixel-panel details input[type=text] { width: 100%; min-width: 0; }
+.pixel-font-candidate { width: 100%; min-width: 0; display: grid; gap: 7px; padding: 9px; margin: 6px 0; text-align: left; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; overflow-wrap: anywhere; }
+.pixel-font-candidate span:last-child { font-size: 20px; overflow: hidden; }

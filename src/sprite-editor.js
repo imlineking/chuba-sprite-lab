@@ -324,7 +324,7 @@ async function pixelEditorSave() {
   $("#pixelSaveFrame").disabled = true;
   try {
     if (pixelEditor.preview || window.spriteLabTextUI?.hasDraft()) {
-      const answer = window.spriteLabTextUI?.hasDraft() ? await window.spriteLabTextUI.commit() : pixelColorDraft ? await pixelColorCommit() : pixelAdjustDraft ? await pixelAdjustmentCommit() : null;
+      const answer = window.spriteLabTextUI?.hasDraft() ? await window.spriteLabTextUI.commit() : window.spriteLabTextRepairUI?.hasDraft() ? await window.spriteLabTextRepairUI.commit() : pixelColorDraft ? await pixelColorCommit() : pixelAdjustDraft ? await pixelAdjustmentCommit() : null;
       if (!answer || answer.blocked) return false;
     }
     const frameIndex = pixelEditor.frameIndex;

@@ -17,3 +17,7 @@ This list describes the current source packaging configuration. Previously distr
 `resources/models/bundled-models.json` records exact export URLs, sizes and SHA-256 digests. These notices identify the included exports; the planned commercial distribution audit still needs the full component license texts and FFmpeg source/build provenance.
 
 The complete license text and source-code availability requirements of each third-party component remain in force. Official FFmpeg sources and licensing information are available at [ffmpeg.org](https://ffmpeg.org/legal.html).
+
+## Offline OCR
+
+Tesseract.js 7.0.0 and tesseract.js-core (Apache-2.0): https://github.com/naptha/tesseract.js . Local English/Russian LSTM data from https://github.com/tesseract-ocr/tessdata_fast (Apache-2.0). The bundled vendor/ocr/LICENSE.txt and manifest record the licence and SHA-256 checksums. Runtime uses local language paths; images are not uploaded.

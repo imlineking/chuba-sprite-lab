@@ -1,7 +1,9 @@
 import { processSprites, processAnimationSet, processVideoBatch, processFramePreview } from "./processor.mjs";
 import { processImageBatch } from "./image-batch.mjs";
+import { recognizeText } from './ocr.mjs';
+import { repairLettering } from './text-repair.mjs';
 
-const operations = { processSprites, processAnimationSet, processVideoBatch, processFramePreview, processImageBatch };
+const operations = { processSprites, processAnimationSet, processVideoBatch, processFramePreview, processImageBatch, recognizeText, repairLettering };
 let current;
 process.on("message", async message => {
   if (message.type === "cancel") { current?.controller.abort(); return; }

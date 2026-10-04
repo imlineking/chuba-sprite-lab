@@ -332,6 +332,30 @@ export function exportEditableDocument(sessionId) {
   return encodeEditorDocument(session.document, session.frameIndex);
 }
 
+export function exportActivePixels(sessionId) {
+  const session = requireSession(sessionId), layer = activeLayer(session);
+  if (layer.locked || layer.kind === 'text') throw new Error('Выберите незаблокированный пиксельный слой с исходной надписью.');
+  return { pixels: snapshotCel(session.document, layer.id, session.frameIndex), layerId: layer.id, width: session.document.width, height: session.document.height, selection: session.selection ? Uint8Array.from(session.selection) : null };
+}
+
+export function replaceActivePixels(sessionId, options = {}) {
+  const session = requireSession(sessionId), layer = activeLayer(session);
+  if (options.layerId !== layer.id) throw new Error('Активный слой изменился. Подготовьте восстановление заново.');
+  const pixels = Uint8ClampedArray.from(options.pixels || []);
+  if (pixels.length !== session.document.width * session.document.height * 4) throw new Error('Неверный размер восстановленного слоя.');
+  return applyCommand(session, 'Старая надпись удалена', current => { ensureCel(session.document, current.id, session.frameIndex).set(pixels); return true; });
+}
+
+export function previewActivePixels(sessionId, options = {}) {
+  const session = requireSession(sessionId), layer = activeLayer(session);
+  if (options.layerId !== layer.id) throw new Error('Активный слой изменился.');
+  const pixels = Uint8ClampedArray.from(options.pixels || []), before = snapshotCel(session.document, layer.id, session.frameIndex);
+  if (pixels.length !== before.length) throw new Error('Неверный размер восстановленного слоя.');
+  ensureCel(session.document, layer.id, session.frameIndex).set(pixels);
+  try { return compositeFrame(session.document, session.frameIndex); }
+  finally { ensureCel(session.document, layer.id, session.frameIndex).set(before); }
+}
+
 export function setTextLayer(sessionId, options = {}) {
   const session = requireSession(sessionId), document = session.document;
   const existing = options.layerId ? findLayer(document, String(options.layerId)) : null;
