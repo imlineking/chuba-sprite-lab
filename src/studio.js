@@ -29,6 +29,7 @@ function saveStudioPreferences() {
   try {
     localStorage.setItem("spriteLab.studio", JSON.stringify({
       atlasGap: Number($("#atlasGap").value), atlasExtrude: Number($("#atlasExtrude").value), atlasRotate: $("#atlasRotate").checked, atlasDeduplicate: $("#atlasDeduplicate").checked,
+      ...captureStudioControls(),
       packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
       atlasMaxSize: $("#atlasMaxSize").value, atlasOverflow: $("#atlasOverflow").value, atlasPowerOfTwo: $("#atlasPowerOfTwo").checked,
       onionOpacity: studio.onionOpacity, gameScale: studio.gameScale, hitbox: studio.hitbox,
@@ -46,6 +47,7 @@ function loadStudioPreferences() {
     $("#atlasDeduplicate").checked = saved.atlasDeduplicate !== false;
     if (saved.packing) $("#atlasPacking").value = saved.packing;
     if (saved.exportFormat) $("#exportFormat").value = saved.exportFormat;
+    $("#gpuFormat").value=saved.gpuFormat||"none";$("#nineSliceEnabled").checked=Boolean(saved.nineSlice);for(const k of ["left","right","top","bottom"])document.getElementById("nineSlice"+k[0].toUpperCase()+k.slice(1)).value=String(saved.nineSlice?.[k]??4);
     if (saved.atlasMaxSize != null) $("#atlasMaxSize").value = String(saved.atlasMaxSize);
     if (saved.atlasOverflow) $("#atlasOverflow").value = saved.atlasOverflow;
     if (saved.atlasPowerOfTwo != null) $("#atlasPowerOfTwo").checked = saved.atlasPowerOfTwo === true;
@@ -603,6 +605,9 @@ function renderAtlasInspection(result) {
 function updateExportFormatHint() {
   const format = $("#exportFormat").value;
   const dense = $("#atlasPacking").value !== "grid";
+  $("#gpuTextureControls").hidden=format!=='three';$("#gpuFormat").disabled=format!=='three';if(format!=='three')$("#gpuFormat").value='none';
+  if($("#gpuFormat").value!=='none'){$("#exportMetadata").checked=true;$("#exportSheet").checked=true;}
+  $("#nineSliceEnabled").disabled=dense;if(dense)$("#nineSliceEnabled").checked=false;
   $("#atlasExtrude").disabled = !dense;
   $("#atlasRotate").disabled = !dense || !["chuba", "phaser3", "texturepacker"].includes(format);
   if (!dense) $("#atlasExtrude").value = "0";
@@ -611,6 +616,7 @@ function updateExportFormatHint() {
     chuba: "Chuba JSON: лист, кадры, durationMs, теги анимаций.",
     phaser3: "Phaser 3: NAME.phaser.json (multiatlas) + NAME.phaser-anims.json.",
     godot: "Godot 4: NAME.tres (SpriteFrames) — положите рядом с листом в res://.",
+    three:"Three.js: JSON + модуль загрузки PNG/DDS, кадры со смещениями и 9-slice.",
     texturepacker: "TexturePacker JSON-hash: NAME.texturepacker.json (на каждый лист).",
   };
   const metadataOff = !$("#exportMetadata").checked;
@@ -1010,7 +1016,7 @@ $("#fps").addEventListener("input", () => { syncFrameDurationControl(selectedEnt
 $("#maskOnion").addEventListener("change", syncMaskOnion);
 $("#maskOnionOpacity").addEventListener("input", syncMaskOnion);
 
-for (const id of ["atlasPacking", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo", "atlasGap", "atlasExtrude", "atlasRotate", "atlasDeduplicate"]) {
+for (const id of ["gpuFormat", "nineSliceEnabled", "nineSliceLeft", "nineSliceRight", "nineSliceTop", "nineSliceBottom", "atlasPacking", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo", "atlasGap", "atlasExtrude", "atlasRotate", "atlasDeduplicate"]) {
   $(`#${id}`).addEventListener("change", () => {
     state.lastExportDir = null; updateExportFormatHint(); saveStudioPreferences(); updateActionState();
     if (id !== "exportFormat") markPreviewDirty();

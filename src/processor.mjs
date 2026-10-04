@@ -30,6 +30,8 @@ import { loadAuxSession, inpaintLama, interpolateRife, upscaleEsrgan, estimateDe
 import { parseVideoMetadata } from "./video-metadata.mjs";
 import { analyseBorderBackground, backgroundKeyMode } from "./background-analysis.mjs";
 import { summarizeIssues } from "./diagnostics.mjs";
+import { writeDDS } from './dds-bc3.mjs';
+import { validateNineSlice,scale9Borders } from './nine-slice.mjs';
 import { writeAnimatedImage } from './animated-images.mjs';
 
 export const supportedImageExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".avif"]);
@@ -1068,9 +1070,9 @@ const postRenderOptionKeys = new Set([
   "exports", "cleanOutput", "previewFrameIndex", "attachmentPlacements", "columns", "autoColumns",
   "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo", "atlasExtrude", "atlasGap", "atlasRotate", "atlasBackground", "atlasBackgroundColor", "packing", "exportFormat", "timeline", "loopMode", "loopRange", "animationName",
   // Scheduling only: the pool width changes nothing about the produced atlas.
-  "frameParallelism", "atlasDeduplicate",
+  "frameParallelism", "atlasDeduplicate", "gpuFormat", "nineSlice",
 ]);
-export const exportFormats = ["chuba", "phaser3", "godot", "texturepacker", "unity"];
+export const exportFormats = ["chuba", "phaser3", "godot", "texturepacker", "unity", "three"];
 // The version that ends up inside exported metadata. It lives in one place because it
 // used to be duplicated per exporter and would drift on the next release.
 const { version: APP_VERSION } = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8"));
@@ -1561,7 +1563,7 @@ function phaserFiles(spriteName, frames, tags, atlas, pageFiles) {
       sourceSize: frame.sourceSize,
       spriteSourceSize: frame.spriteSourceSize,
       frame: { x: frame.x, y: frame.y, w: frame.width, h: frame.height },
-      pivot: frame.pivot, durationMs: frame.durationMs, animation: frame.animation, anchorPoints: frame.anchorPoints,
+      pivot: frame.pivot, durationMs: frame.durationMs, animation: frame.animation, anchorPoints: frame.anchorPoints, ...(frame.nineSlice?{scale9Borders:scale9Borders(frame.nineSlice,frame.sourceSize.w,frame.sourceSize.h)}:{}),
     })),
   }));
   const anims = tags.map((tag) => {
@@ -1593,7 +1595,7 @@ function texturePackerFiles(spriteName, frames, tags, atlas, pageFiles) {
         sourceSize: frame.sourceSize,
         duration: frame.durationMs,
         animation: frame.animation, anchorPoints: frame.anchorPoints,
-        pivot: frame.pivot,
+        pivot: frame.pivot, ...(frame.nineSlice?{scale9Borders:scale9Borders(frame.nineSlice,frame.sourceSize.w,frame.sourceSize.h)}:{}),
       };
     });
     return {
@@ -2085,6 +2087,12 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
   }
 
   const { frames, tags } = describeFrames(animations, atlas, pageFiles);
+  for(const frame of frames){const nineSlice=options.nineSlice||frame.nineSlice||(frame.scale9Borders?{left:frame.scale9Borders.x,top:frame.scale9Borders.y,right:frame.sourceSize.w-frame.scale9Borders.x-frame.scale9Borders.w,bottom:frame.sourceSize.h-frame.scale9Borders.y-frame.scale9Borders.h}:null);if(nineSlice){if(frame.trimmed||frame.rotated)throw new Error('9-slice требует регулярного листа без обрезки и поворота.');frame.nineSlice=validateNineSlice(nineSlice,frame.sourceSize.w,frame.sourceSize.h);}}
+  const gpuPages=[];
+  if(!previewOnly&&options.gpuFormat&&options.gpuFormat!=='none'){
+    if(options.gpuFormat!=='dds-bc3'||exportFormat!=='three'||!requestedExports.metadata||!exportSheet)throw new Error('DDS/BC3 требует профиля Three.js, PNG-листа и Manifest.');
+    for(const[index,file]of sheetPaths.entries()){const name=pageFiles[index].replace(/\.png$/i,'.dds'),quality=await writeDDS(file,path.join(outputRoot,name));gpuPages.push({image:name,...quality});}
+  }
   const primary = animations[0];
   const primaryGroup = atlas.groups[primary.groupIndex];
   const gridLayout = packing === "grid" && atlas.pages.length === 1 && !multi;
@@ -2110,7 +2118,7 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
     extrude, gap, rotation: rotate,
     powerOfTwo: atlas.powerOfTwo,
     scale: atlas.scale,
-    pages: atlas.pages.map((page, index) => ({ image: pageFiles[index], width: page.width, height: page.height })),
+    pages: atlas.pages.map((page, index) => ({ image: pageFiles[index], width: page.width, height: page.height, ...(gpuPages[index]?{gpu:gpuPages[index]}:{}) })),
     loop: primary.loop,
     animations: tags,
     ...(animations.some((animation) => animation.depthFiles.length) ? { depthMaps: animations.map((animation) => ({ animation: animation.name, images: animation.depthFiles })) } : {}),
@@ -2183,9 +2191,11 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
   const manifestPath = previewOnly || requestedExports.metadata ? path.join(outputRoot, `${spriteName}.json`) : null;
   const reportPath = previewOnly || requestedExports.metadata ? path.join(outputRoot, `${spriteName}.report.json`) : null;
 
-  const engineFiles = [];
+  const engineFiles = gpuPages.map(page=>path.join(outputRoot,page.image));
+  if(gpuPages.length)report.gpuTextures=gpuPages;
   if (!previewOnly && requestedExports.metadata && exportFormat !== "chuba") {
-    const outputs = exportFormat === "phaser3" ? phaserFiles(spriteName, frames, tags, atlas, pageFiles)
+    const outputs = exportFormat === 'three' ? [{file:spriteName+'.three.json',content:{...manifest,engine:'three',colorSpace:'sRGB'}},{file:spriteName+'.three.mjs',text:await fs.readFile(new URL('./three-atlas-template.mjs',import.meta.url),'utf8')}]
+      : exportFormat === "phaser3" ? phaserFiles(spriteName, frames, tags, atlas, pageFiles)
       : exportFormat === "texturepacker" ? texturePackerFiles(spriteName, frames, tags, atlas, pageFiles)
         : exportFormat === "unity" ? [unitySlicerFile(spriteName, frames, atlas, pageFiles)]
           : [godotFile(spriteName, frames, tags, atlas, pageFiles)];

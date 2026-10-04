@@ -553,6 +553,7 @@
                   <option value="phaser3">Phaser 3 (multiatlas)</option>
                   <option value="godot">Godot 4 (SpriteFrames)</option>
                   <option value="texturepacker">TexturePacker JSON-hash</option>
+                  <option value="three">Three.js · JSON + загрузчик</option>
                   <option value="unity">Unity (C# для нарезки)</option>
                 </select>
               </label>
@@ -586,8 +587,11 @@
               <label class="field"><span>Поворот 90°</span><input id="atlasRotate" type="checkbox" title="Только плотный атлас и профили Chuba, Phaser, TexturePacker. Метаданные сохраняют исходную ориентацию." /></label>
             </div>
             <label class="toggle-row atlas-power-row"><span><strong>Размер листа: степень двойки</strong><small>Дополнить пустое пространство до 256, 512, 1024… px; кадры не сдвигаются.</small></span><input id="atlasPowerOfTwo" type="checkbox" /><i></i></label>
+            <div id="gpuTextureControls"><label class="field"><span>GPU-текстура для Three.js</span><select id="gpuFormat"><option value="none">Точный PNG · без сжатия</option><option value="dds-bc3">DDS / BC3 · дополнительный файл</option></select></label>
+            <p class="atlas-hint">DDS уменьшает память текстуры примерно в 4 раза, но меняет оттенки и альфу. Для точного пиксель-арта оставьте PNG. Загрузчик использует PNG при отсутствии S3TC/sRGB.</p></div>
+            <details><summary>9-slice · растягиваемые панели</summary><label class="check-label"><input id="nineSliceEnabled" type="checkbox"> Сохранять углы и края панели</label><p class="atlas-hint">Границы в пикселях готовой ячейки. Регулярный лист без обрезки; центр должен оставаться непустым. Phaser 3 и Three.js читают эти данные.</p><div class="atlas-grid"><label class="field"><span>Слева</span> <input id="nineSliceLeft" type="number" min="0" max="16384" value="4"></label><label class="field"><span>Справа</span><input id="nineSliceRight" type="number" min="0" max="16384" value="4"></label><label class="field"><span>Сверху</span><input id="nineSliceTop" type="number" min="0" max="16384" value="4"></label><label class="field"><span>Снизу</span><input id="nineSliceBottom" type="number" min="0" max="16384" value="4"></label></div></details>
             <p id="exportFormatHint" class="atlas-hint">Файл движка создаётся вместе с Manifest JSON.</p>
-            <label class="toggle-row"><span><strong>Объединять одинаковые картинки в атласе</strong><small>между анимациями и страницами; кадры и длительности сохраняются; применяется к плотной упаковке</small></span><input id="atlasDeduplicate" type="checkbox" checked><i></i></label>
+            <label class="toggle-row atlas-power-row"><span><strong>Объединять одинаковые картинки в атласе</strong><small>между анимациями и страницами; кадры и длительности сохраняются; применяется к плотной упаковке</small></span><input id="atlasDeduplicate" type="checkbox" checked><i></i></label>
             <article id="atlasWarning" class="atlas-warning hidden" role="status">
               <header><span>!</span><strong id="atlasWarningTitle">ЛИСТ БОЛЬШЕ ЛИМИТА</strong></header>
               <p id="atlasWarningText"></p>
@@ -1076,7 +1080,7 @@
             <label>Цветов, включая прозрачный <input id="pixelDocumentPaletteLimit" type="number" min="2" max="256" value="32"></label>
             <p class="pixel-editor-hint">Палитра общая для всей серии. Преобразование может менять цвета и полутона; текст станет пикселями. Слои сохраняются. Просмотрите результат перед применением; Ctrl+Z отменяет.</p>
             <div class="pixel-color-actions"><button id="pixelDocumentPalettePrepare" class="button secondary" type="button">Просмотр индексации</button><button id="pixelDocumentPaletteRGBA" class="button secondary" type="button">Вернуть RGBA</button></div>
-            <div id="pixelDocumentPaletteColors" style="display:flex;flex-wrap:wrap;gap:3px"></div>
+            <div id="pixelDocumentPaletteColors"></div>
             <label>Индекс цвета <input id="pixelDocumentPaletteIndex" type="number" min="0" max="255" value="1"></label>
             <label>Новый цвет <input id="pixelDocumentPaletteColor" type="color" value="#669933"></label>
             <label>Альфа цвета <input id="pixelDocumentPaletteAlpha" type="number" min="0" max="255" value="255"></label>
@@ -1085,7 +1089,7 @@
             <div class="pixel-color-actions"><button id="pixelDocumentPaletteApply" class="button secondary" type="button" disabled>Применить палитру</button><button id="pixelDocumentPaletteCancel" class="button secondary" type="button">Отменить просмотр</button></div>
             <label><input id="pixelTileWrap" type="checkbox"> Бесшовный тайл · кисть через края</label>
             <p class="pixel-editor-hint">Кисть и ластик продолжаются на противоположном краю. Повтор 3×3 показывает стыки. Готовые тайлы собирайте через «Спрайт-лист» с одинаковой ячейкой.</p>
-            <canvas id="pixelTilePreview" hidden style="width:100%;image-rendering:pixelated" aria-label="Повтор тайла 3 на 3"></canvas>
+            <canvas id="pixelTilePreview" hidden aria-label="Повтор тайла 3 на 3"></canvas>
           </details></section>
           <section class="pixel-panel">
             <header>Слои <span id="pixelLayerCount">1</span>

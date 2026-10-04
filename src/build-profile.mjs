@@ -26,7 +26,7 @@ export const profileOptionKeys = new Set([
   "fringeCleanup", "fringeStrength", "edgeDecontaminate", "keyColor", "aiProvider", "aiQuality", "aiForceModel", "pixelate", "frameParallelism", "attachments", "attachmentPlacements",
   "frameOverrides", "frameTransforms", "preparedCleanup", "fitEachFrame", "timeline", "loopMode",
   "loopRange", "packing", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo",
-  "atlasDeduplicate",
+  "atlasDeduplicate", "gpuFormat", "nineSlice",
   "cleanOutput", "animationName", "auxAI", "keyScope", "aiModel", "edgeRefine", "toning", "colorAdjust", "imageGeometry", "atlasGap", "atlasExtrude", "atlasRotate", "preserveFrameCanvas", "pixelScale", "atlasBackground", "atlasBackgroundColor", "frameMetadata", "anchorReference", "seriesReview",
 ]);
 
@@ -37,7 +37,8 @@ const enumValues = {
   aiProvider: ["auto", "cpu", "dml"],
   aiQuality: ["fast", "balanced", "max"],
   anchor: ["ground", "center", "motion", "body", "manual"],
-  exportFormat: ["chuba", "phaser3", "godot", "texturepacker", "unity"],
+  exportFormat: ["chuba", "phaser3", "godot", "texturepacker", "unity", "three"],
+  gpuFormat:["none","dds-bc3"],
   packing: ["grid", "tight", "maxrects"],
   atlasOverflow: ["warn", "scale", "columns", "split"],
   atlasBackground: ["transparent", "white", "black", "custom"],
@@ -70,6 +71,8 @@ function normalizeOptions(value, problem, label, baseDir) {
     if (options[key] === undefined) continue;
     if (!allowed.includes(options[key])) problem(`${label}.${key}: ожидается одно из ${allowed.join(", ")}.`);
   }
+  if(options.gpuFormat==='dds-bc3'&&options.exportFormat!=='three')problem(label+'.gpuFormat: DDS/BC3 требует Three.js.');
+  if(options.nineSlice){if(!isPlainObject(options.nineSlice)||['left','right','top','bottom'].some(k=>boundedInteger(options.nineSlice[k],0,16384)===null))problem(label+'.nineSlice: границы 0…16384 px.');if(options.packing&&options.packing!=='grid')problem(label+'.nineSlice: требуется регулярный лист.');}
   if (options.anchorReference !== undefined && boundedInteger(options.anchorReference, 0, 4095) === null) problem(label + ".anchorReference: ожидался индекс кадра 0…4095.");
   if (options.frameMetadata !== undefined) {
     if (!isPlainObject(options.frameMetadata)) problem(label + ".frameMetadata: ожидался объект.");

@@ -76,7 +76,7 @@ function captureStudioControls() {
     loopMode: $("#loopMode button.selected")?.dataset.loop || "loop",
     loopFrom: $("#loopFrom").value, loopTo: $("#loopTo").value,
     atlasGap: Number($("#atlasGap").value), atlasExtrude: Number($("#atlasExtrude").value), atlasRotate: $("#atlasRotate").checked,atlasDeduplicate:$('#atlasDeduplicate').checked,
-    packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
+    packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value, gpuFormat:$("#gpuFormat").value, nineSlice:$("#nineSliceEnabled").checked?Object.fromEntries(["left","right","top","bottom"].map(k=>[k,Number(document.getElementById("nineSlice"+k[0].toUpperCase()+k.slice(1)).value)])):undefined,
     atlasMaxSize: $("#atlasMaxSize").value, atlasOverflow: $("#atlasOverflow").value, atlasPowerOfTwo: $("#atlasPowerOfTwo").checked,
     imageAlign: state.imageAlign,
     intent: state.intent,
@@ -89,6 +89,7 @@ function applyStudioControls(studio = {}) {
   if (studio.atlasGap != null) $("#atlasGap").value = String(studio.atlasGap);
   if (studio.atlasExtrude != null) $("#atlasExtrude").value = String(studio.atlasExtrude);
   $("#atlasRotate").checked = studio.atlasRotate === true;
+  $("#gpuFormat").value=studio.gpuFormat||"none";$("#nineSliceEnabled").checked=Boolean(studio.nineSlice);for(const k of ["left","right","top","bottom"])document.getElementById("nineSlice"+k[0].toUpperCase()+k.slice(1)).value=String(studio.nineSlice?.[k]??4);
   $('#atlasDeduplicate').checked = studio.atlasDeduplicate !== false;
   if (studio.packing) $("#atlasPacking").value = studio.packing;
   if (studio.exportFormat) $("#exportFormat").value = studio.exportFormat;
@@ -1012,7 +1013,7 @@ function collectOptions() {
     timeline: timelineOption(state.timeline),
     ...loopOptions(),
     atlasGap: Number($("#atlasGap").value), atlasExtrude: Number($("#atlasExtrude").value), atlasRotate: $("#atlasRotate").checked,
-    packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
+    packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value, gpuFormat:$("#gpuFormat").value, nineSlice:$("#nineSliceEnabled").checked?Object.fromEntries(["left","right","top","bottom"].map(k=>[k,Number(document.getElementById("nineSlice"+k[0].toUpperCase()+k.slice(1)).value)])):undefined,
     atlasMaxSize: Number($("#atlasMaxSize").value) || 0, atlasOverflow: $("#atlasOverflow").value, atlasPowerOfTwo: $("#atlasPowerOfTwo").checked,
     pixelScale: $("#pixelateEnabled").checked ? Number($("#pixelExportScale").value) : 1,
     pixelate: $("#pixelateEnabled").checked ? {

@@ -174,3 +174,5 @@ test("a batch of videos cannot be mixed with other animations", () => {
     animations: [{ name: "one", source: batch }, { name: "two", source: { kind: "frames", paths: ["x.png"] } }],
   }), { baseDir }), /пакет из нескольких видео/);
 });
+
+test('Three.js GPU and nine-slice options retain their types in a build recipe',()=>{const options={exportFormat:'three',gpuFormat:'dds-bc3',packing:'grid',nineSlice:{left:4,right:4,top:4,bottom:4}};const parsed=readProfile(profile({options}),{baseDir});assert.equal(parsed.animations[0].options.gpuFormat,'dds-bc3');assert.deepEqual(parsed.animations[0].options.nineSlice,options.nineSlice);assert.throws(()=>readProfile(profile({options:{...options,exportFormat:'godot'}}),{baseDir}),/Three.js/);});

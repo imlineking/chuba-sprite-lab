@@ -513,3 +513,6 @@ html[data-theme] .pixel-color-actions .button { min-height: 40px; padding: 8px 6
 .pixel-frame-bar button,.pixel-frame-bar select,.pixel-frame-bar input { min-height: 32px; }
 .pixel-frame-bar label { font-size: 11px; display: flex; align-items: center; gap: 5px; }
 #pixelFrameDuration { width: 66px; }
+
+#pixelDocumentPaletteColors { display:flex; flex-wrap:wrap; gap:3px; }
+#pixelTilePreview { width:100%; image-rendering:pixelated; }
