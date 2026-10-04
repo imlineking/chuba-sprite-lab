@@ -598,6 +598,7 @@
   window.taskOnSource = (source) => {
     $("#imageScenarioChoices").classList.toggle("hidden", source?.kind !== "frames");
     if (source?.kind === "frames" && selected !== "healing") { selected = "edit"; state.intent = "images"; window.startImageEditing?.(); }
+    if (source?.animatedImport) { selected='animation';state.intent='animation'; }
     $("#batchImageResults").replaceChildren();
     if (!source?.sheetPath) objectEditOpened = false;
     if (source?.kind === "sheet" && (!selected || selected === "animation")) taskSet("layout");

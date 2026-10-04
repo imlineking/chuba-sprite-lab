@@ -101,7 +101,7 @@ function screenshotDimension(name, fallback, minimum, maximum) {
   const value = screenshotPath ? Number(argumentValue(name)) : NaN;
   return Number.isInteger(value) && value >= minimum && value <= maximum ? value : fallback;
 }
-const videoExtensions = new Set([".mp4", ".webm", ".mov", ".mkv", ".avi", ".gif"]);
+const videoExtensions = new Set([".mp4", ".webm", ".mov", ".mkv", ".avi", ".gif", ".apng"]);
 const repositoryUrl = "https://github.com/imlineking/chuba-sprite-lab";
 const latestReleaseApi = "https://api.github.com/repos/imlineking/chuba-sprite-lab/releases/latest";
 const updateAssetName = "Chuba-Sprite-Lab-portable.exe";
@@ -418,7 +418,7 @@ ipcMain.handle("source:any", async () => {
     title: "Выберите видео или изображения",
     properties: ["openFile", "multiSelections"],
     filters: [
-      { name: "Видео и изображения", extensions: ["mp4", "webm", "mov", "mkv", "avi", "gif", ...supportedImageExtensions].map((ext) => ext.replace(/^\./, "")) },
+      { name: "Видео и изображения", extensions: ["mp4", "webm", "mov", "mkv", "avi", "gif", "apng", ...supportedImageExtensions].map((ext) => ext.replace(/^\./, "")) },
     ],
   });
   if (result.canceled || !result.filePaths.length) return null;

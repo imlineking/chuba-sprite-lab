@@ -26,6 +26,7 @@ export const profileOptionKeys = new Set([
   "fringeCleanup", "fringeStrength", "edgeDecontaminate", "keyColor", "aiProvider", "aiQuality", "aiForceModel", "pixelate", "frameParallelism", "attachments", "attachmentPlacements",
   "frameOverrides", "frameTransforms", "preparedCleanup", "fitEachFrame", "timeline", "loopMode",
   "loopRange", "packing", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo",
+  "atlasDeduplicate",
   "cleanOutput", "animationName", "auxAI", "keyScope", "aiModel", "edgeRefine", "toning", "colorAdjust", "imageGeometry", "atlasGap", "atlasExtrude", "atlasRotate", "preserveFrameCanvas", "pixelScale", "atlasBackground", "atlasBackgroundColor", "frameMetadata", "anchorReference", "seriesReview",
 ]);
 
@@ -43,7 +44,7 @@ const enumValues = {
   outputBackground: ["transparent", "white"],
   loopMode: ["loop", "pingpong", "range"],
 };
-const exportParts = ["sheet", "frames", "metadata", "preview"];
+const exportParts = ["sheet", "frames", "metadata", "preview", "gif", "apng"];
 const sheetModes = ["objects", "grid", "manual", "metadata"];
 
 function isPlainObject(value) {
@@ -82,7 +83,7 @@ function normalizeOptions(value, problem, label, baseDir) {
   if (options.pixelScale !== undefined && ![1, 2, 4].includes(options.pixelScale)) problem(`${label}.pixelScale: ожидалось 1, 2 или 4.`);
   if (options.atlasBackgroundColor !== undefined && !/^#[0-9a-f]{6}$/i.test(options.atlasBackgroundColor)) problem(`${label}.atlasBackgroundColor: ожидался #RRGGBB.`);
   for (const [key, max] of [["atlasGap", 64], ["atlasExtrude", 2]]) if (options[key] !== undefined && boundedInteger(options[key], 0, max) === null) problem(`${label}.${key}: ожидалось целое 0…${max}.`);
-  for (const key of ["atlasRotate", "preserveFrameCanvas", "seriesReview"]) if (options[key] !== undefined && typeof options[key] !== "boolean") problem(`${label}.${key}: ожидалось true или false.`);
+  for (const key of ["atlasRotate", "atlasDeduplicate", "preserveFrameCanvas", "seriesReview"]) if (options[key] !== undefined && typeof options[key] !== "boolean") problem(`${label}.${key}: ожидалось true или false.`);
   if (options.atlasRotate && !["chuba", "phaser3", "texturepacker"].includes(options.exportFormat || "chuba")) problem(`${label}.atlasRotate: профиль не поддерживает поворот.`);
   if (options.packing === "grid" && (options.atlasExtrude || options.atlasRotate)) problem(`${label}.packing: extrude и поворот требуют плотного атласа.`);
   if (options.atlasPowerOfTwo !== undefined && typeof options.atlasPowerOfTwo !== "boolean") {
@@ -147,7 +148,7 @@ function normalizeOptions(value, problem, label, baseDir) {
         if (!exportParts.includes(key)) problem(`${label}.exports.${key}: неизвестный формат.`);
         else if (typeof item !== "boolean") problem(`${label}.exports.${key}: ожидалось true или false.`);
       }
-      if (exportParts.every((part) => options.exports[part] === false)) {
+      if (exportParts.every((part) => options.exports[part] === false || ['gif','apng'].includes(part) && options.exports[part] !== true)) {
         problem(`${label}.exports: выберите хотя бы один формат (${exportParts.join(", ")}).`);
       }
     }

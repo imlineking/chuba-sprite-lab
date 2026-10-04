@@ -24,8 +24,8 @@ let pendingUpdate = null;
 let modalReturnFocus = null;
 let customExportProfiles = {};
 
-const exportControls = { sheet: "#exportSheet", frames: "#exportFrames", metadata: "#exportMetadata", preview: "#exportPreview" };
-const exportNames = { sheet: "спрайт-лист", frames: "кадры", metadata: "JSON", preview: "WebP" };
+const exportControls = { sheet: "#exportSheet", frames: "#exportFrames", metadata: "#exportMetadata", preview: "#exportPreview", gif:'#exportGIF',apng:'#exportAPNG' };
+const exportNames = { sheet: "спрайт-лист", frames: "кадры", metadata: "JSON", preview: "WebP",gif:'GIF',apng:'APNG' };
 const exportPresets = {
   chuba: { sheet: true, frames: true, metadata: true, preview: true },
   sheet: { sheet: true, frames: false, metadata: false, preview: false },
@@ -75,7 +75,7 @@ function captureStudioControls() {
   return {
     loopMode: $("#loopMode button.selected")?.dataset.loop || "loop",
     loopFrom: $("#loopFrom").value, loopTo: $("#loopTo").value,
-    atlasGap: Number($("#atlasGap").value), atlasExtrude: Number($("#atlasExtrude").value), atlasRotate: $("#atlasRotate").checked,
+    atlasGap: Number($("#atlasGap").value), atlasExtrude: Number($("#atlasExtrude").value), atlasRotate: $("#atlasRotate").checked,atlasDeduplicate:$('#atlasDeduplicate').checked,
     packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
     atlasMaxSize: $("#atlasMaxSize").value, atlasOverflow: $("#atlasOverflow").value, atlasPowerOfTwo: $("#atlasPowerOfTwo").checked,
     imageAlign: state.imageAlign,
@@ -89,6 +89,7 @@ function applyStudioControls(studio = {}) {
   if (studio.atlasGap != null) $("#atlasGap").value = String(studio.atlasGap);
   if (studio.atlasExtrude != null) $("#atlasExtrude").value = String(studio.atlasExtrude);
   $("#atlasRotate").checked = studio.atlasRotate === true;
+  $('#atlasDeduplicate').checked = studio.atlasDeduplicate !== false;
   if (studio.packing) $("#atlasPacking").value = studio.packing;
   if (studio.exportFormat) $("#exportFormat").value = studio.exportFormat;
   if (studio.atlasMaxSize != null) $("#atlasMaxSize").value = String(studio.atlasMaxSize);
@@ -987,7 +988,7 @@ function collectOptions() {
     seriesReview: state.intent === "animation", keyMode: state.keyMode === "auto" && state.source?.maskPrepared ? "alpha" : state.keyMode, keyScope: $("#keyScope").value, anchor: state.anchor, autoSize: $("#autoSize").checked, autoColumns: $("#autoColumns").checked,
     pixelPerfect: $("#pixelPerfect").checked, removeDuplicates: $("#removeDuplicates").checked,
     outputBackground: $("#whiteOutput").checked ? "white" : "transparent",
-    excludedFrames: [...state.excludedFrames], exports: collectExports(),
+    excludedFrames: [...state.excludedFrames], exports: collectExports(), atlasDeduplicate:$('#atlasDeduplicate').checked,
     frameMetadata: structuredClone(state.frameMetadata), anchorReference: state.anchorReference,
     aiCutoff: $("#aiAutoCutoff").checked ? "auto" : Number($("#aiCutoff").value), aiSoftness: Number($("#aiSoftness").value),
     aiQuality: $("#aiQuality").value,

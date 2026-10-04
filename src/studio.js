@@ -28,7 +28,7 @@ function baseDurationMs() {
 function saveStudioPreferences() {
   try {
     localStorage.setItem("spriteLab.studio", JSON.stringify({
-      atlasGap: Number($("#atlasGap").value), atlasExtrude: Number($("#atlasExtrude").value), atlasRotate: $("#atlasRotate").checked,
+      atlasGap: Number($("#atlasGap").value), atlasExtrude: Number($("#atlasExtrude").value), atlasRotate: $("#atlasRotate").checked, atlasDeduplicate: $("#atlasDeduplicate").checked,
       packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
       atlasMaxSize: $("#atlasMaxSize").value, atlasOverflow: $("#atlasOverflow").value, atlasPowerOfTwo: $("#atlasPowerOfTwo").checked,
       onionOpacity: studio.onionOpacity, gameScale: studio.gameScale, hitbox: studio.hitbox,
@@ -43,6 +43,7 @@ function loadStudioPreferences() {
     if (saved.atlasGap != null) $("#atlasGap").value = String(saved.atlasGap);
     if (saved.atlasExtrude != null) $("#atlasExtrude").value = String(saved.atlasExtrude);
     $("#atlasRotate").checked = saved.atlasRotate === true;
+    $("#atlasDeduplicate").checked = saved.atlasDeduplicate !== false;
     if (saved.packing) $("#atlasPacking").value = saved.packing;
     if (saved.exportFormat) $("#exportFormat").value = saved.exportFormat;
     if (saved.atlasMaxSize != null) $("#atlasMaxSize").value = String(saved.atlasMaxSize);
@@ -1009,7 +1010,7 @@ $("#fps").addEventListener("input", () => { syncFrameDurationControl(selectedEnt
 $("#maskOnion").addEventListener("change", syncMaskOnion);
 $("#maskOnionOpacity").addEventListener("input", syncMaskOnion);
 
-for (const id of ["atlasPacking", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo", "atlasGap", "atlasExtrude", "atlasRotate"]) {
+for (const id of ["atlasPacking", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo", "atlasGap", "atlasExtrude", "atlasRotate", "atlasDeduplicate"]) {
   $(`#${id}`).addEventListener("change", () => {
     state.lastExportDir = null; updateExportFormatHint(); saveStudioPreferences(); updateActionState();
     if (id !== "exportFormat") markPreviewDirty();

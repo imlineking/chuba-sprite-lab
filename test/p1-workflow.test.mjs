@@ -128,7 +128,7 @@ test("series review flags an isolated mask loss and keeps every RGB/alpha byte i
   const empty = await sharp({ create: { width: 32, height: 32, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer();
   const frames = [full, empty, full].map((buffer, sourceIndex) => ({ buffer, sourceIndex }));
   const copies = frames.map(f => Buffer.from(f.buffer)), result = await reviewSeries(frames);
-  assert.equal(result.issues[0].frameIndex, 1); for (let i = 0; i < 3; i++) assert.deepEqual(frames[i].buffer, copies[i]);
+  assert.equal(result.issues.find(issue=>issue.code==='series-mask-change').frameIndex, 1); for (let i = 0; i < 3; i++) assert.deepEqual(frames[i].buffer, copies[i]);
   assert.equal((await reviewSeries([full, full, full].map((buffer, sourceIndex) => ({ buffer, sourceIndex })))).issues.length, 0);
 });
 

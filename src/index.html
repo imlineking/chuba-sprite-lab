@@ -539,6 +539,8 @@
               <input id="exportPreview" type="checkbox" checked />
               <i>▶</i><span><strong>Анимированное превью</strong><small>lossless WebP с выбранным FPS</small></span><b aria-hidden="true"></b>
             </label>
+            <label class="export-option"><input id="exportGIF" type="checkbox"><i>GIF</i><span><strong>Анимация GIF</strong><small>до 256 цветов; прозрачность без полутонов; длительность кратна 10 мс</small></span><b aria-hidden="true"></b></label>
+            <label class="export-option"><input id="exportAPNG" type="checkbox"><i>APNG</i><span><strong>Анимация APNG</strong><small>точные RGBA, длительности и цикл; подходит для полупрозрачных краёв</small></span><b aria-hidden="true"></b></label>
           </div>
           </details>
 
@@ -585,6 +587,7 @@
             </div>
             <label class="toggle-row atlas-power-row"><span><strong>Размер листа: степень двойки</strong><small>Дополнить пустое пространство до 256, 512, 1024… px; кадры не сдвигаются.</small></span><input id="atlasPowerOfTwo" type="checkbox" /><i></i></label>
             <p id="exportFormatHint" class="atlas-hint">Файл движка создаётся вместе с Manifest JSON.</p>
+            <label class="toggle-row"><span><strong>Объединять одинаковые картинки в атласе</strong><small>между анимациями и страницами; кадры и длительности сохраняются; применяется к плотной упаковке</small></span><input id="atlasDeduplicate" type="checkbox" checked><i></i></label>
             <article id="atlasWarning" class="atlas-warning hidden" role="status">
               <header><span>!</span><strong id="atlasWarningTitle">ЛИСТ БОЛЬШЕ ЛИМИТА</strong></header>
               <p id="atlasWarningText"></p>

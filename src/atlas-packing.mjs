@@ -130,14 +130,25 @@ function padAtlasPages(pages, powerOfTwo) {
   return pages.map((page) => ({ ...page, width: ceilPowerOfTwo(page.width), height: ceilPowerOfTwo(page.height) }));
 }
 
-export function planAtlas(groups, { packing = "grid", maxSize = 0, overflow = "warn", powerOfTwo = false, gap = 2, extrude = 0, rotate = false } = {}) {
+export function planAtlas(groups, { packing = "grid", maxSize = 0, overflow = "warn", powerOfTwo = false, gap = 2, extrude = 0, rotate = false, deduplicate = true } = {}) {
   if (!Number.isInteger(gap) || gap < 0 || gap > 64 || !Number.isInteger(extrude) || extrude < 0 || extrude > 2) throw new Error("Padding атласа: 0–64 px; extrude: 0–2 px.");
   if (packing === "grid" && (extrude || rotate)) throw new Error("Для extrude / поворота выберите плотный атлас.");
   const limit = Number(maxSize) > 0 ? Number(maxSize) : 0;
   // A non-power-of-two CLI limit (for example 3000) can only fit a 2048 page.
   const layoutLimit = limit && powerOfTwo ? floorPowerOfTwo(limit) : limit;
   const tight = packing !== "grid";
-  const layout = (plannedGroups, settings) => padAtlasPages(layoutAtlas(plannedGroups, { ...settings, gap, extrude, rotate }), powerOfTwo);
+  const layout = (plannedGroups, settings) => {
+    const canonical=new Map(),aliases=new Map();
+    const packedGroups=plannedGroups.map(group=>({...group,items:group.items.filter(item=>{
+      if(!tight||!deduplicate||!item.textureKey)return true;
+      const key=`${item.width}x${item.height}:${item.textureKey}`,first=canonical.get(key);
+      if(!first){canonical.set(key,item);aliases.set(item,[]);return true;}
+      aliases.get(first).push(item);return false;
+    })}));
+    const pages=padAtlasPages(layoutAtlas(packedGroups,{...settings,gap,extrude,rotate}),powerOfTwo);
+    for(const page of pages)for(const rect of page.rects)if(aliases.get(rect.item)?.length)rect.aliases=aliases.get(rect.item);
+    return pages;
+  };
   const natural = layout(groups, { packing, limitW: tight ? layoutLimit : 0 });
   const naturalWidth = Math.max(...natural.map((page) => page.width));
   const naturalHeight = natural.reduce((sum, page) => Math.max(sum, page.height), 0);

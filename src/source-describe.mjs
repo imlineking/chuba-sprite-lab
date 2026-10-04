@@ -5,6 +5,8 @@ import { inspectSource } from "./processor.mjs";
 import { sliceSpriteSheet } from "./sheet-slicer.mjs";
 import { finishSheetImport, makeTempWorkspace } from "./temp-workspace.mjs";
 import { importSheetManifest, matchSheetFrameNames, readSheetFrameRects } from "./sheet-metadata.mjs";
+import sharp from 'sharp';
+import { hasAnimatedPNG, readAnimatedImage } from './animated-images.mjs';
 
 // Describing a source is shared by the desktop window and the command line, so both
 // accept exactly the same inputs and produce exactly the same descriptor. The
@@ -13,6 +15,12 @@ import { importSheetManifest, matchSheetFrameNames, readSheetFrameRects } from "
 
 export async function describePaths(appRoot, kind, paths) {
   if (!paths?.length) return null;
+  if(paths.length===1&&(path.extname(paths[0]).toLowerCase()==='.gif'||await hasAnimatedPNG(paths[0]))){
+    const image=await readAnimatedImage(paths[0]),directory=await makeTempWorkspace('chuba-animated-image-'),framePaths=[];
+    for(const [index,frame]of image.frames.entries()){const file=path.join(directory,String(index).padStart(4,'0')+'.png');await sharp(frame.pixels,{raw:{width:image.width,height:image.height,channels:4}}).png().toFile(file);framePaths.push(file);}
+    await finishSheetImport(directory);const source=await inspectSource({kind:'frames',paths:framePaths,appRoot});
+    return{...source,previewUrl:source.previewPath?pathToFileURL(source.previewPath).href:null,sampleUrls:(source.samplePaths||[]).map(file=>pathToFileURL(file).href),title:path.basename(paths[0]),animatedImport:true,originalAnimation:paths[0],maskPrepared:true,frameMetadata:Object.fromEntries(image.frames.map((frame,i)=>[i,{durationMs:frame.durationMs}])),importedAnimations:[{name:path.parse(paths[0]).name,from:0,to:image.frames.length-1}],importedMetadata:{animationLoop:image.loop},detail:`${image.frames.length} кадров · исходные длительности · RGBA`,recommendations:{...source.recommendations,keyMode:'alpha'}};
+  }
   const source = await inspectSource({ kind, paths, appRoot });
   return {
     ...source,

@@ -30,6 +30,7 @@ import { loadAuxSession, inpaintLama, interpolateRife, upscaleEsrgan, estimateDe
 import { parseVideoMetadata } from "./video-metadata.mjs";
 import { analyseBorderBackground, backgroundKeyMode } from "./background-analysis.mjs";
 import { summarizeIssues } from "./diagnostics.mjs";
+import { writeAnimatedImage } from './animated-images.mjs';
 
 export const supportedImageExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".avif"]);
 const naturalCompare = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare;
@@ -1067,7 +1068,7 @@ const postRenderOptionKeys = new Set([
   "exports", "cleanOutput", "previewFrameIndex", "attachmentPlacements", "columns", "autoColumns",
   "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo", "atlasExtrude", "atlasGap", "atlasRotate", "atlasBackground", "atlasBackgroundColor", "packing", "exportFormat", "timeline", "loopMode", "loopRange", "animationName",
   // Scheduling only: the pool width changes nothing about the produced atlas.
-  "frameParallelism",
+  "frameParallelism", "atlasDeduplicate",
 ]);
 export const exportFormats = ["chuba", "phaser3", "godot", "texturepacker", "unity"];
 // The version that ends up inside exported metadata. It lives in one place because it
@@ -1474,7 +1475,7 @@ function frameName(prefix, index) {
 
 function describeFrames(animations, atlas, pageFiles) {
   const rectByItem = new Map();
-  atlas.pages.forEach((page, pageIndex) => page.rects.forEach((rect) => rectByItem.set(rect.item, { ...rect, page: pageIndex })));
+  atlas.pages.forEach((page, pageIndex) => page.rects.forEach((rect) => { for(const item of [rect.item,...(rect.aliases||[])])rectByItem.set(item, { ...rect, page: pageIndex }); }));
   const frames = [];
   const tags = [];
   for (const animation of animations) {
@@ -1853,6 +1854,8 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
     frames: options.exports?.frames !== false,
     metadata: options.exports?.metadata !== false,
     preview: options.exports?.preview !== false,
+    gif: options.exports?.gif === true,
+    apng: options.exports?.apng === true,
   };
   if (!previewOnly && !Object.values(requestedExports).some(Boolean)) throw new Error("Выберите хотя бы один формат экспорта.");
   const exportSheet = requestedExports.sheet || requestedExports.metadata;
@@ -2000,13 +2003,14 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
     // Grid keeps the legacy one-cell-per-sequence-frame layout so engines that read
     // only frameWidth/columns keep working; duplicates point to the same image.
     let gridItems = items;
+    if(packing!=='grid'&&options.atlasDeduplicate!==false)for(const item of items){const pixels=await sharp(item.buffer).ensureAlpha().raw().toBuffer();item.textureKey=crypto.createHash('sha256').update(pixels).digest('hex');}
     if (packing === "grid") gridItems = animation.sequence.map((entry) => items[entry.image]);
     groups.push({ items: packing === "grid" ? [...new Set(gridItems)] : items, columns, cellWidth: animation.normalized.cellWidth, cellHeight: animation.normalized.cellHeight, imageItems: items });
     animation.groupIndex = groups.length - 1;
   }
   const itemsAt = performance.now();
   const maxSize = Number(options.atlasMaxSize) || 0;
-  const atlas = planAtlas(groups.map((group) => ({ ...group, items: group.items })), { packing, maxSize, overflow: options.atlasOverflow || "warn", powerOfTwo: options.atlasPowerOfTwo === true, gap, extrude, rotate });
+  const atlas = planAtlas(groups.map((group) => ({ ...group, items: group.items })), { packing, maxSize, overflow: options.atlasOverflow || "warn", powerOfTwo: options.atlasPowerOfTwo === true, gap, extrude, rotate, deduplicate:options.atlasDeduplicate!==false });
   // Map scaled items back to per-image lists in the same order.
   atlas.groups.forEach((group, groupIndex) => {
     const original = groups[groupIndex];
@@ -2206,6 +2210,11 @@ async function runAtlasJob({ animations: animationInputs, outputDir, name, optio
       const made = await makeSequencePreview(animation.imagePaths, order, animation.sequence, target, animation.fps, appRoot, signal);
       if (made) previewPaths.push(made);
     }
+  }
+  if(!previewOnly&&(requestedExports.gif||requestedExports.apng))for(const animation of animations){
+    const order=playbackOrder(animation.sequence.length,animation.loop),images=[];
+    for(const position of order){const entry=animation.sequence[position],{data,info}=await sharp(animation.imagePaths[entry.image]).ensureAlpha().raw().toBuffer({resolveWithObject:true});images.push({pixels:data,durationMs:entry.durationMs,width:info.width,height:info.height});}
+    if(images.length)for(const format of['gif','apng'])if(requestedExports[format]){const target=path.join(outputRoot,multi?`${spriteName}.${animation.name}.${format}`:`${spriteName}.${format}`);await writeAnimatedImage(target,{frames:images,width:images[0].width,height:images[0].height,loop:animation.source.importedMetadata?.animationLoop??0},format);previewPaths.push(target);}
   }
   // The per-frame stage timings above cover only part of the work: writing the rendered cells,
   // compositing the atlas and encoding the preview used to be invisible, which made any speed
