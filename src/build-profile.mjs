@@ -3,7 +3,7 @@ import path from "node:path";
 import { resolveMattingModelId } from "./ai-models.mjs";
 import { validateImageGeometry } from "./image-geometry.mjs";
 import './color-styles.js';
-import { parseCustomPalette, pixelDithers, pixelModes, pixelPalettes } from "./pixelate.mjs";
+import { parseCustomPalette, pixelDithers, pixelModes, pixelPalettes, pixelGridModes } from "./pixelate.mjs";
 
 // A build profile is the complete recipe of one export: the sources plus every
 // processing option. The command line and the desktop window accept the same options,
@@ -156,12 +156,18 @@ function normalizeOptions(value, problem, label, baseDir) {
     if (!isPlainObject(options.pixelate)) {
       problem(`${label}.pixelate: ожидался объект с настройками пиксель-арта.`);
     } else {
-      const known = ["size", "colors", "palette", "customColors", "mode", "dither", "shadingSteps", "detail", "softAlpha", "edgeThreshold", "ditherStrength", "inkColor", "paletteScope"];
+      const known = ["size", "colors", "palette", "customColors", "mode", "dither", "shadingSteps", "detail", "softAlpha", "edgeThreshold", "ditherStrength", "inkColor", "paletteScope", "gridMode", "targetWidth", "targetHeight", "referenceWidth", "referenceHeight"];
       for (const key of Object.keys(options.pixelate)) {
         if (!known.includes(key)) problem(`${label}.pixelate.${key}: неизвестная настройка.`);
       }
       const size = Number(options.pixelate.size);
-      if (!Number.isInteger(size) || size < 2 || size > 64) problem(`${label}.pixelate.size: ожидалось целое 2…64.`);
+      if (options.pixelate.gridMode !== "target" && (!Number.isInteger(size) || size < 2 || size > 64)) problem(`${label}.pixelate.size: ожидалось целое 2…64.`);
+      if (options.pixelate.gridMode !== undefined && !pixelGridModes.includes(options.pixelate.gridMode)) problem(`${label}.pixelate.gridMode: ожидалось adaptive, fixed или target.`);
+      for (const name of ["targetWidth", "targetHeight", "referenceWidth", "referenceHeight"]) {
+        const value = options.pixelate[name], limit = name.startsWith("target") ? 2048 : 16384;
+        if ((value !== undefined || options.pixelate.gridMode === "target" && name.startsWith("target")) && (!Number.isInteger(value) || value < 1 || value > limit)) problem(`${label}.pixelate.${name}: ожидалось целое 1…${limit}.`);
+      }
+      if ((options.pixelate.referenceWidth !== undefined) !== (options.pixelate.referenceHeight !== undefined)) problem(`${label}.pixelate: общий холст требует ширину и высоту вместе.`);
       const colors = Number(options.pixelate.colors);
       if (options.pixelate.colors !== undefined && (!Number.isInteger(colors) || colors < 2 || colors > 256)) {
         problem(`${label}.pixelate.colors: ожидалось целое 2…256.`);

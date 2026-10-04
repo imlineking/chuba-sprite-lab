@@ -13,6 +13,7 @@ import { resolveMattingModelId } from "./ai-models.mjs";
 import { backgroundKeyMode } from "./background-analysis.mjs";
 import { buildSeriesPalette } from "./series-palette.mjs";
 import { hasColorAdjust } from "./color-adjust.mjs";
+import { withSeriesPixelGrid } from "./pixel-grid.mjs";
 
 const solidBackgroundModes = new Set(["white", "black", "green", "magenta", "blue"]);
 const backgroundNames = { white: "белый", black: "чёрный", green: "зелёный", magenta: "маджента", blue: "синий", auto: "подбор цвета" };
@@ -82,7 +83,12 @@ export async function previewWithModelFallback({ inputPath, options, appRoot, au
   }
 }
 
-export async function processImageBatch({ paths, outputDir, options = {}, splitObjects = true, outputKind = "atlas", automatic = false, healFirst = false, installed = [], sourceIndexes = [], appRoot, signal, onProgress, shouldStop, previewFrame = processFramePreview }) {
+export async function processImageBatch({ paths, outputDir, options = {}, splitObjects = true, outputKind = "atlas", automatic = false, healFirst = false, installed = [], sourceIndexes = [], gridSources = [], appRoot, signal, onProgress, shouldStop, previewFrame = processFramePreview }) {
+  if (gridSources.length) {
+    if (!Array.isArray(gridSources) || gridSources.length > 1000) throw new Error("Общая сетка: не больше 1000 исходных кадров.");
+    const reference = await withSeriesPixelGrid({ ...options, frameOverrides: {} }, gridSources);
+    options = { ...options, pixelate: reference.pixelate };
+  } else options = await withSeriesPixelGrid(options, paths, sourceIndexes);
   if (outputKind === "images" && options.pixelate?.paletteScope === "series" && (options.pixelate.palette || "auto") === "auto" && !options.pixelate.sharedColors) {
     const first = await processImageBatch({ paths, outputDir, options: { ...options, pixelate: null, pixelScale: 1, colorAdjust: null, toning: null }, splitObjects, outputKind, automatic, healFirst, installed, sourceIndexes, appRoot, signal, shouldStop, previewFrame, onProgress: p => onProgress?.({ ...p, value: p.value * .8 }) });
     const sharedColors = await buildSeriesPalette(first.results.map(r => r.imagePath), options.pixelate.colors);

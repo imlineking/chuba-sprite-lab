@@ -34,7 +34,8 @@ window.saveIndependentImages = async function saveIndependentImages({ all = fals
     state.outputFolder = outputDir; $("#outputFolder").textContent = outputDir;
     $("#cancelJob").classList.remove("hidden");
     setStatus(`Сохраняю ${paths.length} PNG в исходном размере…`, "busy", .02);
-    const result = await window.spriteLab.imageBatch({ paths, sourceIndexes, outputDir, outputKind: "images", automatic, options: collectOptions() });
+    const gridSources = state.source.paths.map((p, i) => state.frameOverrides[i] || p);
+    const result = await window.spriteLab.imageBatch({ paths, sourceIndexes, gridSources, outputDir, outputKind: "images", automatic, options: collectOptions() });
     state.lastExportDir = outputDir; state.lastRevealPath = result.revealPath;
     if (result.failed) showError(result.failures.map(item => `${item.name}: ${item.message}`).join("\n"));
     else hideError();
@@ -109,6 +110,11 @@ async function saveBatchAssembly() {
 }
 
 for (const id of ["imageBatchOutput", "imageBatchScale", "imageBatchAtlasBackground", "imageBatchAtlasColor"]) $("#" + id).addEventListener("change", () => {
+  const wasCombined = imageBatchDraft.outputKind && imageBatchDraft.outputKind !== "png";
+  const combined = $("#imageBatchOutput").value !== "png";
+  if (!imageBatchDraft.configuration?.readyOnly && (Boolean(wasCombined) !== combined || id === "imageBatchScale" && !combined)) {
+    imageBatchDraft.results = {}; imageBatchDraft.failures = {}; imageBatchDraft.colorBases = {}; imageBatchDraft.settings = {}; imageBatchDraft.exported = {};
+  }
   imageBatchDraft.outputKind = $("#imageBatchOutput").value;
   imageBatchDraft.pixelScale = Number($("#imageBatchScale").value);
   imageBatchDraft.atlasBackground = $("#imageBatchAtlasBackground").value;
@@ -247,6 +253,9 @@ function renderImageBatchDraft() {
   $$("#imageBatchPixelation input, #imageBatchPixelation select").forEach(control => {
     control.disabled = state.busy || imageBatchDraft.configuration?.readyOnly || (control.id !== "imageBatchPixelateEnabled" && !imageBatchDraft.pixelate);
   });
+  const gridTarget = $("#imageBatchGridMode").value === "target", pixelDisabled = state.busy || imageBatchDraft.configuration?.readyOnly || !imageBatchDraft.pixelate;
+  for (const id of ["imageBatchTargetWidth", "imageBatchTargetHeight"]) $("#" + id).disabled = pixelDisabled || !gridTarget;
+  $("#imageBatchPixelateSize").disabled = pixelDisabled || gridTarget;
   const readyOnly = Boolean(imageBatchDraft.configuration?.readyOnly);
   $$(".batch-preview-settings > *").forEach(element => element.classList.toggle("hidden", readyOnly && element.id !== "imageBatchAssembly"));
   $$("#imageBatchTasks button").forEach(button => button.classList.toggle("selected", button.dataset.batchTask === (readyOnly ? "ready" : imageBatchDraft.configuration?.healFirst ? "healing" : "cleanup")));
@@ -273,7 +282,7 @@ window.openImageBatchPreview = function (configuration = {}) {
   imageBatchReturnFocus = document.activeElement;
   const paths = configuration.paths || state.source.paths;
   const exportAtlases = Boolean(configuration.exportAtlases);
-  const configurationKey = JSON.stringify({version:14, readyOnly:configuration.readyOnly, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
+  const configurationKey = JSON.stringify({version:15, readyOnly:configuration.readyOnly, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
   let saved; try { saved = JSON.parse(localStorage.getItem("spriteLab.pendingImageBatch")); } catch { /* No prior job. */ }
   if (!imageBatchDraft || JSON.stringify(imageBatchDraft.paths) !== JSON.stringify(paths) || imageBatchDraft.configurationKey !== configurationKey) {
     const adjustments = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths)
@@ -281,7 +290,8 @@ window.openImageBatchPreview = function (configuration = {}) {
       : { brightness: 0, contrast: 0, warmth: 0, ...(initialOptions.colorAdjust || {}) };
     const pixelate = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths) ? imageBatchDraft.pixelate || null : null;
     const imageGeometry = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths) ? imageBatchDraft.imageGeometry || null : null;
-    imageBatchDraft = saved && JSON.stringify(saved.paths) === JSON.stringify(paths) && saved.configurationKey === configurationKey && saved.results && saved.failures && saved.selected ? saved : { paths: [...paths], selected: [Math.min(state.selectedFrameIndex,paths.length-1)], results: {}, failures: {}, settings: {}, directory: null, configurationKey, configuration, adjustments, pixelate, imageGeometry };
+    const assembly = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths) ? { pixelScale: imageBatchDraft.pixelScale, outputKind: imageBatchDraft.outputKind, atlasBackground: imageBatchDraft.atlasBackground, atlasBackgroundColor: imageBatchDraft.atlasBackgroundColor } : {};
+    imageBatchDraft = saved && JSON.stringify(saved.paths) === JSON.stringify(paths) && saved.configurationKey === configurationKey && saved.results && saved.failures && saved.selected ? saved : { paths: [...paths], selected: [Math.min(state.selectedFrameIndex,paths.length-1)], results: {}, failures: {}, settings: {}, directory: null, configurationKey, configuration, adjustments, pixelate, imageGeometry, ...assembly };
   }
   $("#imageBatchOutput").value = imageBatchDraft.outputKind || "png";
   $("#imageBatchScale").value = String(imageBatchDraft.pixelScale || 1);
@@ -297,7 +307,11 @@ window.openImageBatchPreview = function (configuration = {}) {
   $("#imageBatchStyleStrength").value = String(imageBatchDraft.adjustments.styleStrength ?? 100);
   $("#imageBatchStyleValue").textContent = $("#imageBatchStyleStrength").value + "%";
   $("#imageBatchPixelateEnabled").checked = Boolean(imageBatchDraft.pixelate);
+  $("#imageBatchGridMode").value = imageBatchDraft.pixelate?.gridMode || "adaptive";
+  $("#imageBatchTargetWidth").value = String(imageBatchDraft.pixelate?.targetWidth || 64);
+  $("#imageBatchTargetHeight").value = String(imageBatchDraft.pixelate?.targetHeight || 64);
   $("#imageBatchSharedPalette").checked = imageBatchDraft.pixelate?.paletteScope !== "frame";
+  $("#imageBatchPixelateSoftAlpha").checked = Boolean(imageBatchDraft.pixelate?.softAlpha);
   $("#imageBatchPixelateSize").value = String(imageBatchDraft.pixelate?.size || 3);
   $("#imageBatchPixelateColors").value = String(imageBatchDraft.pixelate?.colors || 32);
   $("#imageBatchPixelateDither").value = imageBatchDraft.pixelate?.dither || "none";
@@ -357,6 +371,10 @@ async function prepareImageBatch(mode = "all", requestedIndexes = null) {
   const configuration = imageBatchDraft.configuration || {};
   const baseline = configuration.options || collectOptions();
   const settings = { ...baseline, pixelScale: imageBatchDraft.pixelScale || 1, batchModelOverride: configuration.modelOverride, batchBackgroundMode: configuration.backgroundMode, batchBlackContour: configuration.blackContour, edgeRefine: { mode: "none", width: 1, depth: 2, whiteOnly: true, ...baseline.edgeRefine, noLightArtwork: configuration.lightArtworkPolicy === "none", lightArtworkPolicy: configuration.lightArtworkPolicy, contourWidth: configuration.contourWidth }, pixelate: imageBatchDraft.pixelate || (configuration.exportAtlases ? baseline.pixelate : null), toning: configuration.exportAtlases ? baseline.toning : null, imageGeometry: imageBatchDraft.imageGeometry || (configuration.exportAtlases ? baseline.imageGeometry : null), colorAdjust: { ...imageBatchDraft.adjustments }, frameTransforms: {}, attachments: [], attachmentPlacements: null };
+  // A combined export scales the accepted base frames during assembly, once.
+  if (imageBatchDraft.outputKind && imageBatchDraft.outputKind !== "png") settings.pixelScale = 1;
+  if (settings.pixelate && settings.imageGeometry && ["contain", "cover", "stretch"].includes(settings.imageGeometry.mode)) settings.pixelate = {
+    ...settings.pixelate, referenceWidth: settings.imageGeometry.width, referenceHeight: settings.imageGeometry.height };
   state.busy = true; updateActionState(); renderImageBatchDraft();
   $("#prepareImageBatch").textContent = "Обрабатываю…";
   settings.batchCleanupByIndex = imageBatchDraft.cleanupChoices || {};
@@ -364,7 +382,8 @@ async function prepareImageBatch(mode = "all", requestedIndexes = null) {
   $("#cancelJob").classList.remove("hidden");
   setStatus(`Готовлю просмотр: ${indexes.length} изображений…`, "busy", .02);
   try {
-    const result = await window.spriteLab.imageBatch({ paths: indexes.map(index => imageBatchDraft.paths[index]), sourceIndexes: indexes, outputKind: "images", automatic: configuration.automatic ?? true, healFirst: Boolean(configuration.healFirst), previewOnly: true, previewDirectory: imageBatchDraft.directory, options: settings });
+    const gridSources = imageBatchDraft.paths.map((p, i) => state.frameOverrides[i] || p);
+    const result = await window.spriteLab.imageBatch({ paths: indexes.map(index => imageBatchDraft.paths[index]), sourceIndexes: indexes, gridSources, outputKind: "images", automatic: configuration.automatic ?? true, healFirst: Boolean(configuration.healFirst), previewOnly: true, previewDirectory: imageBatchDraft.directory, options: settings });
     imageBatchDraft.directory = result.outputDir;
     for (const item of result.results) {
       const index = imageBatchDraft.paths.indexOf(item.input);
@@ -435,10 +454,17 @@ function imageBatchPixelationChanged() {
   if (!imageBatchDraft || state.busy) return;
   imageBatchDraft.colorBases = {};
   const sizeControl = $("#imageBatchPixelateSize");
-  const size = Math.max(2, Math.min(32, Math.round(Number(sizeControl.value) || 3)));
+  const size = Math.max(2, Math.min(64, Math.round(Number(sizeControl.value) || 3)));
   sizeControl.value = String(size);
+  const gridMode = $("#imageBatchGridMode").value;
+  const target = {};
+  for (const name of ["Width", "Height"]) {
+    const input = document.getElementById("imageBatchTarget" + name);
+    input.value = String(Math.max(1, Math.min(2048, Math.round(Number(input.value) || 64))));
+    target["target" + name] = Number(input.value);
+  }
   imageBatchDraft.pixelate = $("#imageBatchPixelateEnabled").checked
-    ? { size, colors: Number($("#imageBatchPixelateColors").value), palette: "auto", mode: "clean", paletteScope: $("#imageBatchSharedPalette").checked ? "series" : "frame", dither: $("#imageBatchPixelateDither").value }
+    ? { size, gridMode, softAlpha: $("#imageBatchPixelateSoftAlpha").checked, ...(gridMode === "target" ? target : {}), colors: Number($("#imageBatchPixelateColors").value), palette: "auto", mode: "clean", paletteScope: $("#imageBatchSharedPalette").checked ? "series" : "frame", dither: $("#imageBatchPixelateDither").value }
     : null;
   imageBatchDraft.results = {}; imageBatchDraft.failures = {}; imageBatchDraft.settings = {}; imageBatchDraft.exported = {}; imageBatchDraft.exportFailures = {};
   persistImageBatchDraft(); renderImageBatchDraft(); showImageBatchPair(imageBatchReviewIndex);
@@ -473,7 +499,7 @@ function imageBatchGeometryChanged() {
 for (const id of ["imageBatchGeometryMode", "imageBatchWidth", "imageBatchHeight", "imageBatchGeometryTrim", "imageBatchGeometryKernel"]) {
   document.getElementById(id).addEventListener("change", imageBatchGeometryChanged);
 }
-for (const id of ["imageBatchPixelateEnabled", "imageBatchPixelateSize", "imageBatchPixelateColors", "imageBatchPixelateDither", "imageBatchSharedPalette"]) {
+for (const id of ["imageBatchPixelateEnabled", "imageBatchPixelateSoftAlpha", "imageBatchGridMode", "imageBatchTargetWidth", "imageBatchTargetHeight", "imageBatchPixelateSize", "imageBatchPixelateColors", "imageBatchPixelateDither", "imageBatchSharedPalette"]) {
   document.getElementById(id).addEventListener("change", imageBatchPixelationChanged);
 }
 for (const key of ["Brightness", "Contrast", "Warmth"]) document.getElementById("imageBatch" + key).addEventListener("input", imageBatchColorChanged);

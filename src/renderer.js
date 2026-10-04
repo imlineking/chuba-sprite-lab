@@ -36,6 +36,9 @@ const exportPresets = {
 const preferenceValueIds = ["fps", "columns", "cellWidth", "cellHeight", "padding", "maxFrames", "tolerance", "keyScope", "blackOutline", "blackFeather", "aiCutoff", "aiSoftness", "aiProvider", "aiQuality", "fringeStrength", "edgeRefineMode", "edgeRefineWidth", "edgeRefineDepth", "trimStart", "trimEnd", "pixelateSize", "pixelateColors", "pixelateShading", "pixelateDetail", "pixelatePalette", "pixelateCustomColors", "pixelateMode", "pixelateDither", "toningColor", "toningStrength", "colorStyle", "colorStyleStrength", "locale"];
 const preferenceCheckIds = ["autoSize", "autoColumns", "pixelPerfect", "removeDuplicates", "whiteOutput", "openAfterExport", "fringeCleanup", "edgeDecontaminate", "edgeRefineWhiteOnly", "aiAutoCutoff", "pixelateEnabled", "toningEnabled", "sheetFitEach", "auxRife", "auxEsrgan", "auxDepth"];
 
+preferenceValueIds.push("pixelateGridMode", "pixelateTargetWidth", "pixelateTargetHeight", "pixelExportScale");
+preferenceCheckIds.push("pixelateSoftAlpha");
+
 function sourceDescriptor(source = state.source) {
   if (!source) return null;
   return {
@@ -1005,7 +1008,11 @@ function collectOptions() {
     atlasGap: Number($("#atlasGap").value), atlasExtrude: Number($("#atlasExtrude").value), atlasRotate: $("#atlasRotate").checked,
     packing: $("#atlasPacking").value, exportFormat: $("#exportFormat").value,
     atlasMaxSize: Number($("#atlasMaxSize").value) || 0, atlasOverflow: $("#atlasOverflow").value, atlasPowerOfTwo: $("#atlasPowerOfTwo").checked,
+    pixelScale: $("#pixelateEnabled").checked ? Number($("#pixelExportScale").value) : 1,
     pixelate: $("#pixelateEnabled").checked ? {
+      gridMode: $("#pixelateGridMode").value,
+      softAlpha: $("#pixelateSoftAlpha").checked,
+      ...($("#pixelateGridMode").value === "target" ? { targetWidth: Number($("#pixelateTargetWidth").value), targetHeight: Number($("#pixelateTargetHeight").value) } : {}),
       size: Number($("#pixelateSize").value),
       colors: Number($("#pixelateColors").value),
       palette: $("#pixelatePalette").value, paletteScope: "series",
@@ -2122,7 +2129,8 @@ async function requestFramePreview(inputPath) {
   const token = ++state.quickToken;
   const revision = state.sourceRevision;
   try {
-    const result = await window.spriteLab.previewFrame({ inputPath, options: collectOptions() });
+    const gridSources = state.source?.kind === "frames" || state.source?.kind === "sheet" ? state.source.paths.map((p, i) => state.frameOverrides[i] || p) : [];
+    const result = await window.spriteLab.previewFrame({ inputPath, options: collectOptions(), gridSources });
     if (token !== state.quickToken || revision !== state.sourceRevision) return;
     state.framePreview = result;
     if (state.intent === "images") {
@@ -2441,6 +2449,12 @@ for (const id of ["toningEnabled", "toningColor", "toningStrength", "colorStyle"
   });
 }
 function syncCustomPaletteField() {
+  const target = $("#pixelateGridMode").value === "target";
+  $("#pixelateTargetWidth").disabled = !target; $("#pixelateTargetHeight").disabled = !target;
+  $("#pixelateSize").disabled = target;
+  $("#pixelateGridHint").textContent = t(target ? "Точный W×H — весь общий холст серии, пропорции сохранены. Прозрачные поля; экспорт 1×/2×/4× без размытия. Размер ячейки и выравнивание силуэта здесь не применяются."
+    : $("#pixelateGridMode").value === "fixed" ? "Одинаковые квадратные блоки от угла холста; последний блок обрезается краем. Для анимации сохраняйте общий холст и положение объекта."
+    : "Блок по размеру кадра сохраняет холст; ширина крайних блоков может отличаться.");
   const active = $("#pixelatePalette").value === "custom";
   $("#pixelateCustomPaletteField").classList.toggle("hidden", !active);
   $("#pixelateColors").disabled = $("#pixelatePalette").value !== "auto";
@@ -2454,13 +2468,17 @@ function syncCustomPaletteField() {
     return swatch;
   }) : []));
 }
-for (const id of ["pixelateSize", "pixelateColors", "pixelateShading", "pixelateDetail", "pixelateCustomColors"]) {
+for (const id of ["pixelateSize", "pixelateTargetWidth", "pixelateTargetHeight", "pixelateColors", "pixelateShading", "pixelateDetail", "pixelateCustomColors"]) {
   $(`#${id}`).addEventListener("change", () => { syncCustomPaletteField(); savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Настройки пиксель-арта изменены"); });
 }
 $("#pixelateCustomColors").addEventListener("input", syncCustomPaletteField);
-for (const id of ["pixelatePalette", "pixelateMode", "pixelateDither"]) {
+for (const id of ["pixelateGridMode", "pixelExportScale", "pixelateSoftAlpha", "pixelatePalette", "pixelateMode", "pixelateDither"]) {
   $(`#${id}`).addEventListener("change", () => { syncCustomPaletteField(); savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Стиль пиксель-арта изменён"); });
 }
+for (const button of $$("[data-pixel-block]")) button.addEventListener("click", () => {
+  $("#pixelateEnabled").checked = true; $("#pixelateGridMode").value = "fixed"; $("#pixelateSize").value = button.dataset.pixelBlock;
+  syncCustomPaletteField(); savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Размер пиксельного блока изменён");
+});
 $("#fringeCleanup").addEventListener("change", (event) => {
   $("#fringeStrengthRow").classList.toggle("hidden", !event.target.checked);
   updateFinishingSummary();

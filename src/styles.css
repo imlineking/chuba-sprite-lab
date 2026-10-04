@@ -1129,3 +1129,6 @@ html[data-theme="light"] .batch-preview-dialog { background: #f8f9fb; color: #25
 .pixel-selection-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
 .pixel-selection-actions label { display: grid; gap: 4px; min-width: 0; }
 .pixel-selection-actions input { width: 100%; min-width: 0; }
+.pixel-grid-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.pixel-grid-presets button { flex: 1 1 90px; min-width: 0; padding: 7px 9px; font-size: 12px; }
+#imageBatchGridMode { max-width: 240px; }

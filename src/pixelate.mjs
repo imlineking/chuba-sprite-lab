@@ -23,6 +23,55 @@ export const pixelPalettes = {
 
 export const pixelModes = ["clean", "shaded", "outline", "lineart", "stitch"];
 export const pixelDithers = ["none", "bayer2", "bayer4", "bayer8", "floyd", "atkinson"];
+export const pixelGridModes = ["adaptive", "fixed", "target"];
+
+export function resolvePixelGrid(info, options = {}) {
+  const mode = options.gridMode ?? "adaptive";
+  if (!pixelGridModes.includes(mode)) throw new Error("Сетка пикселей: выберите размер блока, фиксированный квадрат или точный W×H.");
+  const dimension = (value, limit) => Number.isInteger(value) && value >= 1 && value <= limit;
+  const width = mode === "adaptive" ? info.width : options.referenceWidth ?? info.width, height = mode === "adaptive" ? info.height : options.referenceHeight ?? info.height;
+  if (!dimension(width, 16384) || !dimension(height, 16384) || width < info.width || height < info.height) throw new Error("Общий холст сетки должен вмещать все кадры и не превышать 16384 px по стороне.");
+  const size = clamp(Math.round(Number(options.size) || 4), 1, 64);
+  if (mode === "target") {
+    if (!dimension(options.targetWidth, 2048) || !dimension(options.targetHeight, 2048)) throw new Error("Точный размер пикселей: ширина и высота должны быть целыми 1–2048 px.");
+    const ratio = Math.min(options.targetWidth / width, options.targetHeight / height);
+    const innerWidth = Math.max(1, Math.round(width * ratio)), innerHeight = Math.max(1, Math.round(height * ratio));
+    return { mode, gridWidth: options.targetWidth, gridHeight: options.targetHeight,
+      outputWidth: options.targetWidth, outputHeight: options.targetHeight, referenceWidth: width, referenceHeight: height,
+      innerWidth, innerHeight, offsetX: Math.floor((options.targetWidth - innerWidth) / 2), offsetY: Math.floor((options.targetHeight - innerHeight) / 2) };
+  }
+  if (width * height > 16777216) throw new Error("Общий холст пикселизации превышает 16 млн пикселей.");
+  return { mode, size, gridWidth: Math.max(1, mode === "fixed" ? Math.ceil(width / size) : Math.round(width / size)),
+    gridHeight: Math.max(1, mode === "fixed" ? Math.ceil(height / size) : Math.round(height / size)),
+    outputWidth: width, outputHeight: height, referenceWidth: width, referenceHeight: height };
+}
+
+// Uniform fixed squares and exact-size grids share the canvas origin, never the
+// changing silhouette. Missing parts of a smaller frame are transparent padding.
+function toExactGrid(data, info, spec, shadingSteps) {
+  const grid = Buffer.alloc(spec.gridWidth * spec.gridHeight * 4);
+  for (let gy = 0; gy < spec.gridHeight; gy++) for (let gx = 0; gx < spec.gridWidth; gx++) {
+    const x = gx - (spec.offsetX || 0), y = gy - (spec.offsetY || 0);
+    if (spec.mode === "target" && (x < 0 || y < 0 || x >= spec.innerWidth || y >= spec.innerHeight)) continue;
+    const left = spec.mode === "fixed" ? gx * spec.size : Math.floor(x * spec.referenceWidth / spec.innerWidth);
+    const top = spec.mode === "fixed" ? gy * spec.size : Math.floor(y * spec.referenceHeight / spec.innerHeight);
+    const right = Math.min(spec.referenceWidth, spec.mode === "fixed" ? left + spec.size : Math.max(left + 1, Math.floor((x + 1) * spec.referenceWidth / spec.innerWidth)));
+    const bottom = Math.min(spec.referenceHeight, spec.mode === "fixed" ? top + spec.size : Math.max(top + 1, Math.floor((y + 1) * spec.referenceHeight / spec.innerHeight)));
+    let red = 0, green = 0, blue = 0, alpha = 0;
+    for (let sy = top; sy < Math.min(bottom, info.height); sy++) for (let sx = left; sx < Math.min(right, info.width); sx++) {
+      const from = (sy * info.width + sx) * info.channels, a = info.channels > 3 ? data[from + 3] : 255;
+      red += data[from] * a; green += data[from + 1] * a; blue += data[from + 2] * a; alpha += a;
+    }
+    const to = (gy * spec.gridWidth + gx) * 4;
+    if (alpha) { grid[to] = Math.round(red / alpha); grid[to + 1] = Math.round(green / alpha); grid[to + 2] = Math.round(blue / alpha); }
+    grid[to + 3] = Math.round(alpha / Math.max(1, (right - left) * (bottom - top)));
+    if (shadingSteps > 1) {
+      const peak = Math.max(grid[to], grid[to + 1], grid[to + 2]), scale = peak ? posterizeLevel(peak, shadingSteps) / peak : 0;
+      for (let c = 0; c < 3; c++) grid[to + c] = Math.round(grid[to + c] * scale);
+    }
+  }
+  return grid;
+}
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -336,16 +385,16 @@ function drawLineArt(grid, gridWidth, gridHeight, palette, percent) {
 }
 
 export function pixelate(data, info, options = {}) {
-  const { width, height, channels } = info;
-  const size = clamp(Math.round(Number(options.size) || 4), 1, 64);
+  const { channels } = info;
+  const spec = resolvePixelGrid(info, options);
   const mode = pixelModes.includes(options.mode) ? options.mode : "clean";
   const dither = pixelDithers.includes(options.dither) ? options.dither : "none";
   const shadingSteps = clamp(Math.round(Number(options.shadingSteps) || 0), 0, 8);
   const softness = clamp(Number(options.alphaCutoff ?? 128), 1, 254);
 
-  const gridWidth = Math.max(1, Math.round(width / size));
-  const gridHeight = Math.max(1, Math.round(height / size));
-  let grid = toGrid(data, info, gridWidth, gridHeight, { shadingSteps: mode === "shaded" ? Math.max(2, shadingSteps || 4) : 0 });
+  const { gridWidth, gridHeight, outputWidth, outputHeight } = spec;
+  const steps = mode === "shaded" ? Math.max(2, shadingSteps || 4) : 0;
+  let grid = spec.mode === "adaptive" ? toGrid(data, info, gridWidth, gridHeight, { shadingSteps: steps }) : toExactGrid(data, info, spec, steps);
 
   // Hard alpha is part of the pixel-art convention: a soft edge on a 4-pixel grid reads as dirt.
   if (!options.softAlpha) {
@@ -375,22 +424,24 @@ export function pixelate(data, info, options = {}) {
   if (mode === "lineart") grid = drawLineArt(grid, gridWidth, gridHeight, palette, Number(options.edgeThreshold) || 35);
   else if (mode === "outline") grid = drawContour(grid, gridWidth, gridHeight, Array.isArray(options.inkColor) ? options.inkColor : [18, 18, 22]);
 
-  // Back to the original cell size with hard blocks: the rest of the pipeline keeps working with the
-  // same geometry, so the atlas, the hitbox and the point of support need no changes.
-  const output = Buffer.alloc(width * height * channels);
-  for (let y = 0; y < height; y += 1) {
-    const gy = clamp(Math.floor((y * gridHeight) / height), 0, gridHeight - 1);
-    for (let x = 0; x < width; x += 1) {
-      const gx = clamp(Math.floor((x * gridWidth) / width), 0, gridWidth - 1);
+  // Adaptive keeps the old geometry; fixed clips uniform squares at the canvas
+  // edge; target writes its exact small canvas. New modes retain transparent pads.
+  const outputChannels = spec.mode !== "adaptive" ? 4 : channels;
+  const output = Buffer.alloc(outputWidth * outputHeight * outputChannels);
+  for (let y = 0; y < outputHeight; y += 1) {
+    const gy = spec.mode === "fixed" ? Math.floor(y / spec.size) : spec.mode === "target" ? y : clamp(Math.floor((y * gridHeight) / outputHeight), 0, gridHeight - 1);
+    for (let x = 0; x < outputWidth; x += 1) {
+      const gx = spec.mode === "fixed" ? Math.floor(x / spec.size) : spec.mode === "target" ? x : clamp(Math.floor((x * gridWidth) / outputWidth), 0, gridWidth - 1);
       const from = (gy * gridWidth + gx) * 4;
-      const to = (y * width + x) * channels;
+      const to = (y * outputWidth + x) * outputChannels;
       output[to] = grid[from];
       output[to + 1] = grid[from + 1];
       output[to + 2] = grid[from + 2];
-      if (channels > 3) output[to + 3] = grid[from + 3];
+      if (outputChannels > 3) output[to + 3] = grid[from + 3];
     }
   }
-  return { data: output, info, gridWidth, gridHeight, colors: palette.length, mode, palette };
+  return { data: output, info: { ...info, width: outputWidth, height: outputHeight, channels: outputChannels }, gridWidth, gridHeight, colors: palette.length, mode, palette, gridMode: spec.mode,
+    pointTransform: spec.mode === "target" ? { scaleX: spec.innerWidth / spec.referenceWidth, scaleY: spec.innerHeight / spec.referenceHeight, offsetX: spec.offsetX, offsetY: spec.offsetY } : null };
 }
 
 // A named palette is a fixed artistic choice, so it reports its own size; the colour count only

@@ -796,7 +796,11 @@ function optionsFromDocument(doc, base = {}) {
     aiCutoff: checks.aiAutoCutoff !== false ? "auto" : number("aiCutoff", 50),
     aiSoftness: number("aiSoftness", 0),
     aiQuality: values.aiQuality || "balanced",
+    pixelScale: checks.pixelateEnabled ? number("pixelExportScale", 1) : 1,
     pixelate: checks.pixelateEnabled ? {
+      gridMode: values.pixelateGridMode || "adaptive",
+      softAlpha: Boolean(checks.pixelateSoftAlpha),
+      ...(values.pixelateGridMode === "target" ? { targetWidth: number("pixelateTargetWidth", 64), targetHeight: number("pixelateTargetHeight", 64) } : {}),
       size: number("pixelateSize", 4),
       colors: number("pixelateColors", 16),
       palette: values.pixelatePalette || "auto",

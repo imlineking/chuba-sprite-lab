@@ -9,6 +9,7 @@ import { currentAIProvider, segmentSubject } from "./ai-segmentation.mjs";
 import { applyMaskEdits } from "./mask-edits.mjs";
 import { cleanMagentaFringe } from "./edge-cleanup.mjs";
 import { pixelate } from "./pixelate.mjs";
+import { withSeriesPixelGrid } from "./pixel-grid.mjs";
 import { reviewSeries } from "./series-review.mjs";
 import { buildSeriesPalette } from "./series-palette.mjs";
 import { applyImageGeometry } from "./image-geometry.mjs";
@@ -842,12 +843,17 @@ async function runPooled(items, width, task) {
 async function applyPixelation(frame, options) {
   const { data, info } = await sharp(frame.buffer).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const result = pixelate(data, info, options);
+  const priorTransform = frame.geometryReport?.pointTransform || { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
+  const transform = result.pointTransform;
   return {
     ...frame,
     buffer: await sharp(result.data, { raw: result.info }).png().toBuffer(),
     info: result.info,
     bounds: alphaBounds(result.data, result.info),
-    pixelArt: { gridWidth: result.gridWidth, gridHeight: result.gridHeight, colors: result.colors, mode: result.mode },
+    pixelArt: { gridWidth: result.gridWidth, gridHeight: result.gridHeight, colors: result.colors, mode: result.mode, gridMode: result.gridMode },
+    ...(transform ? { geometryReport: { ...frame.geometryReport, pixelGrid: "target", outputSize: { width: result.info.width, height: result.info.height }, pointTransform: {
+      scaleX: priorTransform.scaleX * transform.scaleX, scaleY: priorTransform.scaleY * transform.scaleY,
+      offsetX: priorTransform.offsetX * transform.scaleX + transform.offsetX, offsetY: priorTransform.offsetY * transform.scaleY + transform.offsetY } } } : {}),
   };
 }
 
@@ -899,6 +905,20 @@ async function renderFrames(frames, options) {
 
 async function renderBaseFrames(frames, options) {
   const geometry = options.imageGeometry;
+  if (["target", "fixed"].includes(options.pixelate?.gridMode)) {
+    const cellWidth = frames[0].info.width, cellHeight = frames[0].info.height;
+    const rendered = await runPooled(frames, parallelismFor(options), async frame => {
+      const transform = resolveFrameTransform(options, frame.sourceIndex);
+      const background = options.outputBackground === "white" ? { r: 255, g: 255, b: 255, alpha: 1 } : { r: 0, g: 0, b: 0, alpha: 0 };
+      if (!transform) return { buffer: options.outputBackground === "white" ? await sharp(frame.buffer).flatten({ background }).ensureAlpha().png().toBuffer() : frame.buffer, left: 0, top: 0, width: cellWidth, height: cellHeight };
+      const sprite = await sharp(frame.buffer).extract(frame.bounds).png().toBuffer();
+      const placed = await placeTransformedSprite({ sprite, width: frame.bounds.width, height: frame.bounds.height,
+        left: frame.bounds.left, top: frame.bounds.top, canvasWidth: cellWidth, canvasHeight: cellHeight, transform,
+        kernel: sharp.kernel.nearest, background });
+      return { buffer: placed.buffer, left: 0, top: 0, width: cellWidth, height: cellHeight };
+    });
+    return { rendered, cellWidth, cellHeight, padding: 0, anchor: "canvas", bodyAlignment: null };
+  }
   if (options.anchor !== "manual" && (options.preserveFrameCanvas || geometry && ["contain", "cover", "stretch"].includes(geometry.mode))) {
     const cellWidth = geometry?.width || Math.max(...frames.map(f => f.info.width));
     const cellHeight = geometry?.height || Math.max(...frames.map(f => f.info.height));
@@ -1160,7 +1180,8 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
   const aiFrameMetrics = [];
   const skipped = { empty: 0, duplicates: 0, excluded: 0, emptyIndexes: [], duplicateIndexes: [] };
   const excludedFrames = new Set((options.excludedFrames || []).map(Number));
-  const pixelateOptions = options.pixelate && Number(options.pixelate.size) > 1 ? options.pixelate : null;
+  options = await withSeriesPixelGrid(options, inputFrames);
+  const pixelateOptions = options.pixelate && (options.pixelate.gridMode === "target" || Number(options.pixelate.size) > 1) ? options.pixelate : null;
   const sharedPalette = pixelateOptions?.paletteScope === "series" && (pixelateOptions.palette || "auto") === "auto";
   let previousHash = null;
   // Keep at most `parallelism` frames in flight: order is preserved and memory stays bounded.
@@ -1463,11 +1484,13 @@ function describeFrames(animations, atlas, pageFiles) {
       const item = group.items[entry.image];
       const rect = rectByItem.get(item);
       const metadata = animation.options.frameMetadata?.[animation.prepared[entry.image].sourceIndex] || animation.source.frameMetadata?.[animation.prepared[entry.image].sourceIndex] || {};
+      const pointTransform = animation.prepared[entry.image].geometryReport?.pixelGrid === "target" ? animation.prepared[entry.image].geometryReport.pointTransform : null;
+      const pointScale = (Number(animation.options.pixelScale) || 1) * (atlas.scale || 1);
       frames.push({
         ...metadata.extra,
         name: metadata.name ? safeName(metadata.name) + (animation.sequence.filter(e => e.image === entry.image).length > 1 ? "_" + position : "") : frameName(animation.prefix, position),
         animation: metadata.tag || animation.name,
-        anchorPoints: metadata.anchorPoints || [],
+        anchorPoints: (metadata.anchorPoints || []).map(point => pointTransform ? { ...point, x: (point.x * pointTransform.scaleX + pointTransform.offsetX) * pointScale, y: (point.y * pointTransform.scaleY + pointTransform.offsetY) * pointScale } : point),
         position,
         sourceFrameIndex: animation.prepared[entry.image].sourceIndex,
         sourceName: animation.source.sheetFrameNames?.[animation.prepared[entry.image].sourceIndex] || null,
@@ -2349,9 +2372,14 @@ export async function processVideoBatch({ paths, outputDir, options = {}, appRoo
   };
 }
 
-export async function processFramePreview({ inputPath, options = {}, appRoot }) {
+export async function processFramePreview({ inputPath, options = {}, appRoot, gridSources = [] }) {
   if (!inputPath) throw new Error("Нет кадра для быстрого предпросмотра.");
   options = resolvePreparedCleanup(options, options.previewFrameIndex ?? 0, inputPath);
+  if (gridSources.length) {
+    if (!Array.isArray(gridSources) || gridSources.length > 1000) throw new Error("Общая сетка: не больше 1000 исходных кадров.");
+    const reference = await withSeriesPixelGrid({ ...options, frameOverrides: {} }, gridSources);
+    options = { ...options, pixelate: reference.pixelate };
+  }
   const previewRoot = await makeTempWorkspace("chuba-sprite-live-");
   let keyed = await keyFrame(inputPath, options.keyMode || "auto", options.tolerance ?? 28, options.blackOutline ?? 3, options.blackFeather ?? 0, {
     appRoot,
@@ -2381,7 +2409,7 @@ export async function processFramePreview({ inputPath, options = {}, appRoot }) 
     || (options.attachments || []).map((attachment) => ({ ...attachment, points: attachment.points || [] }));
   keyed = await compositeAttachments(keyed, placements);
   if (options.imageGeometry) keyed = await applyImageGeometry(keyed, options.imageGeometry);
-  if (options.pixelate && Number(options.pixelate.size) > 1) keyed = await applyPixelation(keyed, options.pixelate);
+  if (options.pixelate && (options.pixelate.gridMode === "target" || Number(options.pixelate.size) > 1)) keyed = await applyPixelation(keyed, options.pixelate);
   if (options.toning) keyed = await applyToning(keyed, options.toning);
   let colorBasePath = null;
   if (options.captureColorBase && !options.frameTransforms?.[previewFrameIndex]) {
