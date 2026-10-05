@@ -699,6 +699,7 @@ function updateActionState() {
     ? `ЭКСПОРТИРОВАТЬ ${batchCount} ВИДЕО`
     : state.result?.frameCount && !state.resultDirty ? `ЭКСПОРТИРОВАТЬ ${state.result.frameCount} КАДРОВ` : "ЭКСПОРТИРОВАТЬ";
   $("#openMaskEditor").disabled = !hasSource || state.busy;
+  $("#cleanWhiteResidue").disabled = !hasSource || state.busy;
   $("#addAttachment").disabled = !hasSource || state.busy || state.source?.kind === "video-batch";
   $$("#regionEditImage, #saveImagePng, #saveAllImagePng, #imageAutoCleanup, #imageHealBatch").forEach(button => { button.disabled = !hasSource || state.busy; });
   $("#editFrame").disabled = !state.result?.allSourceFramePaths?.length || state.busy || state.source?.kind === "video-batch";
@@ -993,7 +994,7 @@ function collectOptions() {
     frameMetadata: structuredClone(state.frameMetadata), anchorReference: state.anchorReference,
     aiCutoff: $("#aiAutoCutoff").checked ? "auto" : Number($("#aiCutoff").value), aiSoftness: Number($("#aiSoftness").value),
     aiQuality: $("#aiQuality").value,
-    aiEdits: state.maskEdits, previewFrameIndex: state.result ? state.selectedFrameIndex : 0,
+    aiEdits: state.maskEdits, previewFrameIndex: state.selectedFrameIndex,
     fringeCleanup: $("#fringeCleanup").checked, fringeStrength: Number($("#fringeStrength").value),
     edgeDecontaminate: $("#edgeDecontaminate").checked,
     edgeRefine: { mode: $("#edgeRefineMode").value, width: Number($("#edgeRefineWidth").value), depth: Number($("#edgeRefineDepth").value), whiteOnly: $("#edgeRefineWhiteOnly").checked },
@@ -1097,7 +1098,7 @@ function setKeyMode(mode) {
   $("#blackKeyNote").classList.toggle("hidden", state.keyMode !== "black");
   $("#blackOutlineRow").classList.toggle("hidden", state.keyMode !== "black");
   $("#blackFeatherRow").classList.toggle("hidden", state.keyMode !== "black");
-  $("#toleranceRow").classList.toggle("hidden", state.keyMode === "ai");
+  $("#toleranceRow").classList.toggle("hidden", ["ai", "alpha"].includes(state.keyMode));
   $("#aiCleanupPanel").classList.toggle("hidden", state.keyMode !== "ai");
   const autoCutoff = $("#aiAutoCutoff");
   if (autoCutoff) $("#aiCutoff").disabled = autoCutoff.checked;
@@ -1466,7 +1467,8 @@ async function openMaskEditor({ review = false, tool = null } = {}) {
   $("#maskModalIntro").textContent = review
     ? "Бирюзовая линия показывает будущую вырезку. Защитите белые буквы, молнии и цветы; удалите оставшийся фон кистью. Затем примените и проверьте результат."
     : "Выделите область прямоугольником или лассо, выберите её цвет пипеткой. Другие цвета и пиксели вне выделения сохранятся. Примените результат или отмените правку.";
-  setMaskTool(tool || (review ? "keep" : state.intent === "images" ? "select" : "smart"));
+  setMaskTool(tool || (review ? "color" : state.intent === "images" ? "select" : "smart"));
+  if (state.maskBrushMode === "color") $("#maskModalIntro").textContent = "Щёлкните по остатку фона: все похожие пиксели подсветятся красным, включая отдельные островки. Проверьте маску и допуск, затем примените. Колёсико приближает; перетаскивание перемещает обзор.";
   $("#maskApplyAll").checked = false;
   clearTimeout(state.historyTimer); pushHistory("Настройки перед правкой маски");
   setStatus("Готовлю выбранный кадр…", "busy", 0.12);
@@ -1488,7 +1490,9 @@ async function openMaskEditor({ review = false, tool = null } = {}) {
   });
   state.maskEditorImage = image;
   await window.initializeMaskRegion?.(image);
-  const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+  // Keep source pixels intact: downsampling hides the very one-pixel remnants
+  // being edited and makes the displayed mask disagree with the applied mask.
+  const scale = 1;
   const canvas = $("#maskCanvas");
   canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
   canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -1523,6 +1527,7 @@ async function openMaskEditor({ review = false, tool = null } = {}) {
   }
   redrawMaskCanvas();
   setModalOpen($("#aiMaskModal"), true, $("#applyMaskEditor"), $("#openMaskEditor"));
+  window.resetMaskNavigation?.();
   setStatus("Редактор маски открыт", "done", 0);
 }
 
@@ -1567,16 +1572,10 @@ function selectTrackedRegion(event) {
   const seedX = Math.max(0, Math.min(canvas.width - 1, Math.round((event.clientX - rect.left) / Math.max(1, rect.width) * canvas.width)));
   const seedY = Math.max(0, Math.min(canvas.height - 1, Math.round((event.clientY - rect.top) / Math.max(1, rect.height) * canvas.height)));
   const pixels = state.maskEditorPixels;
-  const color = [0, 0, 0];
-  let samples = 0;
-  for (let y = Math.max(0, seedY - 2); y <= Math.min(canvas.height - 1, seedY + 2); y += 1) {
-    for (let x = Math.max(0, seedX - 2); x <= Math.min(canvas.width - 1, seedX + 2); x += 1) {
-      const offset = (y * canvas.width + x) * 4;
-      color[0] += pixels[offset]; color[1] += pixels[offset + 1]; color[2] += pixels[offset + 2]; samples += 1;
-    }
-  }
-  for (let index = 0; index < 3; index += 1) color[index] = Math.round(color[index] / Math.max(1, samples));
-  const tolerance = Number($("#smartRegionTolerance").value) || 42;
+  const offset = (seedY * canvas.width + seedX) * 4;
+  if (pixels[offset + 3] < 8) { $("#maskToolTip").textContent = "Это уже прозрачный пиксель. Щёлкните по непрозрачному пятну фона."; return; }
+  const color = [...pixels.slice(offset, offset + 3)];
+  const tolerance = Number($("#smartRegionTolerance").value);
   const thresholdSquared = tolerance * tolerance;
   const visited = new Uint8Array(canvas.width * canvas.height);
   const queue = new Int32Array(visited.length);
@@ -1601,8 +1600,8 @@ function selectTrackedRegion(event) {
     sumX += x; sumY += y;
     enqueue(x - 1, y); enqueue(x + 1, y); enqueue(x, y - 1); enqueue(x, y + 1);
   }
-  if (tail < 4) {
-    $("#maskEditorStatus").textContent = "Область слишком мала · увеличьте чувствительность";
+  if (tail < 1) {
+    $("#maskToolTip").textContent = "Область не найдена · увеличьте чувствительность";
     return;
   }
   state.maskStrokeId += 1;
@@ -1617,6 +1616,7 @@ function selectTrackedRegion(event) {
     strokeId: state.maskStrokeId,
   });
   redrawMaskCanvas();
+  $("#maskToolTip").textContent = `Выбрано ${tail} пикселей связанного пятна. Измените допуск или примените удаление. Для всех островков выберите «Цвет во всём изображении».`;
 }
 
 function setMaskTool(mode) {
@@ -1624,13 +1624,14 @@ function setMaskTool(mode) {
   maskRegion.picking = mode === "pick";
   maskRegion.start = null;
   $$("#maskBrushMode button").forEach((item) => item.classList.toggle("selected", item.dataset.mode === mode));
-  $("#smartRegionRow").classList.toggle("hidden", mode !== "smart");
+  $("#smartRegionRow").classList.toggle("hidden", !["smart", "color"].includes(mode));
   $("#maskBrushSizeRow").classList.toggle("hidden", !["erase", "keep"].includes(mode));
   $("#maskBrushShapeRow").classList.toggle("hidden", !["erase", "keep"].includes(mode));
   $("#regionColorTools").classList.toggle("hidden", !["select", "lasso", "pick"].includes(mode));
   $("#maskApplyTitle").textContent = mode === "smart" ? "Искать во всей серии" : "Повторить во всех кадрах";
   $("#maskApplyHint").textContent = mode === "smart" ? "слежение за цветом, размером и формой" : "кисть останется в тех же координатах";
-  $("#maskToolTip").textContent = mode === "smart"
+  $("#maskToolTip").textContent = mode === "color" ? "Щёлкните по удаляемому цвету: подсветятся все похожие пиксели, включая отдельные островки. Допуск обновляет маску. Затем примените или отмените. Перетаскивание перемещает обзор."
+    : mode === "smart"
     ? "Щёлкните по стене, пятну или просвету. Область будет найдена заново в каждом кадре."
     : ["select", "lasso", "pick"].includes(mode) ? "Обведите область мышью. Выберите цвет пипеткой и нажмите «Удалить цвет в выделении». Правка затронет только выбранное изображение; Ctrl+Z отменяет действие."
     : "Кисть исправляет маску вручную. Поиск движения для неё не применяется.";
@@ -1946,6 +1947,7 @@ function currentFitScale() {
 }
 
 function applyZoom() {
+  updateHandTool();
   const transform = `translate(${state.viewportPanX}px, ${state.viewportPanY}px) scale(${state.zoom})`;
   $("#previewImage").style.transform = transform;
   $("#compareBefore").style.transform = transform;
@@ -1987,7 +1989,7 @@ function updateGuideGrid() {
 }
 
 function handToolActive() {
-  return state.spaceHand || state.handToolLocked;
+  return state.spaceHand || !state.transformPanelOpen;
 }
 
 function updateHandTool() {
@@ -1995,7 +1997,7 @@ function updateHandTool() {
   $("#previewStage").classList.toggle("hand-tool", active);
   $("#previewStage").classList.toggle("panning", active && state.viewportPanning);
   $("#handTool").classList.toggle("active", active);
-  $("#handTool").setAttribute("aria-pressed", String(state.handToolLocked));
+  $("#handTool").setAttribute("aria-pressed", String(active));
 }
 
 function stopViewportPan() {
@@ -2054,12 +2056,13 @@ function setTransformPanel(open) {
   $("#previewImage").classList.toggle("transform-selected", state.transformPanelOpen);
   $("#compareView").classList.toggle("transform-selected", state.transformPanelOpen);
   $("#previewStage").classList.toggle("transform-open", state.transformPanelOpen);
+  updateHandTool();
   requestAnimationFrame(applyZoom);
   if (state.transformPanelOpen) { setPreviewMode("after"); syncTransformControls(); }
 }
 
 function changeZoom(delta) {
-  state.zoom = Math.max(0.25, Math.min(4, Math.round((state.zoom + delta) * 4) / 4));
+  state.zoom = Math.max(0.25, Math.min(16, Math.round((state.zoom + delta) * 4) / 4));
   applyZoom();
 }
 
@@ -2135,6 +2138,7 @@ async function requestFramePreview(inputPath) {
   if (!inputPath || state.busy) return;
   const token = ++state.quickToken;
   const revision = state.sourceRevision;
+  if (!state.busy) setStatus("Обновляю предпросмотр…", "busy", 0);
   try {
     const gridSources = state.source?.kind === "frames" || state.source?.kind === "sheet" ? state.source.paths.map((p, i) => state.frameOverrides[i] || p) : [];
     const result = await window.spriteLab.previewFrame({ inputPath, options: collectOptions(), gridSources });
@@ -2152,7 +2156,7 @@ async function requestFramePreview(inputPath) {
     hideError();
     if (["before", "after", "compare"].includes(state.previewMode)) setPreviewMode(state.previewMode);
     else if (!state.result) setPreviewMode("after");
-    if (!state.busy && state.keyMode === "ai") setStatus("Предпросмотр обработки обновлён", "done", 0);
+    if (!state.busy) setStatus("Предпросмотр обработки обновлён", "done", 0);
     updateActionState();
     return result;
   } catch (error) {
@@ -2428,12 +2432,16 @@ $("#inspectContour").addEventListener("click", async () => {
   try { await openMaskEditor({ review: true }); } catch (error) { setStatus(error.message || "Не удалось открыть контур", "error", 0); showError(error.message); }
 });
 for (const id of ["edgeRefineMode", "edgeRefineWidth", "edgeRefineDepth", "edgeRefineWhiteOnly"]) {
-  $(`#${id}`).addEventListener("change", () => { savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Очистка кромки изменена"); });
+  $(`#${id}`).addEventListener(id === "edgeRefineDepth" ? "input" : "change", () => { savePreferences(); markPreviewDirty(); scheduleFramePreview(id === "edgeRefineDepth" ? 180 : 0); scheduleHistory("Очистка кромки изменена"); });
 }
 $("#anchorMode").addEventListener("click", (event) => { const button = event.target.closest("button[data-value]"); if (button) { setAnchor(button.dataset.value); savePreferences(); pushHistory("Стабилизация изменена"); } });
 $("#processPresets").addEventListener("click", (event) => { const button = event.target.closest("button[data-preset]"); if (button) applyProcessPreset(button.dataset.preset); });
 $("#resetSettings").addEventListener("click", resetRecommended);
 $("#tolerance").addEventListener("input", (event) => { $("#toleranceValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(); });
+$("#cleanWhiteResidue").addEventListener("click", async () => {
+  try { await openMaskEditor({ tool: "color" }); window.previewGlobalMaskColor?.([255, 255, 255]); }
+  catch (error) { setStatus(error.message, "error", 0); showError(error.message); }
+});
 $("#blackOutline").addEventListener("input", (event) => { $("#blackOutlineValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(); });
 $("#blackFeather").addEventListener("input", (event) => { $("#blackFeatherValue").textContent = `${event.target.value} px`; markPreviewDirty(); scheduleFramePreview(); });
 $("#aiCutoff").addEventListener("input", (event) => { $("#aiCutoffValue").textContent = event.target.value; markPreviewDirty(); scheduleFramePreview(380); });
@@ -2509,12 +2517,9 @@ $("#maskBrushMode").addEventListener("click", (event) => {
 $("#maskBrushSize").addEventListener("input", (event) => { $("#maskBrushSizeValue").textContent = `${event.target.value} px`; });
 $("#smartRegionTolerance").addEventListener("input", (event) => { $("#smartRegionToleranceValue").textContent = event.target.value; });
 $("#maskCanvas").addEventListener("pointerdown", (event) => {
+  if (event.defaultPrevented || event.button !== 0 || state.spaceHand) return;
   event.preventDefault();
-  if (["select", "lasso", "pick"].includes(state.maskBrushMode)) return;
-  if (state.maskBrushMode === "smart") {
-    selectTrackedRegion(event); rememberMaskOperation();
-    return;
-  }
+  if (["select", "lasso", "pick", "color", "smart"].includes(state.maskBrushMode)) return;
   state.maskDrawing = true;
   state.maskStrokeId += 1;
   event.currentTarget.setPointerCapture(event.pointerId);
@@ -2690,7 +2695,7 @@ $("#retryBatch").addEventListener("click", () => {
 $("#previousWarning").addEventListener("click", () => selectWarning(-1));
 $("#nextWarning").addEventListener("click", () => selectWarning(1));
 $("#handTool").addEventListener("click", () => {
-  state.handToolLocked = !state.handToolLocked; updateHandTool();
+  setTransformPanel(false); updateHandTool();
 });
 $("#transformTool").addEventListener("click", () => setTransformPanel(!state.transformPanelOpen));
 $("#closeTransform").addEventListener("click", () => setTransformPanel(false));
@@ -2743,6 +2748,16 @@ $("#previewStage").addEventListener("pointerdown", (event) => {
   state.panStartX = state.viewportPanX; state.panStartY = state.viewportPanY;
   event.currentTarget.setPointerCapture(event.pointerId); updateHandTool();
 });
+$("#previewStage").addEventListener("wheel", (event) => {
+  if (event.target.closest(".stage-tools, .transform-panel, .error-card, .player-bar") || (!state.framePreview && !state.result)) return;
+  event.preventDefault();
+  const old = state.zoom, next = Math.max(.25, Math.min(16, old * Math.exp(-event.deltaY * .002)));
+  const rect = event.currentTarget.getBoundingClientRect();
+  const x = event.clientX - rect.left - rect.width / 2, y = event.clientY - rect.top - rect.height / 2;
+  state.viewportPanX = x - (x - state.viewportPanX) * next / old;
+  state.viewportPanY = y - (y - state.viewportPanY) * next / old;
+  state.zoom = next; applyZoom();
+}, { passive: false });
 $("#previewStage").addEventListener("pointermove", (event) => {
   if (!state.viewportPanning || event.pointerId !== state.panPointerId) return;
   state.viewportPanX = state.panStartX + event.clientX - state.panStartClientX;
@@ -2815,7 +2830,8 @@ for (const id of ["tolerance", "blackOutline", "blackFeather", "aiCutoff", "aiSo
 document.addEventListener("keydown", (event) => {
   const editingText = ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName) || event.target.isContentEditable;
   const modalOpen = Boolean($(".modal-backdrop:not(.hidden)"));
-  if (event.code !== "Space" || event.repeat || editingText || modalOpen) return;
+  const maskNavigation = !$("#aiMaskModal").classList.contains("hidden") && event.target === $("#maskCanvas");
+  if (event.code !== "Space" || event.repeat || editingText || (modalOpen && !maskNavigation)) return;
   event.preventDefault(); state.spaceHand = true; updateHandTool();
 });
 document.addEventListener("keyup", (event) => {

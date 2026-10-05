@@ -106,7 +106,7 @@ function normalizeOptions(value, problem, label, baseDir) {
       }
       if (!["none", "trim", "recolor"].includes(options.edgeRefine.mode)) problem(`${label}.edgeRefine.mode: ожидается none, trim или recolor.`);
       if (boundedInteger(options.edgeRefine.width, 1, 3) === null) problem(`${label}.edgeRefine.width: ожидалось целое 1…3.`);
-      if (boundedInteger(options.edgeRefine.depth, 1, 5) === null) problem(`${label}.edgeRefine.depth: ожидалось целое 1…5.`);
+      if (boundedInteger(options.edgeRefine.depth, 1, 32) === null) problem(`${label}.edgeRefine.depth: ожидалось целое 1…32.`);
       if (typeof options.edgeRefine.whiteOnly !== "boolean") problem(`${label}.edgeRefine.whiteOnly: ожидалось true или false.`);
       if (options.edgeRefine.noLightArtwork !== undefined && typeof options.edgeRefine.noLightArtwork !== "boolean") problem(`${label}.edgeRefine.noLightArtwork: ожидалось true или false.`);
       if (options.edgeRefine.lightArtworkPolicy !== undefined && !["auto", "protect", "none"].includes(options.edgeRefine.lightArtworkPolicy)) problem(`${label}.edgeRefine.lightArtworkPolicy: ожидалось auto, protect или none.`);

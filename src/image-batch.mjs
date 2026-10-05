@@ -206,7 +206,7 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
           // light fringe. The planner's fringe stage must actually run.
           if (!healing && measurements.hasTransparency && plan.steps.some(step => step.stage === "fringe")
             && (!settings.edgeRefine || settings.edgeRefine.mode === "none")) {
-            settings.edgeRefine = { mode: "recolor", width: 2, depth: 3, whiteOnly: true,
+            settings.edgeRefine = { mode: "recolor", width: 2, depth: Number(options.edgeRefine?.depth) || 5, whiteOnly: true,
               whiteThreshold: 175, neutralTolerance: 45, autoPaleCleanup: true };
           }
           if (!requestedModel && lightDecision.policy !== "none" && plan.steps.some(step => step.stage === "checker")) settings.aiEdits = [...(settings.aiEdits || []), { type: "checker", frameIndex: sourceIndex }];
@@ -216,7 +216,7 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
         if (lightDecision.policy === "none") {
           // An explicit palette choice wins over the planner's conservative
           // pale-detail guard, including when Podorozhnik ran first.
-          settings.edgeRefine = { mode: "none", width: 1, depth: 2, whiteOnly: true,
+          settings.edgeRefine = { mode: "none", width: 1, depth: Number(options.edgeRefine?.depth) || 5, whiteOnly: true,
             ...settings.edgeRefine, mode: "none", noLightArtwork: true, autoPaleCleanup: false };
           settings.aiEdits = (settings.aiEdits || []).filter(edit => edit.type !== "checker" || edit.frameIndex !== sourceIndex);
           // On a partly transparent sprite this is a residual-cleanup task.

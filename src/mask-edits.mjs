@@ -164,7 +164,7 @@ function applyTrackedEdit(data, original, width, height, channels, edit, frameIn
     ? edit.color.slice(0, 3).map((value) => clamp(Number(value) || 0, 0, 255))
     : null;
   if (!color) return null;
-  const tolerance = clamp(Number(edit.tolerance) || 42, 6, 140);
+  const tolerance = clamp(Number.isFinite(Number(edit.tolerance)) ? Number(edit.tolerance) : 42, 0, 150);
   const { components, queue } = findColorComponents(original, width, height, channels, color, tolerance);
   const match = selectTrackedComponent(components, queue, edit, width, height, frameIndex);
   if (!match) return { matched: false, confidence: 0, pixels: 0 };

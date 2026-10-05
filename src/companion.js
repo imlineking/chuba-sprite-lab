@@ -58,10 +58,27 @@
   document.querySelector('#close').onclick=()=>action({action:'dismiss'});
   document.querySelector('#hide').onclick=()=>action({action:'hide'});
   for(const name of ['dragstart','drop','dragover']) document.addEventListener(name,event=>{event.preventDefault();event.stopPropagation();});
-  pet.addEventListener('pointerdown',event=>{ if(event.button!==0)return; event.preventDefault(); pet.setPointerCapture(event.pointerId); drag={x:event.screenX,y:event.screenY,moved:false}; suppressClick=false; void action({action:'drag-start',x:event.screenX,y:event.screenY}); });
-  pet.addEventListener('pointermove',event=>{ if(!drag)return; if(!drag.moved && Math.hypot(event.screenX-drag.x,event.screenY-drag.y)<5)return; drag.moved=true; pet.classList.add('dragging'); void action({action:'drag-move',x:event.screenX,y:event.screenY}); });
-  const end=()=>{if(!drag)return; suppressClick=drag.moved; drag=null; pet.classList.remove('dragging'); void action({action:'drag-end'});};
-  pet.addEventListener('pointerup',end); pet.addEventListener('pointercancel',end);
+  for (const handle of [pet, document.querySelector('#speech header')]) {
+    handle.addEventListener('pointerdown',event=>{
+      if(event.button!==0 || (handle!==pet && event.target.closest('button,select,input,a')))return;
+      event.preventDefault(); handle.setPointerCapture(event.pointerId);
+      drag={handle,pointerId:event.pointerId,x:event.screenX,y:event.screenY,moved:false}; suppressClick=false;
+      void action({action:'drag-start',x:event.screenX,y:event.screenY});
+    });
+    handle.addEventListener('pointermove',event=>{
+      if(!drag || drag.handle!==handle || drag.pointerId!==event.pointerId)return;
+      if(!drag.moved && Math.hypot(event.screenX-drag.x,event.screenY-drag.y)<5)return;
+      drag.moved=true; handle.classList.add('dragging');
+      void action({action:'drag-move',x:event.screenX,y:event.screenY});
+    });
+    const end=event=>{
+      if(!drag || drag.handle!==handle || drag.pointerId!==event.pointerId)return;
+      suppressClick=handle===pet && drag.moved; drag=null; handle.classList.remove('dragging');
+      if(handle.hasPointerCapture(event.pointerId))handle.releasePointerCapture(event.pointerId);
+      void action({action:'drag-end'});
+    };
+    for(const name of ['pointerup','pointercancel','lostpointercapture'])handle.addEventListener(name,end);
+  }
   pet.addEventListener('click',()=>{if(suppressClick){suppressClick=false;return;} void action({action:'toggle'});});
   new ResizeObserver(()=>{ if(document.body.dataset.surface==='bubble') void action({action:'resize',height:document.querySelector('#speech').offsetHeight+14}); }).observe(document.querySelector('#speech'));
   render();

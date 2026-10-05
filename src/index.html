@@ -266,6 +266,7 @@
             </div>
             <label id="keyScopeRow" class="field"><span>Где удалять цвет</span><select id="keyScope"><option value="exterior">Только фон от края кадра</option><option value="all">Весь похожий цвет</option></select><small>«От края» бережёт замкнутые белые детали. Если контур открыт, защитите текст или блики кистью маски.</small></label>
             <button id="inspectContour" class="button secondary" type="button">Проверить и исправить контур</button>
+            <button id="cleanWhiteResidue" class="button secondary" type="button" title="Показать все белые и близкие пиксели; проверьте маску перед удалением">Убрать белые остатки…</button>
             <p id="whiteRemainderHint" class="white-remainder-hint hidden" role="status"></p>
             <p id="blackKeyNote" class="key-note hidden">Чёрный фон удаляется от края. Защита контура 0 снимает обводку, значения выше сохраняют её; толщина подстраивается под разрешение.</p>
             <label id="blackOutlineRow" class="range-field hidden">
@@ -350,7 +351,7 @@
               <div class="form-grid">
                 <label class="field"><span>Действие</span><select id="edgeRefineMode"><option value="none">Не менять</option><option value="trim">Срезать кромку</option><option value="recolor">Перекрасить изнутри</option></select></label>
                 <label class="field"><span>Ширина</span><select id="edgeRefineWidth"><option value="1">1 пиксель</option><option value="3">3 пикселя</option></select></label>
-                <label class="field"><span>Брать цвет с глубины</span><select id="edgeRefineDepth"><option value="2">2 пикселя</option><option value="5">5 пикселей</option></select></label>
+                <label class="field"><span>Брать цвет с глубины · px</span><input id="edgeRefineDepth" type="number" min="1" max="32" step="1" value="5" title="Для каждого пикселя края — свой цвет внутрь объекта. На тонких линиях глубина уменьшается." /></label>
               </div>
               <label class="toggle-row"><span><strong>Беречь цветные края</strong><small>Перекрашивать только почти белые пиксели; белые детали внутри не затрагиваются.</small></span><input id="edgeRefineWhiteOnly" type="checkbox" checked /><i></i></label>
               <p class="atlas-hint">Срез удаляет все цвета на 1–3 пикселях вдоль прозрачной границы, включая тонкие линии. Для открытого комиксного контура сначала проверьте маску и защитите буквы или молнии.</p>
@@ -839,7 +840,8 @@
         </header>
         <div class="mask-editor-layout">
           <div class="mask-canvas-shell">
-            <canvas id="maskCanvas" aria-label="Редактор маски выбранного кадра"></canvas>
+            <canvas id="maskCanvas" tabindex="0" aria-label="Редактор маски выбранного кадра"></canvas>
+            <div class="mask-navigation"><button id="maskZoomOut" type="button" aria-label="Уменьшить">−</button><output id="maskZoomValue">100%</output><button id="maskZoomIn" type="button" aria-label="Увеличить">+</button><button id="maskZoomFit" type="button">Вписать</button><span>Колёсико — масштаб · перетащить — обзор · щелчок — образец</span></div>
             <div class="mask-canvas-legend"><span style="color:#00c9cd">▰</span> предлагаемый контур · затемнено удалится <span class="track-dot"></span> область <span class="erase-dot"></span> удалить <span class="keep-dot"></span> защитить</div>
           </div>
           <aside class="mask-tools">
@@ -847,7 +849,8 @@
             <div id="maskBrushMode" class="mask-mode" role="group" aria-label="Режим кисти">
               <button type="button" data-mode="select"><i></i><span><strong>Прямоугольник</strong><small>удалить цвет только в области</small></span></button>
               <button type="button" data-mode="lasso"><i></i><span><strong>Лассо</strong><small>обвести сложную область</small></span></button>
-              <button type="button" data-mode="smart" class="selected"><i></i><span><strong>Умная область</strong><small>найти во всех кадрах</small></span></button>
+              <button type="button" data-mode="color" class="selected"><i></i><span><strong>Цвет во всём изображении</strong><small>щёлкните по фону · все островки</small></span></button>
+              <button type="button" data-mode="smart"><i></i><span><strong>Связанная область</strong><small>щёлкните внутри одного пятна</small></span></button>
               <button type="button" data-mode="erase"><i></i><span><strong>Удалить кистью</strong><small>ручная доводка</small></span></button>
               <button type="button" data-mode="keep"><i></i><span><strong>Защитить</strong><small>букву, цветок или блик</small></span></button>
             </div>
@@ -861,7 +864,7 @@
             <button id="removeCheckerboard" class="button secondary" type="button" title="Находит повторяющийся запечённый узор в двух направлениях; выделение ограничивает поиск">Убрать шахматы · псевдопрозрачность</button>
             <label id="smartRegionRow" class="range-field mask-size">
               <span>Чувствительность области <output id="smartRegionToleranceValue">42</output></span>
-              <input id="smartRegionTolerance" type="range" min="8" max="110" value="42" />
+              <input id="smartRegionTolerance" type="range" min="0" max="150" value="42" />
             </label>
             <label id="maskBrushSizeRow" class="range-field mask-size hidden">
               <span>Размер кисти <output id="maskBrushSizeValue">36 px</output></span>
@@ -1310,6 +1313,7 @@
     <script src="./pixel-text-repair-ui.js"></script>
     <script src="./auto-pilot.js"></script>
     <script src="./mask-region-ui.js"></script>
+    <script src="./mask-navigation.js"></script>
     <div id="imageBatchModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="imageBatchTitle">
       <article class="batch-preview-dialog">
         <header class="batch-preview-header"><div><h2 id="imageBatchTitle">Автоочистка изображений</h2><p>Сравните исходник и результат. Применение можно отменить Ctrl+Z; PNG сохраняются отдельной кнопкой.</p></div><button id="closeImageBatch" type="button" aria-label="Закрыть предпросмотр">×</button></header>

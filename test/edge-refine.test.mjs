@@ -22,6 +22,19 @@ test("one and three pixel edge removal change only the requested silhouette ring
   assert.equal(frame.at(frame.data, 1, 5)[3], 255);
 });
 
+test("manual contour repair follows local colour and configurable depth without changing alpha", () => {
+  const frame = canvas(61, 41);
+  for (let y = 2; y <= 38; y++) for (let x = 2; x <= 58; x++) frame.paint(x, y, [x * 3, y * 4, 30, 255]);
+  frame.paint(2, 20, [255, 255, 255, 120]);
+  const original = Buffer.from(frame.data);
+  const shallow = refineEdgeRgba(frame.data, frame.info, { mode: "recolor", width: 1, depth: 2, whiteOnly: false });
+  const deep = refineEdgeRgba(frame.data, frame.info, { mode: "recolor", width: 1, depth: 8, whiteOnly: false });
+  assert.notDeepEqual(frame.at(shallow, 2, 20).slice(0, 3), frame.at(deep, 2, 20).slice(0, 3));
+  assert.notDeepEqual(frame.at(deep, 2, 10).slice(0, 3), frame.at(deep, 2, 30).slice(0, 3), "each contour point retains its local colour");
+  for (let i = 3; i < original.length; i += 4) assert.equal(deep[i], original[i]);
+  assert.deepEqual(frame.data, original);
+});
+
 test("white edge is coloured from inside while an enclosed white flower stays white", () => {
   const frame = canvas(17, 17);
   for (let y = 2; y <= 14; y += 1) for (let x = 2; x <= 14; x += 1) frame.paint(x, y, [20, 130, 30, 255]);
@@ -51,7 +64,7 @@ test("neutral grey export fringe is recoloured without touching a dark outline",
   assert.deepEqual(frame.at(result, 14, 8), [16, 19, 18, 255]);
 });
 
-test("grey fringe on a one-pixel needle borrows colour from the same thin stroke", () => {
+test("grey fringe on a one-pixel needle borrows colour two pixels along the same thin stroke", () => {
   const frame = canvas(9, 9);
   frame.paint(3, 4, [165, 164, 160, 255]);
   frame.paint(4, 4, [12, 62, 48, 255]);
@@ -64,7 +77,7 @@ test("grey fringe on a one-pixel needle borrows colour from the same thin stroke
     whiteThreshold: 140,
     neutralTolerance: 40,
   });
-  assert.deepEqual(frame.at(result, 3, 4), [12, 62, 48, 255]);
+  assert.deepEqual(frame.at(result, 3, 4), [10, 48, 38, 255]);
 });
 
 test("only a large white exterior is removed, not a small border highlight or inner text", () => {

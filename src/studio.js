@@ -822,7 +822,7 @@ function optionsFromDocument(doc, base = {}) {
     aiEdits: doc.maskEdits || [], previewFrameIndex: 0,
     fringeCleanup: Boolean(checks.fringeCleanup), fringeStrength: number("fringeStrength", 55),
     edgeDecontaminate: Boolean(checks.edgeDecontaminate),
-    edgeRefine: { mode: values.edgeRefineMode || "none", width: number("edgeRefineWidth", 1), depth: number("edgeRefineDepth", 2), whiteOnly: checks.edgeRefineWhiteOnly !== false },
+    edgeRefine: { mode: values.edgeRefineMode || "none", width: number("edgeRefineWidth", 1), depth: number("edgeRefineDepth", 5), whiteOnly: checks.edgeRefineWhiteOnly !== false },
     aiProvider: values.aiProvider || "auto",
     keyColor: /^#[0-9a-f]{6}$/i.test(String(controls.solidKeyMode || "")) ? hexToRgb(controls.solidKeyMode) : undefined,
     attachments: (doc.attachments || []).filter((attachment) => attachment.enabled !== false), attachmentPlacements: null,
@@ -956,7 +956,7 @@ document.addEventListener("keydown", (event) => {
   const maskOpen = !$("#aiMaskModal").classList.contains("hidden");
   if (maskOpen && !isEditingTarget(event.target) && (event.code === "BracketLeft" || event.code === "BracketRight")) {
     event.preventDefault();
-    const smart = state.maskBrushMode === "smart";
+    const smart = ["smart", "color"].includes(state.maskBrushMode);
     const input = smart ? $("#smartRegionTolerance") : $("#maskBrushSize");
     const step = smart ? 4 : 4;
     input.value = String(Math.max(Number(input.min), Math.min(Number(input.max), Number(input.value) + (event.code === "BracketRight" ? step : -step))));

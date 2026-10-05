@@ -1359,12 +1359,19 @@ async function runDesktopProbe() {
     report.checks.push({ name: "copilot-before-main-import", ok: true, text: startupShell.loadingText });
     await new Promise(resolve => setTimeout(resolve, 1200));
     const area = screen.getPrimaryDisplay().workArea;
-    companion.pet.setPosition(area.x + 150, area.y + 150);
+    companion.pet.setBounds({ x: area.x + 650, y: area.y + 150, width: 112, height: 128 });
     const first = companion.pet.getBounds();
-    await companion.pet.webContents.executeJavaScript("desktopCompanion.action({action:'drag-start',x:200,y:200}).then(()=>desktopCompanion.action({action:'drag-move',x:280,y:240})).then(()=>desktopCompanion.action({action:'drag-end'}))");
+    const realScreen = companion.screen;
+    let probeCursor = { x: first.x + 50, y: first.y + 50 };
+    companion.screen = { getCursorScreenPoint: () => probeCursor, getAllDisplays: () => screen.getAllDisplays(), getDisplayMatching: bounds => screen.getDisplayMatching(bounds) };
+    try {
+      await companion.pet.webContents.executeJavaScript("desktopCompanion.action({action:'drag-start',x:-9999,y:-9999})");
+      probeCursor = { x: probeCursor.x + 80, y: probeCursor.y + 40 };
+      await companion.pet.webContents.executeJavaScript("desktopCompanion.action({action:'drag-move',x:-9999,y:-9999}).then(()=>desktopCompanion.action({action:'drag-end'}))");
+    } finally { companion.screen = realScreen; }
     const moved = companion.pet.getBounds();
-    if (moved.x !== first.x + 80 || moved.y !== first.y + 40) throw new Error("Перемещение окна помощника не совпало с координатами мыши.");
-    report.checks.push({ name: "native-drag", ok: true, bounds: moved });
+    if (Math.abs(moved.x - first.x - 80) > 1 || Math.abs(moved.y - first.y - 40) > 1) throw new Error("Перемещение окна помощника не совпало с координатами мыши.");
+    report.checks.push({ name: "native-drag", ok: true, suppliedDipCursor: true, physicalMouseTest: false, bounds: moved });
     const noFileDrag = await companion.pet.webContents.executeJavaScript("(() => { const img=document.querySelector('#pet img'); const event=new DragEvent('dragstart',{bubbles:true,cancelable:true}); img.dispatchEvent(event); return !img.draggable && event.defaultPrevented; })()");
     if (!noFileDrag) throw new Error("PNG помощника допускает перетаскивание файла.");
     report.checks.push({ name: "no-file-drag", ok: true });

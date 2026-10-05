@@ -9,6 +9,7 @@ body[data-surface="pet"] #pet { display:block; } body[data-surface="pet"] #speec
 #badge:empty { display:none; }
 #speech { margin:7px; padding:14px; border:1px solid var(--line); border-radius:18px 18px 6px 18px; background:var(--paper); box-shadow:0 3px 6px #0003; }
 header { display:flex; align-items:center; justify-content:space-between; gap:8px; } header strong { font-size:13px; letter-spacing:.03em; } header div { display:flex; gap:7px; }
+#speech header { cursor:grab; touch-action:none; user-select:none; } #speech header.dragging { cursor:grabbing; }
 header button { border:0; background:none; color:var(--muted); padding:3px 5px; font-size:12px; } #close { font-size:21px; line-height:1; }
 #message { margin:12px 0; color:var(--muted); font-size:13px; line-height:1.5; } #choices { display:grid; gap:7px; max-height:440px; overflow:auto; padding:2px; scrollbar-width:thin; }
 .choice { text-align:left; border:1px solid var(--line); border-radius:10px; padding:10px 11px; background:transparent; color:var(--ink); font-size:13px; line-height:1.4; }

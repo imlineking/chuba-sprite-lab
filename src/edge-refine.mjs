@@ -53,7 +53,7 @@ function removeNeutralWithoutLightArtwork(output, width, height) {
   for (let index = 0; index < count; index += 1) if (remove[index]) output[index * 4 + 3] = 0;
 }
 
-function recolorContourFromDepth(output, width, height, contourWidth = 2, sampleDepth = 5) {
+function recolorContourFromDepth(output, width, height, contourWidth = 2, sampleDepth = 5, filter = {}) {
   const source = Buffer.from(output);
   const count = width * height;
   const distance = new Uint8Array(count);
@@ -91,6 +91,10 @@ function recolorContourFromDepth(output, width, height, contourWidth = 2, sample
     const depth = distance[at];
     if (depth === 0 || depth > contourWidth || source[at * 4 + 3] < 8) continue;
     const x = at % width, y = Math.floor(at / width), offset = at * 4;
+    if (filter.whiteOnly) {
+      const minimum = Math.min(source[offset], source[offset + 1], source[offset + 2]);
+      if (minimum < filter.threshold || Math.max(source[offset], source[offset + 1], source[offset + 2]) - minimum > filter.neutralTolerance) continue;
+    }
     let localThickness = 0;
     for (let dy = -3; dy <= 3; dy += 1) for (let dx = -3; dx <= 3; dx += 1) {
       const px = x + dx, py = y + dy;
@@ -99,7 +103,7 @@ function recolorContourFromDepth(output, width, height, contourWidth = 2, sample
         if (source[nearby * 4 + 3] >= 200) localThickness = Math.max(localThickness, distance[nearby]);
       }
     }
-    const inset = localThickness <= 2 ? 2 : sampleDepth;
+    const inset = localThickness <= 2 ? Math.min(2, sampleDepth) : sampleDepth;
     const radius = inset + 2;
     let inwardX = 0, inwardY = 0;
     for (let dy = -radius; dy <= radius; dy += 1) {
@@ -127,6 +131,10 @@ function recolorContourFromDepth(output, width, height, contourWidth = 2, sample
       if (px < 0 || px >= width || py < 0 || py >= height) continue;
       const candidate = py * width + px, candidateOffset = candidate * 4;
       if (source[candidateOffset + 3] < 200) continue;
+      if (filter.whiteOnly) {
+        const minimum = Math.min(source[candidateOffset], source[candidateOffset + 1], source[candidateOffset + 2]);
+        if (minimum >= filter.threshold && Math.max(source[candidateOffset], source[candidateOffset + 1], source[candidateOffset + 2]) - minimum <= filter.neutralTolerance) continue;
+      }
       const deltaX = px - x, deltaY = py - y;
       if (deltaX * directionX + deltaY * directionY < inset - 2) continue;
       const steps = Math.max(Math.abs(deltaX), Math.abs(deltaY));
@@ -262,7 +270,7 @@ export function refineEdgeRgba(input, info, options = {}) {
   if (options.noLightArtwork) {
     removeNeutralWithoutLightArtwork(output, width, height);
     const contourWidth = options.contourWidth === 4 ? 4 : 2;
-    recolorContourFromDepth(output, width, height, contourWidth, 5);
+    recolorContourFromDepth(output, width, height, contourWidth, Math.max(1, Math.min(32, Math.round(Number(options.depth) || 5))));
     recolorBrightResiduals(output, width, height);
   }
   if (options.autoPaleCleanup && !options.noLightArtwork && !removeSmallPalePockets(output, width, height)) {
@@ -314,7 +322,11 @@ export function refineEdgeRgba(input, info, options = {}) {
   const mode = options.mode === "trim" || options.mode === "recolor" ? options.mode : "none";
   if (mode === "none") return output;
   const widthPx = Math.max(1, Math.min(3, Math.round(Number(options.width) || 1)));
-  const depth = Math.max(1, Math.min(5, Math.round(Number(options.depth) || 2)));
+  const depth = Math.max(1, Math.min(32, Math.round(Number(options.depth) || 5)));
+  if (mode === "recolor") {
+    recolorContourFromDepth(output, width, height, widthPx, depth, { whiteOnly: options.whiteOnly !== false, threshold, neutralTolerance });
+    return output;
+  }
   const source = Buffer.from(output);
   const distance = new Int16Array(count);
   distance.fill(-1);
@@ -337,76 +349,8 @@ export function refineEdgeRgba(input, info, options = {}) {
     }
   }
 
-  const minInterior = Math.max(widthPx + 1, depth + 1);
-  const radius = minInterior + widthPx + 2;
   for (let index = 0; index < count; index += 1) {
-    if (distance[index] < 1 || distance[index] > widthPx || source[index * 4 + 3] < 8) continue;
-    const offset = index * 4;
-    if (mode === "trim") { output[offset + 3] = 0; continue; }
-    if (options.whiteOnly !== false && !isWhite(index)) continue;
-    const x = index % width; const y = Math.floor(index / width);
-    let nearest = -1; let nearestDistance = Infinity;
-    for (let dy = -radius; dy <= radius; dy += 1) {
-      const sy = y + dy;
-      if (sy < 0 || sy >= height) continue;
-      for (let dx = -radius; dx <= radius; dx += 1) {
-        const sx = x + dx;
-        if (sx < 0 || sx >= width) continue;
-        const candidate = sy * width + sx;
-        if (distance[candidate] < minInterior || source[candidate * 4 + 3] < 200) continue;
-        const candidateOffset = candidate * 4;
-        if (options.whiteOnly !== false) {
-          const minimum = Math.min(source[candidateOffset], source[candidateOffset + 1], source[candidateOffset + 2]);
-          const maximum = Math.max(source[candidateOffset], source[candidateOffset + 1], source[candidateOffset + 2]);
-          if (minimum >= threshold && maximum - minimum <= neutralTolerance) continue;
-        }
-        const score = dx * dx + dy * dy;
-        if (score >= nearestDistance) continue;
-        // Do not borrow colours across a transparent gap from another object.
-        let connected = true;
-        const steps = Math.max(Math.abs(dx), Math.abs(dy));
-        for (let step = 1; step < steps; step += 1) {
-          const lineX = Math.round(x + dx * step / steps);
-          const lineY = Math.round(y + dy * step / steps);
-          if (source[(lineY * width + lineX) * 4 + 3] < 8) { connected = false; break; }
-        }
-        if (connected) { nearest = candidateOffset; nearestDistance = score; }
-      }
-    }
-    // Fine fur, grass and conifer needles can be only one or two pixels wide,
-    // so they have no pixel at minInterior depth. In that case borrow the
-    // nearest non-neutral colour from the same connected opaque stroke rather
-    // than leaving a grey/white export fringe in place.
-    if (nearest < 0) {
-      for (let dy = -radius; dy <= radius; dy += 1) {
-        const sy = y + dy;
-        if (sy < 0 || sy >= height) continue;
-        for (let dx = -radius; dx <= radius; dx += 1) {
-          const sx = x + dx;
-          if (sx < 0 || sx >= width || (!dx && !dy)) continue;
-          const candidate = sy * width + sx;
-          const candidateOffset = candidate * 4;
-          if (source[candidateOffset + 3] < 200) continue;
-          const minimum = Math.min(source[candidateOffset], source[candidateOffset + 1], source[candidateOffset + 2]);
-          const maximum = Math.max(source[candidateOffset], source[candidateOffset + 1], source[candidateOffset + 2]);
-          if (minimum >= threshold && maximum - minimum <= neutralTolerance) continue;
-          const score = dx * dx + dy * dy;
-          if (score >= nearestDistance) continue;
-          let connected = true;
-          const steps = Math.max(Math.abs(dx), Math.abs(dy));
-          for (let step = 1; step < steps; step += 1) {
-            const lineX = Math.round(x + dx * step / steps);
-            const lineY = Math.round(y + dy * step / steps);
-            if (source[(lineY * width + lineX) * 4 + 3] < 8) { connected = false; break; }
-          }
-          if (connected) { nearest = candidateOffset; nearestDistance = score; }
-        }
-      }
-    }
-    if (nearest < 0) continue;
-    output[offset] = source[nearest];
-    output[offset + 1] = source[nearest + 1];
-    output[offset + 2] = source[nearest + 2];
+    if (distance[index] >= 1 && distance[index] <= widthPx) output[index * 4 + 3] = 0;
   }
   return output;
 }

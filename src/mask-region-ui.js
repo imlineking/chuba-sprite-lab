@@ -15,6 +15,7 @@ window.initializeMaskRegion = async function initializeMaskRegion(image) {
   maskRegion.selection = null; maskRegion.start = null; maskRegion.picking = false;
   maskRegion.history = [structuredClone(state.maskEdits)]; maskRegion.index = 0;
   maskRegion.checkerCache = new WeakMap();
+  maskRegion.removalOverlay = null;
   const canvas = document.createElement("canvas"); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
   const context = canvas.getContext("2d", { willReadFrequently: true }); context.drawImage(image, 0, 0);
   maskRegion.natural = context.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -24,6 +25,7 @@ window.undoMaskOperation = function undoMaskOperation(redo = false) {
   const next = maskRegion.index + (redo ? 1 : -1);
   if (next < 0 || next >= maskRegion.history.length) return;
   maskRegion.index = next; state.maskEdits = structuredClone(maskRegion.history[next]);
+  if (typeof maskNav !== "undefined") { maskNav.colorEdit = null; maskNav.smartSeed = null; }
   maskRegion.selection = null; redrawMaskCanvas();
 };
 window.drawRegionMask = function drawRegionMask(context, canvas) {
@@ -33,6 +35,7 @@ window.drawRegionMask = function drawRegionMask(context, canvas) {
     if (!maskEditApplies(edit)) continue;
     if (!edit.type && ["erase", "keep"].includes(edit.mode)) maskRegion.tools.applyMaskEdits(pixels, state.maskEditorPixels, info, [edit], activeMaskFrameIndex());
     if (edit.type === "region-color") maskRegion.tools.removeRegionColor(pixels, state.maskEditorPixels, info, edit);
+    if (edit.type === "tracked-region") maskRegion.tools.applyMaskEdits(pixels, state.maskEditorPixels, info, [edit], activeMaskFrameIndex());
     if (edit.type === "checker" && maskRegion.natural) {
       let result = maskRegion.checkerCache.get(edit);
       if (!result) {
@@ -53,8 +56,15 @@ window.drawRegionMask = function drawRegionMask(context, canvas) {
   }
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.putImageData(new ImageData(pixels, canvas.width, canvas.height), 0, 0);
+  const overlay = context.createImageData(canvas.width, canvas.height);
+  for (let i = 0; i < canvas.width * canvas.height; i++) {
+    if (state.maskEditorPixels[i * 4 + 3] > pixels[i * 4 + 3]) overlay.data.set([255, 92, 98, 180], i * 4);
+  }
+  const layer = document.createElement("canvas"); layer.width = canvas.width; layer.height = canvas.height;
+  layer.getContext("2d").putImageData(overlay, 0, 0); maskRegion.removalOverlay = layer;
 };
 window.drawRegionSelection = function drawRegionSelection(context, canvas) {
+  if (maskRegion.removalOverlay) context.drawImage(maskRegion.removalOverlay, 0, 0);
   const selection = maskRegion.selection;
   $("#removeSelectedColor").disabled = !selection;
   $("#undoMaskStroke").disabled = maskRegion.index <= 0;
