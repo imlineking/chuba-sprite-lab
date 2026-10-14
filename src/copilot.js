@@ -16,7 +16,7 @@ document.querySelectorAll('#copilotRestore img, #copilotPet img, #copilotPanel i
 });
 $("#copilotRestore").title = "Открыть помощника на рабочем столе";
 
-const copilotState = { hidden: false, petPosition: null, panelPosition: null, scenarios: [], bubbleDismissed: true, bubbleSignature: "", bubbleTimer: null, suggestions: [], dismissed: new Set(), timer: null, planKey: null, aiPlan: null, error: null, errorOrigin: null, applying: false, lastAdvice: null, planner: "rules", semanticKey: null, semanticPlan: null, comparing: false, refreshing: false, plannerStatus: null };
+const copilotState = { hidden: false, petPosition: null, panelPosition: null, scenarios: [], bubbleDismissed: true, bubbleSignature: "", bubbleTimer: null, suggestions: [], dismissed: new Set(), timer: null, planKey: null, aiPlan: null, error: null, errorOrigin: null, applying: false, lastAdvice: null, planner: "rules", semanticKey: null, semanticPlan: null, comparing: false, refreshing: false, plannerStatus: null, conveyor: null, guide: null };
 
 const copilotPreferenceKey = "spriteLab.copilot";
 
@@ -131,10 +131,36 @@ function renderCopilot() {
   const tasks = [...document.querySelectorAll('.copilot-tasks article')].map(card => ({ id: card.dataset.task, title: card.querySelector('strong').textContent }));
   const undoAdvice = copilotState.lastAdvice && copilotState.lastAdvice.index === state.historyIndex && copilotState.lastAdvice.source === state.source ? copilotState.lastAdvice.title : null;
   const workLabel = copilotState.comparing ? 'Сравниваю планы' : copilotState.refreshing ? 'Подбираю сценарии' : copilotState.applying ? 'Применяю совет' : 'Выполняю задачу';
-  void window.spriteLab.updateCompanion({ busy: Boolean(state.busy || copilotState.applying || copilotState.comparing || copilotState.refreshing), workLabel, planner: copilotState.planner, plannerStatus: copilotState.plannerStatus, plannerInfo: copilotState.semanticPlan ? `${copilotState.semanticPlan.fallback ? 'Резерв: лёгкий' : copilotState.semanticPlan.model || 'Лёгкий'} · ${Math.round(copilotState.semanticPlan.elapsedMs)} мс` : 'Локальный анализ', error: copilotState.error, undoAdvice, sourceKey: state.source?.sheetPath || (state.source?.paths || []).join("|"), theme: document.documentElement.dataset.theme || 'dark', scenarios: copilotState.scenarios, suggestions: visibleCopilotSuggestions(), tasks }).catch(error => { console.error('Помощник: связь с окном', error); });
+  void window.spriteLab.updateCompanion({ busy: Boolean(state.busy || copilotState.applying || copilotState.comparing || copilotState.refreshing), workLabel, planner: copilotState.planner, plannerStatus: copilotState.plannerStatus, plannerInfo: copilotState.semanticPlan ? `${copilotState.semanticPlan.fallback ? 'Резерв: лёгкий' : copilotState.semanticPlan.model || 'Лёгкий'} · ${Math.round(copilotState.semanticPlan.elapsedMs)} мс` : 'Локальный анализ', error: copilotState.error, undoAdvice, sourceKey: copilotGuideKey() || state.source?.sheetPath || (state.source?.paths || []).join("|"), guide: copilotState.guide, theme: document.documentElement.dataset.theme || 'dark', scenarios: copilotState.scenarios, suggestions: visibleCopilotSuggestions(), tasks }).catch(error => { console.error('Помощник: связь с окном', error); });
 }
 
+// Conveyor, quick mode and queue/watch: the copilot explains what it sees, what to press,
+// what came out (critic remarks with clickable fixes) and what is better finished by hand.
+let copilotGuideModule = null;
+function copilotGuideKey() {
+  const view = copilotState.conveyor;
+  if (!copilotState.guide) return null;
+  if (!view || view.mode === 'advanced') { const v = copilotState.videoFrame || {}; return ['vf', state.source?.paths?.[0] || '', v.frame?.index ?? '', v.frame?.savedAt || '', v.last?.path || v.last?.error || ''].join('#'); }
+  return ['cv', view.mode, view.detection?.paths?.join('|') || '', view.result ? `${view.result.ok}:${view.result.outputDir || view.result.error}` : '', view.quick?.outputDir || view.quick?.error || ''].join('#');
+}
+async function updateCopilotGuide(view = copilotState.conveyor) {
+  copilotState.conveyor = view;
+  try {
+    copilotGuideModule ||= await import('./copilot-conveyor.mjs');
+    if (view && view.mode && view.mode !== 'advanced') copilotState.guide = copilotGuideModule.planConveyorGuide(view);
+    else {
+      const video = copilotState.videoFrame || {};
+      const name = (state.source?.paths?.[0] || video.video || '').split(/[\\/]/).pop();
+      copilotState.guide = copilotGuideModule.planStudioGuide({ source: state.source, name, frame: video.frame, last: video.last, editors: video.editors || [] });
+    }
+  } catch (error) { copilotState.guide = null; copilotReportError(error, 'analysis'); }
+  renderCopilot();
+}
+document.addEventListener('spriteLab:video-frame', event => { copilotState.videoFrame = event.detail; void updateCopilotGuide(); });
+document.addEventListener('spriteLab:conveyor', event => { void updateCopilotGuide(event.detail); });
+
 async function refreshCopilot() {
+  if (copilotState.guideSource !== state.source) { copilotState.guideSource = state.source; void updateCopilotGuide(); }
   if (copilotState.applying || copilotState.comparing || copilotState.refreshing) return;
   copilotState.refreshing = true;
   const sourceAtStart = state.source;
@@ -281,7 +307,7 @@ function setCopilotPanel(open) {
   if (open) void window.spriteLab.copilotPlannerStatus().then(status => { copilotState.plannerStatus = status; renderCopilot(); }).catch(error => copilotReportError(error, 'analysis'));
 }
 window.spriteLab.onCompanionCommand(command => {
-  if (state.busy && !['refresh', 'models'].includes(command.kind)) return;
+  if (state.busy && !['refresh', 'models', 'conveyor'].includes(command.kind)) return;
   if (command.kind === 'suggestion') applyCopilotSuggestion(copilotState.suggestions.find(item => item.id === command.id));
   else if (command.kind === 'task') window.taskChoose?.(command.id, command.approach === 'auto' ? 'auto' : 'manual');
   else if (command.kind === 'quick') document.querySelector('[data-quick-task="' + command.id.replace(/[^a-z]/g, '') + '"]')?.click();
@@ -289,6 +315,7 @@ window.spriteLab.onCompanionCommand(command => {
   else if (command.kind === 'refresh') { copilotState.errorOrigin = null; copilotState.planKey = null; copilotState.semanticKey = null; void refreshCopilot(); void window.spriteLab.copilotPlannerStatus().then(status => { copilotState.plannerStatus = status; renderCopilot(); }).catch(error => copilotReportError(error, 'analysis')); }
   else if (command.kind === 'compare-planners') void compareCopilotPlanners();
   else if (command.kind === 'review') window.openReviewPanel?.();
+  else if (command.kind === 'conveyor') void (/^(vf|task|cv):/.test(command.id) ? window.videoFrameUI?.act(command.id) : window.conveyorUI?.act(command.id));
   else if (command.kind === 'planner' && ['rules', 'qwen'].includes(command.id)) { copilotState.planner = command.id; copilotState.semanticKey = null; saveCopilotPreferences(); void refreshCopilot(); }
   else if (command.kind === 'undo-advice') {
     const advice = copilotState.lastAdvice;

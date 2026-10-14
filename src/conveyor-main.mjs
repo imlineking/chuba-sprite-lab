@@ -5,6 +5,7 @@ import path from "node:path";
 import { detectInput } from "./input-types.mjs";
 import { capabilitiesFor } from "./capabilities.mjs";
 import { ConveyorQueue, PresetStore, createFolderWatcher, quickOutputDir, runConveyor, writeJsonAtomic } from "./conveyor.mjs";
+import { applyFixToPreset } from "./copilot-conveyor.mjs";
 import { videoFormats } from "./input-types.mjs";
 
 export function createConveyorStages({ appRoot, sharp, describePaths, describeSpriteSheet, executeProcessing, buildAtlas, reviewAtlas, runtime, modelsDirectory, onProgress = () => {} }) {
@@ -103,11 +104,13 @@ export function registerConveyorIpc({ ipcMain, userData, stages, getWindow, isBu
   ipcMain.handle("conveyor:presets", () => presets.list());
   ipcMain.handle("conveyor:save-preset", (_e, preset) => presets.save(preset));
   ipcMain.handle("conveyor:remove-preset", (_e, id) => presets.remove(String(id)));
-  ipcMain.handle("conveyor:run", async (_e, { paths, presetId, outputDir = null, quick = false, quickOptions = {} } = {}) => {
+  ipcMain.handle("conveyor:run", async (_e, { paths, presetId, outputDir = null, quick = false, quickOptions = {}, fix = null } = {}) => {
     if (isBusy() || running) throw new Error("Обработка уже выполняется.");
     if (!Array.isArray(paths) || !paths.length) throw new Error("Перетащите файл или папку.");
     let preset = await presets.get(quick ? "quick" : presetId);
     // Quick mode has two switches only: remove background, build an atlas.
+    // A critic remark accepted from the copilot: only padding / extrude / page size / background.
+    if (fix && !quick) preset = applyFixToPreset(preset, fix);
     if (quick) preset = { ...preset, background: quickOptions.background === false ? "none" : "auto", edgeCleanup: quickOptions.background !== false, pack: quickOptions.atlas !== false };
     const controller = new AbortController(); running = controller;
     try { return await runConveyor({ paths, preset, outputDir: outputDir ? path.resolve(outputDir) : null, quick: quick || !outputDir, deps: stages, signal: controller.signal, onStage: (s) => send("conveyor:progress", s) }); }

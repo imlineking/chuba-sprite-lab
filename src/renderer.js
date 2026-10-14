@@ -1432,7 +1432,7 @@ function redrawMaskCanvas() {
       const width = Math.max(12, (Number(edit.selectionWidth) || 0.04) * canvas.width);
       const height = Math.max(12, (Number(edit.selectionHeight) || 0.04) * canvas.height);
       context.save();
-      context.fillStyle = "rgba(38, 125, 255, .12)";
+      context.fillStyle = "rgba(255, 118, 23, .12)";
       context.strokeStyle = "rgba(255, 143, 65, .95)";
       context.lineWidth = Math.max(1.5, Math.max(canvas.width, canvas.height) / 620);
       context.setLineDash([8, 5]);
@@ -1441,7 +1441,7 @@ function redrawMaskCanvas() {
       context.setLineDash([]);
       const pinX = (Number(edit.centroidX) || Number(edit.x) || 0) * canvas.width;
       const pinY = (Number(edit.centroidY) || Number(edit.y) || 0) * canvas.height;
-      context.beginPath(); context.arc(pinX, pinY, 6, 0, Math.PI * 2); context.fillStyle = "#267dff"; context.fill();
+      context.beginPath(); context.arc(pinX, pinY, 6, 0, Math.PI * 2); context.fillStyle = "#ff7617"; context.fill();
       context.restore();
       continue;
     }
@@ -1731,7 +1731,7 @@ function drawAttachmentEditor() {
   }
   state.attachmentPoints.forEach((point, index) => {
     const x = point.x * canvas.width; const y = point.y * canvas.height;
-    context.beginPath(); context.arc(x, y, 10, 0, Math.PI * 2); context.fillStyle = index ? "#8fb8f0" : "#267dff"; context.fill();
+    context.beginPath(); context.arc(x, y, 10, 0, Math.PI * 2); context.fillStyle = index ? "#c8df6f" : "#ff7617"; context.fill();
     context.strokeStyle = "#0b0e12"; context.lineWidth = 3; context.stroke();
     context.fillStyle = "#11151a"; context.font = '700 12px "Bahnschrift"'; context.textAlign = "center"; context.textBaseline = "middle"; context.fillText(index ? "B" : "A", x, y + 0.5);
   });

@@ -84,6 +84,17 @@ contextBridge.exposeInMainWorld("spriteLab", {
     ipcRenderer.on("companion:command", listener);
     return () => ipcRenderer.removeListener("companion:command", listener);
   },
+  videoFrame: {
+    info: (video) => ipcRenderer.invoke("video-frame:info", { video }),
+    extract: (request) => ipcRenderer.invoke("video-frame:extract", request),
+    editors: () => ipcRenderer.invoke("video-frame:editors"),
+    chooseEditor: (editor) => ipcRenderer.invoke("video-frame:choose-editor", { editor }),
+    openExternal: (request) => ipcRenderer.invoke("video-frame:open-external", request),
+    unwatch: (file) => ipcRenderer.invoke("video-frame:unwatch", { path: file }),
+    bake: (request) => ipcRenderer.invoke("video-frame:bake", request),
+    saveCutout: (request) => ipcRenderer.invoke("video-frame:save-cutout", request),
+    onSaved: (callback) => { const l = (_e, p) => callback(p); ipcRenderer.on("video-frame:saved", l); return () => ipcRenderer.removeListener("video-frame:saved", l); },
+  },
   conveyor: {
     detectDropped: (files) => ipcRenderer.invoke("conveyor:detect", { paths: Array.from(files || [], (file) => webUtils.getPathForFile(file)).filter(Boolean) }),
     detect: (paths) => ipcRenderer.invoke("conveyor:detect", { paths }),

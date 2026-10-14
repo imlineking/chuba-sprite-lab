@@ -9,14 +9,32 @@
   const stageLabels = [["cut", "Нарезка", "Кадры из видео, листа или анимации"], ["clean", "Очистка фона", "Фон, края, ИИ-маска по пресету"], ["pack", "Упаковка", "Атлас MaxRects с отступами"], ["check", "Проверка", "Алгоритмы и встроенная модель"], ["export", "Экспорт", "Файлы для движка и отчёт"]];
   const statusText = { pending: "Ожидает", running: "Выполняется", done: "Готово", skipped: "Пропуск", failed: "Ошибка" };
   const toolTab = { cut: "source", clean: "process", style: "process", edit: "process", pack: "export", export: "export", check: "export", main: "source" };
-  const ui = { paths: [], detection: null, caps: null, presets: [], output: "near", outputDir: null, busy: false };
+  const ui = { paths: [], detection: null, caps: null, presets: [], output: "near", outputDir: null, busy: false, result: null, queue: null, watch: null, quick: null, lastView: "conveyor" };
 
+  // Views: "advanced" is the original studio (tabs 01–03); "conveyor" / "quick" / "queue"
+  // are tabs A–C of the conveyor shell, which reuses the studio's own deck layout.
   function setView(view) {
+    if (!["advanced", "conveyor", "quick", "queue"].includes(view)) return;
     document.body.dataset.view = view;
-    document.querySelectorAll("#viewSwitch button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === view)));
-    document.querySelectorAll(".cv-view").forEach((v) => v.classList.toggle("hidden", v.dataset.cv !== view));
+    const open = view !== "advanced";
+    q("#openConveyor")?.setAttribute("aria-pressed", String(open));
+    if (q("#openConveyor")) q("#openConveyor").textContent = open ? "Студия" : "Конвейер";
+    document.querySelectorAll("#conveyorShell [data-cv-tab]").forEach((b) => { const on = b.dataset.cvTab === view; b.classList.toggle("active", on); b.setAttribute("aria-selected", String(on)); });
+    document.querySelectorAll("#conveyorShell .cv-view").forEach((v) => v.classList.toggle("active", v.dataset.cv === view));
+    document.querySelectorAll("#conveyorShell [data-cv-deck]").forEach((d) => d.classList.toggle("hidden", !d.dataset.cvDeck.split(" ").includes(view)));
+    if (q("#cvDeckTitle")) q("#cvDeckTitle").textContent = view === "queue" ? "ОЧЕРЕДЬ" : "ЭТАПЫ";
+    if (open) ui.lastView = view;
+    emit();
   }
-  document.querySelectorAll("#viewSwitch button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
+  document.querySelectorAll("#conveyorShell [data-cv-tab]").forEach((b) => b.addEventListener("click", () => setView(b.dataset.cvTab)));
+  q("#openConveyor")?.addEventListener("click", () => setView(document.body.dataset.view === "advanced" ? ui.lastView || "conveyor" : "advanced"));
+  q("#cvBackToStudio")?.addEventListener("click", () => setView("advanced"));
+
+  // The copilot (copilot.js) listens to this snapshot and turns it into hints and chips.
+  function snapshot() {
+    return { mode: document.body.dataset.view, detection: ui.detection, capabilities: ui.caps, preset: ui.presets.find((p) => p.id === q("#cvPreset")?.value) || ui.presets[0] || null, presets: ui.presets, result: ui.result, queue: ui.queue, watch: ui.watch, busy: ui.busy, quick: ui.quick };
+  }
+  function emit() { document.dispatchEvent(new CustomEvent("spriteLab:conveyor", { detail: snapshot() })); }
 
   function renderStages(stages) {
     const list = q("#cvStages"); list.replaceChildren();
@@ -65,11 +83,12 @@
       if (source && typeof setSource === "function") setSource(source);
       setView("advanced");
       if (typeof setTab === "function") setTab(toolTab[tool.group] || "source");
+      if (tool.id === "slice-sheet") q("#sheetControls")?.scrollIntoView?.({ block: "nearest" });
       if (tool.id === "review" && typeof window.openReviewPanel === "function") window.openReviewPanel();
     }).catch((error) => showMessage(error.message));
   }
 
-  function showMessage(text) { const r = q("#cvResult"); r.classList.remove("hidden"); r.replaceChildren(el("strong", null, "Не получилось"), el("span", null, text)); }
+  function showMessage(text) { ui.result = { ok: false, error: text }; emit(); const r = q("#cvResult"); r.classList.remove("hidden"); r.replaceChildren(el("strong", null, "Не получилось"), el("span", null, text)); }
 
   function renderDetection(result) {
     const { detection, capabilities: caps } = result; ui.detection = detection; ui.caps = caps;
@@ -93,9 +112,9 @@
     q("#cvToolsCard").classList.toggle("hidden", !caps.supported || !groups.children.length);
     const runnable = caps.supported && caps.stages.some((s) => s.applies);
     q("#cvRunAll").disabled = !runnable || ui.busy; q("#cvEnqueue").disabled = !runnable || ui.busy;
-    q("#cvResult").classList.add("hidden");
+    q("#cvResult").classList.add("hidden"); ui.result = null;
     renderStages(stagesFromCaps(caps, currentPreset()));
-    updateOutputHint();
+    updateOutputHint(); emit();
   }
 
   function updateOutputHint() {
@@ -117,33 +136,36 @@
   }
 
   function renderResult(result) {
+    ui.result = result; emit();
     const r = q("#cvResult"); r.classList.remove("hidden"); r.replaceChildren();
     if (!result.ok) { r.append(el("strong", null, "Остановлено"), el("span", null, result.error || "Ошибка")); return; }
     r.append(el("strong", null, result.review ? `Готово. Проверка: ${result.review.verdictLabel || result.review.verdict}` : "Готово"));
     r.append(el("span", "cv-path", result.outputDir || ""));
     if (result.review?.issues?.length) r.append(el("span", null, `Замечаний: ${result.review.issues.length}. Подробности в review.json.`));
-    const reveal = el("button", null, "Показать в папке"); reveal.type = "button"; reveal.addEventListener("click", () => window.spriteLab.revealOutput(result.outputDir)); r.append(reveal);
+    const reveal = el("button", "button secondary", "Показать в папке"); reveal.type = "button"; reveal.addEventListener("click", () => window.spriteLab.revealOutput(result.outputDir)); r.append(reveal);
   }
 
   function setBusy(busy) {
     ui.busy = busy; q("#cvCancel").classList.toggle("hidden", !busy);
     q("#cvRunAll").disabled = busy || !ui.caps?.supported; q("#cvEnqueue").disabled = busy || !ui.caps?.supported;
     q("#cvRunAll").textContent = busy ? "Выполняется" : "Сделать всё";
+    emit();
   }
 
-  q("#cvRunAll").addEventListener("click", async () => {
-    if (!ui.paths.length) return;
+  async function runAll(fix = null) {
+    if (!ui.paths.length || ui.busy) return;
     if (ui.output === "folder" && !ui.outputDir) { ui.outputDir = await api.pickOutput(); updateOutputHint(); if (!ui.outputDir) return; }
     setBusy(true);
-    try { renderResult(await api.run({ paths: ui.paths, presetId: currentPreset()?.id, outputDir: ui.output === "folder" ? ui.outputDir : null })); }
+    try { renderResult(await api.run({ paths: ui.paths, presetId: currentPreset()?.id, outputDir: ui.output === "folder" ? ui.outputDir : null, ...(fix ? { fix } : {}) })); }
     catch (error) { showMessage(error.message); } finally { setBusy(false); }
-  });
+  }
+  q("#cvRunAll").addEventListener("click", () => runAll());
   q("#cvEnqueue").addEventListener("click", async () => {
     if (!ui.paths.length) return;
     try { renderQueue(await api.queueAdd({ paths: ui.paths, presetId: currentPreset()?.id, outputDir: ui.output === "folder" ? ui.outputDir : null })); } catch (error) { showMessage(error.message); }
   });
   q("#cvCancel").addEventListener("click", () => api.cancel());
-  q("#cvPreset").addEventListener("change", renderPresetInfo);
+  q("#cvPreset").addEventListener("change", () => { renderPresetInfo(); emit(); });
   document.querySelectorAll("#conveyorView .cv-segmented button").forEach((b) => b.addEventListener("click", async () => {
     ui.output = b.dataset.output;
     document.querySelectorAll("#conveyorView .cv-segmented button").forEach((x) => { x.classList.toggle("selected", x === b); x.setAttribute("aria-checked", String(x === b)); });
@@ -171,10 +193,11 @@
       box.replaceChildren(el("strong", null, `${capabilities.label}: обработка`));
       const result = await api.run({ paths: detection.paths, quick: true, presetId: "quick", quickOptions: { background: q("#cvQuickBackground").checked, atlas: q("#cvQuickAtlas").checked } });
       box.replaceChildren();
-      if (!result.ok) { box.append(el("strong", null, "Остановлено"), el("span", null, result.error)); return; }
+      if (!result.ok) { ui.quick = { error: result.error }; emit(); box.append(el("strong", null, "Остановлено"), el("span", null, result.error)); return; }
+      ui.quick = { outputDir: result.outputDir }; emit();
       box.append(el("strong", null, "Готово"), el("span", "cv-path", result.outputDir));
-      const reveal = el("button", null, "Показать в папке"); reveal.type = "button"; reveal.addEventListener("click", () => window.spriteLab.revealOutput(result.outputDir)); box.append(reveal);
-    } catch (error) { box.replaceChildren(el("strong", null, "Не получилось"), el("span", null, error.message)); }
+      const reveal = el("button", "button secondary", "Показать в папке"); reveal.type = "button"; reveal.addEventListener("click", () => window.spriteLab.revealOutput(result.outputDir)); box.append(reveal);
+    } catch (error) { ui.quick = { error: error.message }; emit(); box.replaceChildren(el("strong", null, "Не получилось"), el("span", null, error.message)); }
   }
   q("#cvQuickPick").addEventListener("click", async (e) => { e.stopPropagation(); quickRun(await api.pickInput(false)); });
   q("#cvQuickDrop").addEventListener("click", async () => quickRun(await api.pickInput(false)));
@@ -198,6 +221,7 @@
   const queueStatus = { pending: "Ожидает", running: "Выполняется", done: "Готово", failed: "Ошибка", cancelled: "Отменено" };
   function renderQueue(snap) {
     if (!snap) return;
+    ui.queue = snap; emit();
     void renderSummary();
     const list = q("#cvQueueList"); list.replaceChildren();
     const active = snap.items.filter((i) => i.status === "pending" || i.status === "running").length;
@@ -218,6 +242,7 @@
     q("#cvQueueSummary").textContent = s.total ? `Всего ${s.total}: готово ${s.done}, ошибок ${s.failed}, отменено ${s.cancelled}, ждут ${s.pending}` : "";
   }
   function renderWatch(config) {
+    ui.watch = config || null; emit();
     q("#cvWatchState").textContent = config ? `${config.dir}  >  ${config.outputDir}` : "Не настроена";
     q("#cvWatchStop").classList.toggle("hidden", !config); q("#cvWatchPick").textContent = config ? "Сменить папку" : "Выбрать папку";
     if (config?.presetId) q("#cvWatchPreset").value = config.presetId;
@@ -231,5 +256,27 @@
 
   renderStages(null);
   loadPresets().then(() => api.queue()).then(renderQueue).then(() => api.watchGet()).then(renderWatch).catch(() => {});
-  window.conveyorUI = { setView, detect, renderDetection, renderQueue, renderStages, renderResult };
+  // Copilot chips (planConveyorGuide ids) come back here.
+  async function act(id) {
+    const [kind, arg] = String(id).split(/:(.*)/s);
+    if (kind === "view") return setView(arg);
+    if (kind === "run") return runAll();
+    if (kind === "cancel") return api.cancel();
+    if (kind === "enqueue") return q("#cvEnqueue").click();
+    if (kind === "pick-file") { setView("conveyor"); return detect(await api.pickInput(false)); }
+    if (kind === "pick-folder") { setView("conveyor"); return detect(await api.pickInput(true)); }
+    if (kind === "quick-pick") { setView("quick"); return quickRun(await api.pickInput(false)); }
+    if (kind === "preset" && ui.presets.some((p) => p.id === arg)) { q("#cvPreset").value = arg; renderPresetInfo(); return emit(); }
+    if (kind === "tool") { const tool = ui.caps?.tools.find((t) => t.id === arg); if (tool) openInAdvanced(tool); return; }
+    if (kind === "fix") { const issue = ui.result?.review?.issues?.[Number(arg)]; if (issue?.fix) return runAll(issue.fix); return; }
+    if (kind === "reveal") { const dir = ui.result?.outputDir || ui.quick?.outputDir; if (dir) window.spriteLab.revealOutput(dir); return; }
+    if (kind === "review") return window.openReviewPanel?.();
+    if (kind === "queue-pause") return renderQueue(await api.queuePause());
+    if (kind === "queue-resume") return renderQueue(await api.queueResume());
+    if (kind === "queue-clear") return renderQueue(await api.queueClear());
+    if (kind === "watch-pick") { setView("queue"); return q("#cvWatchPick").click(); }
+    if (kind === "watch-stop") return renderWatch(await api.watchStop());
+  }
+  window.conveyorUI = { setView, detect, renderDetection, renderQueue, renderStages, renderResult, act, snapshot };
+  emit();
 })();

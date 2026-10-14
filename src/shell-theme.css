@@ -11,7 +11,7 @@ html[data-theme] {
   --muted-2: #8b97ae;
   --orange: #a9ddea;
   --orange-soft: #c9eaf3;
-  --acid: #c0cada;
+  --acid: #b3dace;
   --danger: #ff8994;
   --shell-action-ink: #142433;
   --shell-raised: #263249;
@@ -41,7 +41,7 @@ html[data-theme="light"] {
   --orange: #242930;
   --orange-soft: #3c434e;
   --acid: #46515f;
-  --danger: #2961b6;
+  --danger: #b62943;
   --shell-action-ink: #ffffff;
   --shell-raised: #e9edf2;
   --shell-field: #ffffff;

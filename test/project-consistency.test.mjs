@@ -50,7 +50,7 @@ test("every bridge method is used somewhere, so no dead surface is left behind",
 });
 
 test("an IPC channel registered in the main process is reachable from the preload", () => {
-  const mainSource = read("src/main.mjs") + read("src/conveyor-main.mjs"); // conveyor channels live in their own module
+  const mainSource = read("src/main.mjs") + read("src/conveyor-main.mjs") + read("src/video-frames-main.mjs"); // conveyor and video-frame channels live in their own modules
   const channels = new Set([...mainSource.matchAll(/ipcMain\.handle\("([^"]+)"/g)].map((match) => match[1]));
   const invoked = new Set([...preloadSource.matchAll(/ipcRenderer\.invoke\("([^"]+)"/g)].map((match) => match[1]));
   const orphaned = [...channels].filter((channel) => !invoked.has(channel));
@@ -61,7 +61,9 @@ test("an IPC channel registered in the main process is reachable from the preloa
 
 test("the shipped stylesheets are all linked and all linked files exist", () => {
   const linked = [...htmlSource.matchAll(/<link rel="stylesheet" href="\.\/([^"]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(linked.sort(), ["conveyor.css", "copilot.css", "editor.css", "grok-theme.css", "review-panel.css", "shell-theme.css", "styles.css", "theme.css"]);
+  // grok-theme.css was removed: the original Призма / Фарфор themes are the only themes.
+  assert.ok(!read("src/index.html").includes("grok-theme"));
+  assert.deepEqual(linked.sort(), ["conveyor.css", "copilot.css", "editor.css", "review-panel.css", "shell-theme.css", "styles.css", "theme.css"]);
   const scripts = [...htmlSource.matchAll(/<script src="\.\/([^"]+)"/g)].map((match) => match[1]);
   for (const file of [...linked, ...scripts]) assert.ok(read(path.join("src", file)).length > 0, `${file} не читается`);
   // Theme applies before first paint. The remaining scripts share renderer globals.

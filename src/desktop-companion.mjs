@@ -130,7 +130,7 @@ export class DesktopCompanion {
       if (action === "resize" && event.sender === this.bubble.webContents && Number.isFinite(request.height)) { this.bubbleHeight = Math.max(110, Math.min(600, Math.ceil(request.height))); this.positionBubble(true); }
       if (action === "command") {
         const command = request.command || {};
-        if (["quick", "task", "suggestion", "refresh", "models", "undo-advice", "planner", "compare-planners"].includes(command.kind) && typeof command.id === "string" && command.id.length <= 100) this.command(command);
+        if (["quick", "task", "suggestion", "refresh", "models", "undo-advice", "planner", "compare-planners", "review", "conveyor"].includes(command.kind) && typeof command.id === "string" && command.id.length <= 100) this.command(command);
       }
       return true;
     });

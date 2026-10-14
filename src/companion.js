@@ -9,7 +9,7 @@
     setLocale(state.locale || "ru", {persist:false});
     document.documentElement.dataset.theme = state.theme || 'dark';
     document.querySelector('#badge').textContent = state.suggestions?.length ? String(state.suggestions.length) : '';
-    message.textContent = state.loading ? 'Загрузка' + '.'.repeat(dots) : state.busy ? (state.workLabel || 'Выполняю задачу') + '.'.repeat(dots) : state.greeting;
+    message.textContent = state.loading ? 'Загрузка' + '.'.repeat(dots) : state.busy ? (state.workLabel || 'Выполняю задачу') + '.'.repeat(dots) : state.guide?.say || state.greeting;
     choices.replaceChildren();
     if (state.loading) return;
     const button = (title, detail, callback) => {
@@ -19,7 +19,11 @@
     };
     if (state.error) { const error = document.createElement('p'); error.className = 'assistant-error'; error.textContent = state.error; choices.append(error); button('Повторить анализ', 'Операция не выполнена', () => command('refresh', 'refresh')); }
     if (state.undoAdvice) button('Отменить совет', state.undoAdvice + ' · Ctrl+Z', () => command('undo-advice', 'undo'));
-    (state.scenarios || []).slice(0,3).forEach(item => {
+    if (state.guide) {
+      // Conveyor / quick / queue: what to press next, offered as chips in the same cloud.
+      if (state.guide.honest) { const note = document.createElement('p'); note.className = 'assistant-honest'; note.textContent = state.guide.honest; choices.append(note); }
+      (state.guide.chips || []).slice(0, 7).forEach(chip => button(chip.title, chip.detail, () => command('conveyor', chip.id)));
+    } else (state.scenarios || []).slice(0,3).forEach(item => {
       const row = document.createElement('div'); row.className = 'scenario';
       const title = document.createElement('strong'); title.textContent = item.title;
       const why = document.createElement('small'); why.textContent = item.why || item.reason; row.append(title, why);
@@ -30,7 +34,7 @@
       }
       row.append(actions); choices.append(row);
     });
-    (state.suggestions || []).slice(0,2).forEach(item => button(item.title,item.why,() => command('suggestion',item.id)));
+    if (!state.guide) (state.suggestions || []).slice(0,2).forEach(item => button(item.title,item.why,() => command('suggestion',item.id)));
     if (state.panelOpen) {
       const models = document.createElement('label'); models.className = 'planner-control'; models.textContent = 'Планировщик · эксперимент';
       const select = document.createElement('select'); select.setAttribute('aria-label', 'Планировщик копилота');
@@ -45,6 +49,9 @@
       models.append(select, info); choices.append(models);
       button('Сравнить два плана', 'Текущие файлы · без применения правок', () => command('compare-planners', 'compare'));
       [['clipping','Исправить обрезание'],['cutout','Вырезать объект'],['atlas','Собрать атлас']].forEach(([id,title])=>button(title,'Перейти к нужному сценарию',()=>command('quick',id)));
+      button('Конвейер · Сделать всё', 'Нарезка, фон, атлас, Приёмка и экспорт за один запуск', () => command('conveyor', 'view:conveyor'));
+      button('Быстрый режим', 'Один файл, результат рядом с ним', () => command('conveyor', 'view:quick'));
+      button('Очередь и наблюдение', 'Много файлов или папка, которая пополняется', () => command('conveyor', 'view:queue'));
       button('Приёмка атласа', 'Алгоритмы + встроенная Qwen · вердикт и правки', () => command('review', 'open'));
       for (const task of state.tasks || []) {
         const row=document.createElement('div'); row.className='group'; const title=document.createElement('span'); title.textContent=task.title; row.append(title);

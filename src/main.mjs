@@ -35,6 +35,8 @@ import { sharedRuntime, stopSharedRuntime } from "./critic/llm-runtime.mjs";
 app.on("before-quit", () => stopSharedRuntime());
 import { readProfile } from "./build-profile.mjs";
 import { createConveyorStages, registerConveyorIpc } from "./conveyor-main.mjs";
+import { registerVideoFrameIpc } from "./video-frames-main.mjs";
+import { keyFrame as keyVideoFrame } from "./processor.mjs";
 import { formatFeedbackDraft } from "./feedback.mjs";
 import * as editorSession from "./editor-session.mjs";
 import { installedFonts } from './windows-fonts.mjs';
@@ -1024,6 +1026,9 @@ ipcMain.handle("frame-edit:open", async (_event, request = {}) => {
   if (error) throw new Error(error);
   return { opened: true };
 });
+
+registerVideoFrameIpc({ ipcMain, dialog, shell, appRoot, userData: () => app.getPath("userData"), workRoot: externalEditRoot, resolveBinary, keyFrame: keyVideoFrame,
+  isMain: (event) => event.sender === mainWindow?.webContents, send: (channel, payload) => mainWindow?.webContents.send(channel, payload) });
 
 const onlineFrameEditors = {
   photopea: "https://www.photopea.com/",

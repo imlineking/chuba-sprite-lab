@@ -148,7 +148,7 @@ html[data-theme="light"] :is(.process-action-dock, .export-action-dock) {
 }
 html[data-theme="light"] .warning-box,
 html[data-theme="light"] .atlas-warning { background: #f3f3f3; border-color: #c0c0c0; color: #424242; }
-html[data-theme="light"] .error-card { background: #f2f7ff; color: #2c4770; box-shadow: 0 14px 35px rgba(51, 51, 51,.12); }
+html[data-theme="light"] .error-card { background: #fff4f2; color: #702c35; box-shadow: 0 14px 35px rgba(51, 51, 51,.12); }
 html[data-theme="light"] .statusbar { color: #535353; }
 
 html[data-theme="light"] .modal-backdrop { background: rgba(48, 48, 48, .48); }
