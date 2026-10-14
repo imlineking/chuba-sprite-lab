@@ -16,6 +16,9 @@ function resolveTestFfmpeg(appRoot) {
   return existsSync(bundled) ? bundled : process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
 }
 
+// vendor/ffmpeg.exe is not in git (npm run prepare:vendor): skip video tests when no ffmpeg can run.
+const noFfmpeg = spawnSync(resolveTestFfmpeg(path.resolve(".")), ["-version"], { windowsHide: true }).status === 0 ? false : "ffmpeg not available (npm run prepare:vendor)";
+
 async function makeFrame(filePath, left, top) {
   const orange = await sharp({
     create: { width: 22, height: 26, channels: 4, background: { r: 225, g: 86, b: 18, alpha: 1 } },
@@ -177,7 +180,7 @@ test("a failed rebuild keeps the previous export, including with cleanOutput", a
   assert.equal(await fs.readFile(first.manifestPath, "utf8"), manifestBefore, "the previous manifest must stay intact");
 });
 
-test("extracts and processes frames from a video", async () => {
+test("extracts and processes frames from a video", { skip: noFfmpeg }, async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-lab-video-test-"));
   const input = path.join(temp, "input");
   const output = path.join(temp, "output");
@@ -231,7 +234,7 @@ test("extracts and processes frames from a video", async () => {
   assert.ok(result.previewPath);
 });
 
-test("batch mode processes multiple videos with automatic unique names", async () => {
+test("batch mode processes multiple videos with automatic unique names", { skip: noFfmpeg }, async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-sprite-lab-batch-test-"));
   const input = path.join(temp, "input");
   const output = path.join(temp, "output");
