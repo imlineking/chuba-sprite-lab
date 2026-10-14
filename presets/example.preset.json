@@ -1,0 +1,26 @@
+{
+  "builds": [
+    {
+      "name": "hero",
+      "input": ["../sprites/hero"],
+      "output": "../atlas/hero",
+      "formats": ["texturepacker-hash", "phaser-hash", "godot-spriteframes", "unity-meta"],
+      "background": "none",
+      "pivot": { "x": 0.5, "y": 1 },
+      "tags": { "walk": ["loop"], "attack*": ["once"] }
+    },
+    {
+      "name": "tiles",
+      "input": ["../sprites/tiles.png"],
+      "output": "../atlas/tiles",
+      "slice": { "mode": "grid", "cellWidth": 16, "cellHeight": 16 },
+      "trim": false,
+      "extrude": 2,
+      "formats": ["texturepacker-array"]
+    }
+  ],
+  "maxSize": 2048,
+  "padding": 2,
+  "powerOfTwo": true,
+  "fps": 12
+}

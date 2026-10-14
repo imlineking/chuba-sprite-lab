@@ -176,3 +176,9 @@ test("a batch of videos cannot be mixed with other animations", () => {
 });
 
 test('Three.js GPU and nine-slice options retain their types in a build recipe',()=>{const options={exportFormat:'three',gpuFormat:'dds-bc3',packing:'grid',nineSlice:{left:4,right:4,top:4,bottom:4}};const parsed=readProfile(profile({options}),{baseDir});assert.equal(parsed.animations[0].options.gpuFormat,'dds-bc3');assert.deepEqual(parsed.animations[0].options.nineSlice,options.nineSlice);assert.throws(()=>readProfile(profile({options:{...options,exportFormat:'godot'}}),{baseDir}),/Three.js/);});
+
+test('contour gradient recipe retains controls and rejects invalid curves and unknown options',()=>{
+ const contourAlpha={enabled:true,width:40,curve:1.25,thinRadius:8,protectCore:true};
+ assert.deepEqual(readProfile(profile({options:{contourAlpha}}),{baseDir}).animations[0].options.contourAlpha,contourAlpha);
+ for(const patch of [{width:0},{width:999},{curve:0},{thinRadius:-1},{enabled:'yes'},{protectCore:1},{typo:true}])assert.throws(()=>readProfile(profile({options:{contourAlpha:{...contourAlpha,...patch}}}),{baseDir}),/contourAlpha/);
+});

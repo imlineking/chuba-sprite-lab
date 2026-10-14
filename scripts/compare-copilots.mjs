@@ -7,7 +7,7 @@ import { comparePlanners } from "../src/copilot-planner.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cases = JSON.parse(await fs.readFile(process.argv[2], "utf8"));
 const output = path.resolve(process.argv[3] || path.join(root, ".diagnostics/copilot-comparison.json"));
-const report = { generatedAt: new Date().toISOString(), runtime: "Ollama local only", models: ["qwen3-vl:4b-instruct", "gemma3:4b"], cases: [] };
+const report = { generatedAt: new Date().toISOString(), runtime: "embedded llama.cpp (vendor/llm)", models: ["qwen3-vl:4b-instruct"], cases: [] };
 for (const entry of cases) {
   for (const file of entry.paths) await fs.access(file);
   const measurements = await measureSource(entry.paths);

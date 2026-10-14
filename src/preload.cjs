@@ -73,6 +73,10 @@ contextBridge.exposeInMainWorld("spriteLab", {
   planCopilot: (request) => ipcRenderer.invoke("copilot:plan", request),
   compareCopilots: (request) => ipcRenderer.invoke("copilot:compare", request),
   copilotPlannerStatus: () => ipcRenderer.invoke("copilot:status"),
+  criticPickFolder: () => ipcRenderer.invoke("critic:pick-folder"),
+  criticReview: (request) => ipcRenderer.invoke("critic:review", request),
+  criticApplyFix: (request) => ipcRenderer.invoke("critic:apply-fix", request),
+  criticAcceptAnyway: (request) => ipcRenderer.invoke("critic:accept-anyway", request),
   updateCompanion: (state) => ipcRenderer.invoke("companion:update", state),
   showCompanion: (request) => ipcRenderer.invoke("companion:show", request),
   onCompanionCommand: (callback) => {

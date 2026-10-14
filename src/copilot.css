@@ -27,7 +27,7 @@
   transition: transform .18s ease, filter .18s ease;
 }
 
-.copilot-pet:hover { filter: drop-shadow(0 0 10px rgba(255, 118, 23, .3)); }
+.copilot-pet:hover { filter: drop-shadow(0 0 10px rgba(38,125,255, .3)); }
 .copilot-pet.dragging { cursor: grabbing; }
 .copilot-pet:focus-visible { outline: 2px solid var(--orange); outline-offset: 4px; border-radius: 50%; }
 .copilot-pet[data-mood="idle"] { filter: none; }

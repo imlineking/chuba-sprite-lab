@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
+import { existsSync, readdirSync } from 'node:fs';
 import { prepareOCRImage, selectedBounds, recognizeText } from '../src/ocr.mjs';
+const ocrDir = new URL('../vendor/ocr/', import.meta.url);
+// vendor/ is prepared by scripts/prepare-ocr.mjs and is not in git: skip when it is absent.
+const noOcr = existsSync(ocrDir) && readdirSync(ocrDir).some(name => name.endsWith('.traineddata') || name.endsWith('.traineddata.gz')) ? false : 'vendor/ocr language data is not installed';
 test('OCR uses selection bounds and excludes pixels outside the mask', async () => {
   const pixels = Buffer.alloc(8 * 6 * 4, 0), selection = new Uint8Array(48); selection[10] = selection[19] = 1;
   assert.deepEqual(selectedBounds(selection, 8, 6), { left: 2, top: 1, width: 2, height: 2 });
@@ -10,7 +14,7 @@ test('OCR uses selection bounds and excludes pixels outside the mask', async () 
   assert.throws(() => selectedBounds(new Uint8Array(48), 8, 6), /Выделите/);
   await assert.rejects(prepareOCRImage({ pixels: Buffer.alloc(1), width: 8, height: 6, selection }), /размер/);
 });
-test('bundled OCR recognizes English and Cyrillic without a remote language path', { timeout: 45_000 }, async () => {
+test('bundled OCR recognizes English and Cyrillic without a remote language path', { timeout: 45_000, skip: noOcr }, async () => {
   const svg = Buffer.from('<svg width="900" height="170"><rect width="100%" height="100%" fill="white"/><text x="25" y="70" font-family="Arial" font-size="48" fill="black">SPRITE LAB 2026</text><text x="25" y="135" font-family="Arial" font-size="48" fill="black">Привет мир</text></svg>');
   const {data, info}=await sharp(svg).ensureAlpha().raw().toBuffer({resolveWithObject:true});
   const selection = new Uint8Array(info.width * info.height).fill(1);

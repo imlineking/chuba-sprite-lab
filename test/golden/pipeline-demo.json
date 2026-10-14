@@ -1,0 +1,233 @@
+{
+  "atlas": {
+    "name": "demo",
+    "app": "Chuba Sprite Lab",
+    "version": "1",
+    "fps": 12,
+    "pages": [
+      {
+        "file": "demo.png",
+        "width": 64,
+        "height": 16
+      }
+    ],
+    "frames": [
+      {
+        "name": "blink_00",
+        "page": 0,
+        "x": 12,
+        "y": 2,
+        "w": 5,
+        "h": 5,
+        "rotated": false,
+        "trimmed": false,
+        "spriteSourceSize": {
+          "x": 0,
+          "y": 0,
+          "w": 5,
+          "h": 5
+        },
+        "sourceSize": {
+          "w": 5,
+          "h": 5
+        },
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "animation": "blink",
+        "index": 0,
+        "tags": [],
+        "duplicateOf": null
+      },
+      {
+        "name": "blink_01",
+        "page": 0,
+        "x": 21,
+        "y": 2,
+        "w": 5,
+        "h": 5,
+        "rotated": false,
+        "trimmed": false,
+        "spriteSourceSize": {
+          "x": 0,
+          "y": 0,
+          "w": 5,
+          "h": 5
+        },
+        "sourceSize": {
+          "w": 5,
+          "h": 5
+        },
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "animation": "blink",
+        "index": 1,
+        "tags": [],
+        "duplicateOf": null
+      },
+      {
+        "name": "coin",
+        "page": 0,
+        "x": 30,
+        "y": 2,
+        "w": 4,
+        "h": 4,
+        "rotated": false,
+        "trimmed": true,
+        "spriteSourceSize": {
+          "x": 1,
+          "y": 1,
+          "w": 4,
+          "h": 4
+        },
+        "sourceSize": {
+          "w": 6,
+          "h": 6
+        },
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "animation": "coin",
+        "index": 0,
+        "tags": [],
+        "duplicateOf": null
+      },
+      {
+        "name": "walk_01",
+        "page": 0,
+        "x": 2,
+        "y": 2,
+        "w": 6,
+        "h": 6,
+        "rotated": false,
+        "trimmed": true,
+        "spriteSourceSize": {
+          "x": 1,
+          "y": 1,
+          "w": 6,
+          "h": 6
+        },
+        "sourceSize": {
+          "w": 8,
+          "h": 8
+        },
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "animation": "walk",
+        "index": 1,
+        "tags": [
+          "hero",
+          "loop"
+        ],
+        "duplicateOf": null
+      },
+      {
+        "name": "walk_02",
+        "page": 0,
+        "x": 38,
+        "y": 2,
+        "w": 4,
+        "h": 4,
+        "rotated": false,
+        "trimmed": true,
+        "spriteSourceSize": {
+          "x": 2,
+          "y": 2,
+          "w": 4,
+          "h": 4
+        },
+        "sourceSize": {
+          "w": 8,
+          "h": 8
+        },
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "animation": "walk",
+        "index": 2,
+        "tags": [
+          "hero",
+          "loop"
+        ],
+        "duplicateOf": null
+      },
+      {
+        "name": "walk_03",
+        "page": 0,
+        "x": 2,
+        "y": 2,
+        "w": 6,
+        "h": 6,
+        "rotated": false,
+        "trimmed": true,
+        "spriteSourceSize": {
+          "x": 1,
+          "y": 1,
+          "w": 6,
+          "h": 6
+        },
+        "sourceSize": {
+          "w": 8,
+          "h": 8
+        },
+        "pivot": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "animation": "walk",
+        "index": 3,
+        "tags": [
+          "hero",
+          "loop"
+        ],
+        "duplicateOf": "walk_01"
+      }
+    ],
+    "animations": {
+      "blink": [
+        "blink_00",
+        "blink_01"
+      ],
+      "coin": [
+        "coin"
+      ],
+      "walk": [
+        "walk_01",
+        "walk_02",
+        "walk_03"
+      ]
+    }
+  },
+  "stats": {
+    "sources": 5,
+    "frames": 6,
+    "unique": 5,
+    "duplicates": 1,
+    "pages": 1,
+    "fill": 11.5
+  },
+  "pagePixelsSha1": "8a4c94b3599600e54e7d9753340e93134f025fbe",
+  "files": {
+    "demo.json": "dcfb114bdd64e0dae3a1feb97fef7c16e32a596b",
+    "demo.array.json": "06c973bc33553b1617ce6d2eb1a80d0efda31322",
+    "demo.phaser-hash.json": "dcfb114bdd64e0dae3a1feb97fef7c16e32a596b",
+    "demo.phaser-anims.json": "b15698a95c68fff695651d739e97fde32afa6829",
+    "demo.phaser-array.json": "06c973bc33553b1617ce6d2eb1a80d0efda31322",
+    "demo.tres": "e0eb35c8e2fad8a7f51304318d6bbdcae45c6585",
+    "demo/blink_00.tres": "0eb5ad1eeb409bcd6323010160f5df17e30697ac",
+    "demo/blink_01.tres": "f05c03f8c66b0f34eea3e5e44cff57e1abf278e2",
+    "demo/coin.tres": "aadeef2bcf6bef16d168ea488aa9e53aa48d0b2c",
+    "demo/walk_01.tres": "895dbcc97035da3815072890b52eba8aa08765fa",
+    "demo/walk_02.tres": "c29b5edafa6a265b05750217f78499e5aaf5de08",
+    "demo/walk_03.tres": "895dbcc97035da3815072890b52eba8aa08765fa",
+    "demo.png.meta": "b190a9153cb7dde76aab078aee289f2cf0db3ef1",
+    "demo.unity.json": "e2cfd2f925327ed53505f02a3d25a5263c36622f"
+  }
+}

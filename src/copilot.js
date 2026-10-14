@@ -24,7 +24,7 @@ function loadCopilotPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem(copilotPreferenceKey) || "null");
     copilotState.hidden = saved?.hidden === true;
-    if (["rules", "qwen", "gemma"].includes(saved?.planner)) copilotState.planner = saved.planner;
+    if (["rules", "qwen"].includes(saved?.planner)) copilotState.planner = saved.planner;
     if (Number.isFinite(saved?.petPosition?.x) && Number.isFinite(saved?.petPosition?.y)) copilotState.petPosition = saved.petPosition;
     if (Number.isFinite(saved?.panelPosition?.x) && Number.isFinite(saved?.panelPosition?.y)) copilotState.panelPosition = saved.panelPosition;
   } catch { /* preferences are optional */ }
@@ -190,9 +190,9 @@ async function compareCopilotPlanners() {
   copilotState.comparing = true; renderCopilot();
   const dialog = document.createElement('dialog'); dialog.className = 'planner-comparison';
   const heading = document.createElement('h2'); heading.textContent = 'Сравнение копилотов на текущих файлах';
-  const detail = document.createElement('p'); detail.textContent = 'Один снимок задачи и файлов для всех трёх планировщиков. Планы не применяются; модели работают последовательно и локально.';
+  const detail = document.createElement('p'); detail.textContent = 'Один снимок задачи и файлов для обоих планировщиков. Планы не применяются; модели работают последовательно и локально.';
   const close = document.createElement('button'); close.textContent = 'Закрыть'; close.onclick = () => dialog.close();
-  const results = document.createElement('div'); results.className = 'planner-results'; results.textContent = 'Сравниваю лёгкого помощника, Qwen и Gemma…';
+  const results = document.createElement('div'); results.className = 'planner-results'; results.textContent = 'Сравниваю лёгкого помощника и Qwen…';
   dialog.append(heading, detail, results, close); dialog.onclose = () => dialog.remove(); document.body.append(dialog); dialog.showModal();
   try {
     const plans = await window.spriteLab.compareCopilots({ snapshot: buildCopilotSnapshot(), paths: autoPilotSourcePaths() });
@@ -288,7 +288,8 @@ window.spriteLab.onCompanionCommand(command => {
   else if (command.kind === 'models') void autoPilotOpenModels();
   else if (command.kind === 'refresh') { copilotState.errorOrigin = null; copilotState.planKey = null; copilotState.semanticKey = null; void refreshCopilot(); void window.spriteLab.copilotPlannerStatus().then(status => { copilotState.plannerStatus = status; renderCopilot(); }).catch(error => copilotReportError(error, 'analysis')); }
   else if (command.kind === 'compare-planners') void compareCopilotPlanners();
-  else if (command.kind === 'planner' && ['rules', 'qwen', 'gemma'].includes(command.id)) { copilotState.planner = command.id; copilotState.semanticKey = null; saveCopilotPreferences(); void refreshCopilot(); }
+  else if (command.kind === 'review') window.openReviewPanel?.();
+  else if (command.kind === 'planner' && ['rules', 'qwen'].includes(command.id)) { copilotState.planner = command.id; copilotState.semanticKey = null; saveCopilotPreferences(); void refreshCopilot(); }
   else if (command.kind === 'undo-advice') {
     const advice = copilotState.lastAdvice;
     if (advice && advice.source === state.source && advice.index === state.historyIndex) {

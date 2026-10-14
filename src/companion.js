@@ -34,16 +34,18 @@
     if (state.panelOpen) {
       const models = document.createElement('label'); models.className = 'planner-control'; models.textContent = 'Планировщик · эксперимент';
       const select = document.createElement('select'); select.setAttribute('aria-label', 'Планировщик копилота');
-      for (const [id, title] of [['rules', 'Лёгкий · без модели'], ['qwen', 'Qwen 3 VL · 4B'], ['gemma', 'Gemma 3 · 4B']]) {
+      const qwenLabel = state.plannerStatus?.models?.find(model => model.id === 'qwen')?.label || 'Qwen · встроенная';
+      for (const [id, title] of [['rules', 'Лёгкий · без модели'], ['qwen', qwenLabel]]) {
         const option = document.createElement('option'); option.value = id; option.textContent = title;
         if (id !== 'rules' && state.plannerStatus && !state.plannerStatus.models?.find(model => model.id === id)?.installed) { option.textContent += ' · не установлена'; option.disabled = true; }
         select.append(option);
       }
       select.value = state.planner || 'rules'; select.disabled = Boolean(state.busy); select.onchange = () => command('planner', select.value);
-      const info = document.createElement('small'); info.textContent = `${state.plannerInfo || ''} · Для Qwen/Gemma нужен запущенный Ollama и установленная модель; интернет не требуется.`;
+      const info = document.createElement('small'); info.textContent = `${state.plannerInfo || ''} · Qwen встроена в программу (llama.cpp, локально); Ollama и интернет не нужны.`;
       models.append(select, info); choices.append(models);
-      button('Сравнить три плана', 'Текущие файлы · без применения правок', () => command('compare-planners', 'compare'));
+      button('Сравнить два плана', 'Текущие файлы · без применения правок', () => command('compare-planners', 'compare'));
       [['clipping','Исправить обрезание'],['cutout','Вырезать объект'],['atlas','Собрать атлас']].forEach(([id,title])=>button(title,'Перейти к нужному сценарию',()=>command('quick',id)));
+      button('Приёмка атласа', 'Алгоритмы + встроенная Qwen · вердикт и правки', () => command('review', 'open'));
       for (const task of state.tasks || []) {
         const row=document.createElement('div'); row.className='group'; const title=document.createElement('span'); title.textContent=task.title; row.append(title);
         for (const approach of ['auto','manual']) { const control=document.createElement('button'); control.textContent=approach==='auto'?'Авто':'Вручную'; control.disabled=Boolean(state.busy); control.onclick=()=>command('task',task.id,approach); row.append(control); }

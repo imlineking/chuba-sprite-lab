@@ -27,7 +27,7 @@ export const profileOptionKeys = new Set([
   "frameOverrides", "frameTransforms", "preparedCleanup", "fitEachFrame", "timeline", "loopMode",
   "loopRange", "packing", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo",
   "atlasDeduplicate", "gpuFormat", "nineSlice",
-  "cleanOutput", "animationName", "auxAI", "keyScope", "aiModel", "edgeRefine", "toning", "colorAdjust", "imageGeometry", "atlasGap", "atlasExtrude", "atlasRotate", "preserveFrameCanvas", "pixelScale", "atlasBackground", "atlasBackgroundColor", "frameMetadata", "anchorReference", "seriesReview",
+  "cleanOutput", "animationName", "auxAI", "keyScope", "aiModel", "edgeRefine", "contourAlpha", "toning", "colorAdjust", "imageGeometry", "atlasGap", "atlasExtrude", "atlasRotate", "preserveFrameCanvas", "pixelScale", "atlasBackground", "atlasBackgroundColor", "frameMetadata", "anchorReference", "seriesReview",
 ]);
 
 const sourceKinds = ["video", "frames", "sheet"];
@@ -97,6 +97,18 @@ function normalizeOptions(value, problem, label, baseDir) {
   }
   if (typeof options.aiModel === "string" && /^[a-z0-9][a-z0-9-]*$/i.test(options.aiModel)) {
     try { options.aiModel = resolveMattingModelId(options.aiModel); } catch (error) { problem(`${label}.aiModel: ${error.message}`); }
+  }
+  if (options.contourAlpha !== undefined) {
+    const c=options.contourAlpha;
+    if(!isPlainObject(c))problem(label+'.contourAlpha: ожидался объект.');
+    else {
+      for(const key of Object.keys(c))if(!['enabled','width','curve','thinRadius','protectCore'].includes(key))problem(label+'.contourAlpha: неизвестная настройка '+key);
+      if(typeof c.enabled!=='boolean')problem(label+'.contourAlpha.enabled: ожидалось true или false.');
+      if(!Number.isFinite(c.width)||c.width<1||c.width>256)problem(label+'.contourAlpha.width: ожидалось 1…256.');
+      if(!Number.isFinite(c.curve)||c.curve<.25||c.curve>4)problem(label+'.contourAlpha.curve: ожидалось 0.25…4.');
+      if(!Number.isFinite(c.thinRadius)||c.thinRadius<0||c.thinRadius>32)problem(label+'.contourAlpha.thinRadius: ожидалось 0…32.');
+      if(typeof c.protectCore!=='boolean')problem(label+'.contourAlpha.protectCore: ожидалось true или false.');
+    }
   }
   if (options.edgeRefine !== undefined) {
     if (!isPlainObject(options.edgeRefine)) problem(`${label}.edgeRefine: ожидался объект.`);

@@ -36,6 +36,7 @@ import { writeAnimatedImage } from './animated-images.mjs';
 
 export const supportedImageExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".avif"]);
 const naturalCompare = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" }).compare;
+import { contourAlphaRgba } from "./contour-alpha.mjs";
 import { StageCache } from "./stage-cache.mjs";
 const preparedStageCache = new StageCache();
 const frameKeyCache = new StageCache();
@@ -1195,7 +1196,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
   let nextToSchedule = 0;
   const prepareFrame = async (index) => {
     const frameOptions = resolvePreparedCleanup(options, index, inputFrames[index]);
-    const stageOptions = Object.fromEntries(["keyMode", "tolerance", "blackOutline", "blackFeather", "keyScope", "keyColor", "fringeCleanup", "fringeStrength", "edgeDecontaminate", "edgeRefine", "imageGeometry", "pixelate", "toning", "colorAdjust", "auxAI", "aiModel", "aiProvider", "aiQuality", "aiForceModel", "aiCutoff", "aiSoftness", "aiModelDirs"].map(k => [k, frameOptions[k]]));
+    const stageOptions = Object.fromEntries(["keyMode", "tolerance", "blackOutline", "blackFeather", "keyScope", "keyColor", "fringeCleanup", "fringeStrength", "edgeDecontaminate", "edgeRefine", "contourAlpha", "imageGeometry", "pixelate", "toning", "colorAdjust", "auxAI", "aiModel", "aiProvider", "aiQuality", "aiForceModel", "aiCutoff", "aiSoftness", "aiModelDirs"].map(k => [k, frameOptions[k]]));
     const stageKey = stableStringify({ file: await fileSignature(inputFrames[index]), options: stageOptions, edits: (frameOptions.aiEdits || []).filter(e => e.applyAll || Number(e.frameIndex) === index), assets: await Promise.all([auxiliary.inpaintMaskPath, ...(attachmentPlacements[index] || []).map(p => p.path || p.imagePath)].filter(Boolean).map(fileSignature)), autoKeyColor, placement: attachmentPlacements[index], maskPrepared: source.maskPrepared });
     const cachedStage = preparedStageCache.get(stageKey);
     if (cachedStage) return cachedStage;
@@ -1214,6 +1215,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
       aiForceModel: options.aiForceModel, aiQuality: options.aiQuality, aiModel: options.aiModel, aiModelDirs: options.aiModelDirs,
     });
     if (frameOptions.edgeRefine) keyed = await applyEdgeRefine(keyed, frameOptions.edgeRefine);
+    if (frameOptions.contourAlpha?.enabled) keyed = await applyContourAlpha(keyed, frameOptions.contourAlpha);
     keyed = await compositeAttachments(keyed, attachmentPlacements[index]);
     if (esrgan) {
       throwIfAborted(signal);
@@ -2391,6 +2393,12 @@ export async function processVideoBatch({ paths, outputDir, options = {}, appRoo
   };
 }
 
+async function applyContourAlpha(keyed, options) {
+  const {data,info}=await sharp(keyed.buffer).ensureAlpha().raw().toBuffer({resolveWithObject:true});
+  const result=contourAlphaRgba(data,info,options);
+  return {...keyed,buffer:await sharp(result.data,{raw:info}).png().toBuffer(),info,bounds:alphaBounds(result.data,info),contourAlphaReport:{changed:result.changed,protected:result.protected}};
+}
+
 export async function processFramePreview({ inputPath, options = {}, appRoot, gridSources = [] }) {
   if (!inputPath) throw new Error("Нет кадра для быстрого предпросмотра.");
   options = resolvePreparedCleanup(options, options.previewFrameIndex ?? 0, inputPath);
@@ -2423,6 +2431,7 @@ export async function processFramePreview({ inputPath, options = {}, appRoot, gr
     whiteRemainders = findWhiteRemainders(raw.data, raw.info, keyed.keyColor);
   }
   if (options.edgeRefine) keyed = await applyEdgeRefine(keyed, options.edgeRefine);
+  if (options.contourAlpha?.enabled) keyed = await applyContourAlpha(keyed, options.contourAlpha);
   const previewFrameIndex = options.previewFrameIndex ?? 0;
   const placements = options.attachmentPlacements?.[previewFrameIndex]
     || (options.attachments || []).map((attachment) => ({ ...attachment, points: attachment.points || [] }));
@@ -2462,6 +2471,7 @@ export async function processFramePreview({ inputPath, options = {}, appRoot, gr
     keyColor: keyed.keyColor,
     whiteRemainders,
     edgeRefineReport: keyed.edgeRefineReport || null,
+    contourAlphaReport: keyed.contourAlphaReport || null,
     geometryReport: keyed.geometryReport || null,
   };
 }

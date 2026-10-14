@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -20,7 +21,7 @@ test("video packet duration wins over longer audio/container duration", () => {
   assert.equal(result.width, 3840); assert.equal(result.durationSource, "video-packets");
 });
 
-test("opening a muxed clip and seeking beyond video end returns existing images", async t => {
+test("opening a muxed clip and seeking beyond video end returns existing images", { skip: !existsSync(path.resolve("vendor/ffmpeg.exe")) && "vendor/ffmpeg.exe not prepared (npm run prepare:vendor)" }, async t => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "chuba-mux-regression-"));
   t.after(() => fs.rm(temp, { recursive: true, force: true }));
   const file = path.join(temp, "audio-longer.mp4");

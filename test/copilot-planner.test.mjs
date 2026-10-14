@@ -2,25 +2,26 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { planWithCopilot, validatePlannerResponse } from "../src/copilot-planner.mjs";
 const snapshot = { source: { kind: "frames", frameCount: 3 }, options: { pixelPerfect: true } };
-test("unavailable local model falls back transparently, without downloading anything", async () => {
-  const urls = [];
-  const result = await planWithCopilot({ planner: "qwen", snapshot }, async url => { urls.push(url); throw new Error("Ollama is off"); });
-  assert.equal(result.fallback, true); assert.equal(result.planner, "rules"); assert.match(result.error, /не установлен/);
-  assert.deepEqual(urls, ["http://127.0.0.1:11434/api/tags"]);
+// Fake embedded runtime (llama.cpp child process is not started in unit tests).
+function fakeRuntime({ available = true, reply = null, calls = [] } = {}) {
+  return { calls, status: () => ({ available, missing: available ? [] : ["vendor/llm"], backend: null }),
+    completeJson: async (request) => { calls.push(request); if (reply instanceof Error) throw reply; return { text: JSON.stringify(reply), elapsedMs: 1 }; } };
+}
+test("unavailable embedded model falls back transparently, without downloading anything", async () => {
+  const runtime = fakeRuntime({ available: false });
+  const result = await planWithCopilot({ planner: "qwen", snapshot }, runtime);
+  assert.equal(result.fallback, true); assert.equal(result.planner, "rules"); assert.match(result.error, /не установлена/);
+  assert.equal(runtime.calls.length, 0);
 });
 test("model cannot invent tools, unknown advice or unsafe pixel-art scaling", () => {
   for (const task of ["shell", "upscale"]) assert.throws(() => validatePlannerResponse({ scenarios: [{ task, why: "Do this" }], advice: [] }, snapshot));
   assert.throws(() => validatePlannerResponse({ scenarios: [{ task: "edit", why: "Edit" }], advice: ["download-arbitrary-model"] }, snapshot));
 });
 test("schema-validated model plan returns supported one-click scenarios without executing", async () => {
-  const requests = [];
-  const result = await planWithCopilot({ planner: "qwen", snapshot }, async (url, request) => {
-    requests.push({ url, request });
-    return { ok: true, json: async () => url.endsWith("tags") ? { models: [{ name: "qwen3-vl:4b-instruct", size: 3300000000 }] } : { response: JSON.stringify({ scenarios: [{ task: "edit", why: "Независимые изображения: сохраните отдельные PNG." }], advice: [] }), eval_count: 30 } };
-  });
-  assert.equal(result.fallback, false); assert.equal(result.scenarios[0].task, "edit");
-  const payload = JSON.parse(requests[1].request.body);
-  assert.equal(payload.keep_alive, 0); assert.equal(payload.stream, false); assert.ok(payload.format.properties.scenarios);
+  const runtime = fakeRuntime({ reply: { scenarios: [{ task: "edit", why: "Независимые изображения: сохраняем размер" }], advice: [] } });
+  const result = await planWithCopilot({ planner: "qwen", snapshot }, runtime);
+  assert.equal(result.fallback, false); assert.equal(result.scenarios[0].task, "edit"); assert.equal(result.runtime, "embedded");
+  assert.ok(runtime.calls[0].schema.properties.scenarios); assert.equal(runtime.calls[0].temperature, 0);
 });
 test("explicit selected job outranks guesses in the lightweight copilot too", async () => {
   const result = await planWithCopilot({ snapshot: { ...snapshot, ui: { goal: "combine" } } });
@@ -36,12 +37,18 @@ test("an image background task stays first even when edit would otherwise outran
   assert.equal(result.scenarios[0].task, "background");
 });
 test("no supported advice yields an empty schema array, not an invalid none tool", async () => {
-  let payload;
-  const result = await planWithCopilot({ planner: "qwen", snapshot: { ...snapshot, ui: { goal: "edit", intent: "images" } } }, async (url, request) => {
-    if (url.endsWith("tags")) return { ok: true, json: async () => ({ models: [{ name: "qwen3-vl:4b-instruct" }] }) };
-    payload = JSON.parse(request.body);
-    return { ok: true, json: async () => ({ response: JSON.stringify({ scenarios: [{ task: "edit", why: "Правка" }], advice: [] }) }) };
-  });
-  assert.equal(payload.format.properties.advice.maxItems, 0);
+  const runtime = fakeRuntime({ reply: { scenarios: [{ task: "edit", why: "Правка" }], advice: [] } });
+  const result = await planWithCopilot({ planner: "qwen", snapshot: { ...snapshot, ui: { goal: "edit", intent: "images" } } }, runtime);
+  assert.equal(runtime.calls[0].schema.properties.advice.maxItems, 0);
   assert.equal(result.fallback, false);
+});
+test("removed Gemma planner degrades to the light mode without calling any model", async () => {
+  const runtime = fakeRuntime(); const urls = runtime.calls;
+  const result = await planWithCopilot({ planner: "gemma", snapshot }, runtime);
+  assert.equal(result.planner, "rules"); assert.equal(result.fallback, true); assert.equal(result.requestedPlanner, "gemma");
+  assert.ok(result.scenarios.length > 0); assert.deepEqual(urls, []);
+});
+test("a broken model reply degrades to the light mode", async () => {
+  const result = await planWithCopilot({ planner: "qwen", snapshot }, fakeRuntime({ reply: new Error("llama-server HTTP 500") }));
+  assert.equal(result.fallback, true); assert.equal(result.planner, "rules"); assert.match(result.error, /llama-server/);
 });

@@ -29,6 +29,10 @@ app.on("before-quit", () => processingExecutor.close());
 import { finishSheetImport, makeTempWorkspace, pruneStaleTempWorkspaces } from "./temp-workspace.mjs";
 import { planSuggestions, planTaskScenarios } from "./copilot-rules.mjs";
 import { planWithCopilot, comparePlanners, plannerStatus } from "./copilot-planner.mjs";
+import { buildAtlas } from "./pipeline/build.mjs";
+import { reviewAtlas, applyFix, renderPreview, validateCriticConfig } from "./critic/critic.mjs";
+import { sharedRuntime, stopSharedRuntime } from "./critic/llm-runtime.mjs";
+app.on("before-quit", () => stopSharedRuntime());
 import { readProfile } from "./build-profile.mjs";
 import { formatFeedbackDraft } from "./feedback.mjs";
 import * as editorSession from "./editor-session.mjs";
@@ -264,7 +268,7 @@ function createWindow() {
     minWidth: 1040,
     minHeight: 700,
     frame: false,
-    show: true,
+    show: !screenshotPath,
     center: true,
     backgroundColor: "#0b0d10",
     icon: path.join(appRoot, "assets", "app.ico"),
@@ -273,7 +277,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      backgroundThrottling: !uiRegressionMode,
+      backgroundThrottling: !(uiRegressionMode || screenshotPath),
+      offscreen: Boolean(screenshotPath),
     },
   });
   mainWindow.on("closed", () => {
@@ -1242,6 +1247,46 @@ ipcMain.handle("copilot:scenarios", (_event, snapshot = {}) => planTaskScenarios
 ipcMain.handle("copilot:plan", (_event, request = {}) => planWithCopilot(request));
 ipcMain.handle("copilot:compare", (_event, request = {}) => comparePlanners(request));
 ipcMain.handle("copilot:status", () => plannerStatus());
+
+// Acceptance critic ("Приёмка"): algorithms first, then the embedded vision model reported by
+// runtime.status() (llama.cpp in vendor/llm, weights in models/<model>). The server is shared
+// with the CLI through the lock file. No Ollama; falls back to algorithms only.
+const criticRuntime = () => sharedRuntime({ appRoot });
+const reviewedOutputs = new Set(); // output folders produced by runCriticReview in this session
+async function runCriticReview(config, { useModel = true } = {}) {
+  let built = null, buildError = null;
+  try { built = await buildAtlas(config, { write: true }); } catch (error) { buildError = error.message; }
+  const runtime = criticRuntime();
+  const usable = useModel && runtime.status().available;
+  const review = await reviewAtlas(built || { atlas: null, pages: [] }, { runtime: usable ? runtime : null, skillsDir: runtime.paths.skills, buildError, useModel: usable });
+  if (useModel && !usable) review.fallbackReason = `Встроенная модель недоступна (${runtime.status().missing.join(", ")}), только алгоритмы`;
+  const resolved = built?.config;
+  if (resolved) reviewedOutputs.add(path.resolve(resolved.output));
+  if (resolved) await fs.writeFile(path.join(resolved.output, "review.json"), `${JSON.stringify({ generatedAt: new Date().toISOString(), atlas: resolved.name, ...review }, null, 2)}\n`);
+  const preview = built ? await renderPreview(built, { maxSide: 640 }) : null;
+  return { config, output: resolved?.output || null, review, preview: preview ? `data:image/png;base64,${preview.toString("base64")}` : null };
+}
+function criticConfig(request = {}) {
+  if (request.config !== undefined) return validateCriticConfig(request.config);
+  const input = String(request.input || "");
+  if (!input || !path.isAbsolute(input)) throw new Error("Укажите папку с кадрами.");
+  const name = path.basename(input).replace(/[^\w.-]+/g, "_") || "atlas";
+  return { name, input: [input], output: `${input.replace(/[\\/]+$/, "")}-atlas`, formats: ["texturepacker-hash", "phaser-hash"] };
+}
+ipcMain.handle("critic:pick-folder", async () => {
+  const result = await interfaceDialog("showOpenDialog", mainWindow, { title: "Папка с кадрами для приёмки", properties: ["openDirectory"] });
+  return result.canceled || !result.filePaths.length ? null : result.filePaths[0];
+});
+ipcMain.handle("critic:review", (_event, request = {}) => runCriticReview(criticConfig(request), { useModel: request.useModel !== false }));
+ipcMain.handle("critic:apply-fix", (_event, { config, fix } = {}) => runCriticReview(applyFix(criticConfig({ config }), fix)));
+ipcMain.handle("critic:accept-anyway", async (_event, { output, review } = {}) => {
+  if (!output || typeof output !== "string" || !path.isAbsolute(output) || !review || typeof review !== "object") throw new Error("Нет результата приёмки.");
+  if (!reviewedOutputs.has(path.resolve(output))) throw new Error("Принять можно только папку, проверенную в этом сеансе.");
+  if (review.issues?.some((issue) => issue.code === "build_failed" || (issue.code === "atlas_overflow" && issue.severity === "error"))) throw new Error("Сборка не удалась — принять нечего.");
+  const accepted = { ...review, verdict: "accepted", overriddenBy: "user", overriddenFrom: review.verdict, overriddenAt: new Date().toISOString() };
+  await fs.writeFile(path.join(path.resolve(output), "review.json"), `${JSON.stringify(accepted, null, 2)}\n`);
+  return accepted;
+});
 
 ipcMain.handle("app:info", () => ({
   version: app.getVersion(),

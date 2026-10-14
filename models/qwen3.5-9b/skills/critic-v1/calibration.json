@@ -1,0 +1,10 @@
+{
+  "basedOn": "spritelab-bench 2026-10-14: Qwen 74% overall, 91% on model-only tasks; weak on near-duplicates (M5) and OCR (H3); 76% run-to-run consistency",
+  "distrustCodes": ["near_duplicate", "text_ocr"],
+  "modelMayReject": false,
+  "modelMayOverrideHardFailure": false,
+  "modelErrorDowngradedTo": "warning",
+  "weights": { "algorithm": 0.7, "model": 0.3 },
+  "temperature": 0,
+  "seed": 42
+}

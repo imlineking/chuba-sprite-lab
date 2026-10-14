@@ -100,7 +100,7 @@ try {
     await pause(300); await main.screenshot(`${theme}-yarn.png`); await bubble.screenshot(`${theme}-copilot.png`);
   }
   await main.evaluate("compareCopilotPlanners()");
-  assert.equal(await main.evaluate("document.querySelectorAll('.planner-results article').length"), 3);
+  assert.equal(await main.evaluate("document.querySelectorAll('.planner-results article').length"), 2);
   await main.screenshot("planner-comparison.png"); report.checks.push({ name: "real-three-planner-comparison-dialog", ok: true });
   report.runtimeErrors = errors; assert.deepEqual(errors, []);
   report.ok = true;

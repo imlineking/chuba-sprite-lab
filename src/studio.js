@@ -416,7 +416,7 @@ function drawGameBackdrop(context, width, height, groundY, scale) {
   const sky = context.createLinearGradient(0, 0, 0, groundY);
   sky.addColorStop(0, "#172131"); sky.addColorStop(0.65, "#3b2d33"); sky.addColorStop(1, "#6b3b24");
   context.fillStyle = sky; context.fillRect(0, 0, width, groundY);
-  context.fillStyle = "rgba(255,118,23,.55)";
+  context.fillStyle = "rgba(38,125,255,.55)";
   context.beginPath(); context.arc(width * 0.78, groundY * 0.55, Math.max(18, Math.min(width, height) * 0.07), 0, Math.PI * 2); context.fill();
   const hills = (color, amplitude, offset, period) => {
     context.fillStyle = color; context.beginPath(); context.moveTo(0, groundY);
@@ -431,7 +431,7 @@ function drawGameBackdrop(context, width, height, groundY, scale) {
     context.fillStyle = index % 2 ? "#2d3324" : "#303826";
     context.fillRect(x, groundY + 4, tile, Math.max(6, tile * 0.5));
   }
-  context.fillStyle = "#c8df6f"; context.fillRect(0, groundY - 1, width, 2);
+  context.fillStyle = "#8fb8f0"; context.fillRect(0, groundY - 1, width, 2);
 }
 
 function drawSprite(context, index, x, y, scale, alpha = 1) {
@@ -498,14 +498,14 @@ function drawPlayer() {
     const bounds = frameBounds(current.image);
     context.lineWidth = 1;
     if (bounds) {
-      context.strokeStyle = darkInk ? "#16242a" : "#c8df6f"; context.setLineDash([5, 4]);
+      context.strokeStyle = darkInk ? "#16242a" : "#8fb8f0"; context.setLineDash([5, 4]);
       context.strokeRect(Math.round(left + bounds.x * scale) + 0.5, Math.round(top + bounds.y * scale) + 0.5, Math.round(bounds.width * scale), Math.round(bounds.height * scale));
       context.setLineDash([]);
-      context.fillStyle = darkInk ? "#16242a" : "#c8df6f"; context.font = '600 12px "Bahnschrift", sans-serif';
+      context.fillStyle = darkInk ? "#16242a" : "#8fb8f0"; context.font = '600 12px "Bahnschrift", sans-serif';
       context.fillText(`хитбокс ${bounds.width}×${bounds.height}`, Math.round(left + bounds.x * scale), Math.max(14, Math.round(top + bounds.y * scale) - 6));
     }
     const pivotX = left + studio.pivot.x * cellWidth * scale; const pivotY = top + studio.pivot.y * cellHeight * scale;
-    context.strokeStyle = darkInk ? "#16242a" : "#ff7617"; context.lineWidth = 2;
+    context.strokeStyle = darkInk ? "#16242a" : "#267dff"; context.lineWidth = 2;
     context.beginPath(); context.moveTo(pivotX - 7, pivotY); context.lineTo(pivotX + 7, pivotY); context.moveTo(pivotX, pivotY - 7); context.lineTo(pivotX, pivotY + 7); context.stroke();
   }
   if (game) {
@@ -822,6 +822,7 @@ function optionsFromDocument(doc, base = {}) {
     aiEdits: doc.maskEdits || [], previewFrameIndex: 0,
     fringeCleanup: Boolean(checks.fringeCleanup), fringeStrength: number("fringeStrength", 55),
     edgeDecontaminate: Boolean(checks.edgeDecontaminate),
+    contourAlpha:{enabled:Boolean(checks.contourAlphaEnabled),width:number("contourAlphaWidth",24),curve:number("contourAlphaCurve",1),thinRadius:number("contourAlphaThin",6),protectCore:checks.contourAlphaCore!==false},
     edgeRefine: { mode: values.edgeRefineMode || "none", width: number("edgeRefineWidth", 1), depth: number("edgeRefineDepth", 5), whiteOnly: checks.edgeRefineWhiteOnly !== false },
     aiProvider: values.aiProvider || "auto",
     keyColor: /^#[0-9a-f]{6}$/i.test(String(controls.solidKeyMode || "")) ? hexToRgb(controls.solidKeyMode) : undefined,
