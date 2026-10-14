@@ -35,7 +35,9 @@ export async function decodeAPNG(buffer){
 }
 export async function encodeGIF(frames,width,height,{loop=0}={}){validateFrames(frames,width,height);const data=Buffer.concat(frames.map(f=>Buffer.from(f.pixels)));return sharp(data,{raw:{width,height:height*frames.length,pageHeight:height,channels:4}}).gif({loop,delay:frames.map(f=>Math.max(10,Math.round((f.durationMs||100)/10)*10)),dither:0,keepDuplicateFrames:true,effort:4}).toBuffer();}
 export async function decodeGIF(buffer){const meta=await sharp(buffer,{animated:true}).metadata(),width=meta.width,height=meta.pageHeight||meta.height,count=meta.pages||1;if(count>512||width*height*4*count>256*1024*1024)throw new Error('GIF превышает лимит кадров или памяти.');const pixels=await sharp(buffer,{animated:true}).toColourspace('srgb').ensureAlpha().raw().toBuffer();return{width,height,loop:meta.loop??0,frames:Array.from({length:count},(_,i)=>({pixels:Buffer.from(pixels.subarray(i*width*height*4,(i+1)*width*height*4)),durationMs:meta.delay?.[i]||100}))};}
-export async function readAnimatedImage(file){const buffer=await fs.readFile(file);return path.extname(file).toLowerCase()==='.gif'?decodeGIF(buffer):decodeAPNG(buffer);}
+// Dispatch by content, not extension: GIF and animated WebP both decode through sharp's animated reader.
+export async function readAnimatedImage(file){const buffer=await fs.readFile(file);const isGif=buffer.toString('latin1',0,3)==='GIF',isWebp=buffer.toString('latin1',0,4)==='RIFF'&&buffer.toString('latin1',8,12)==='WEBP';return isGif||isWebp||path.extname(file).toLowerCase()==='.gif'?decodeGIF(buffer):decodeAPNG(buffer);}
+export async function hasAnimatedWebP(file){const handle=await fs.open(file,'r');try{const b=Buffer.alloc(21);const{bytesRead}=await handle.read(b,0,21,0);return bytesRead===21&&b.toString('latin1',0,4)==='RIFF'&&b.toString('latin1',8,16)==='WEBPVP8X'&&Boolean(b[20]&2);}finally{await handle.close();}}
 export async function hasAnimatedPNG(file){
   if(!['.png','.apng'].includes(path.extname(file).toLowerCase()))return false;
   const handle=await fs.open(file,'r');

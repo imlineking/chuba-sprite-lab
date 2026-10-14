@@ -11,10 +11,11 @@
     <link rel="stylesheet" href="./theme.css" />
     <link rel="stylesheet" href="./shell-theme.css" />
     <link rel="stylesheet" href="./grok-theme.css" />
-    <link rel="stylesheet" href="./review-panel.css" />
+    <link rel="stylesheet" href="./review-panel.css" />
+    <link rel="stylesheet" href="./conveyor.css" />
     <script src="./theme.js"></script>
   </head>
-  <body>
+  <body data-view="conveyor">
     <header class="titlebar">
       <div class="brand">
         <img class="brand-logo brand-logo-compact brand-orange" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASGSURBVFhH7ZZ/TJVVGMe/773cuwsUgZXQrEg3KxGM6SC2ILjyI0FvrrZrc7ioVq4BtTBLsMGFruXFiC2WhYZlmbPQfid/uPVPrVqtbOuH5ixTUdCk/rHVH8L9tuc958jLOzQqhv/4bN+dc97LPd/P8zzn3BfgYkxSzJiLYSwB3c+nLGq2gf78CwhQvwtMyrlQABYYqAFRjg/dH01F3HHnpiso/c/t9hAlU1kFCzTmSMWJ+rk4gzxwXrZdjckHYQQeApatYiScNU/TZrNw7aKeFCIdRCYIOZTB/wnCMLxDFdj7aym+5bugrQ9A7h7N/ssm8OY0sDOccWZ2M3h5OxTEjSBusChV+U8gdVnp0X25IN8A2QvyTZCf+Mko6CvyMLx5ur0xnwf5HFiQDKa3goHmBE5r1ZXJEnkUxEQjEoHnaCH+sI3fArlrNGtuA9mjshdZXpAxkFvA09VgUex6Tl/jY04smbndl6pWyJnItojSCUD09vZ6+9LxF18DuV1nfixKbgb55+fkTpBtIJvBY49APX9Jj4/ZBgy/Oos5Gy7jgk4f0eYjMi0FIVUoR5fbc0z0LUJKfAvidqaS+UAHeXwD2f+0AhKAt7WhrAX0ZVUBdoOHQqDlAdPWeXnN+kvoaQ0QMT9xnQBY578dcsoHF4J8RZt8nUoOxMjBLrX+Io/sX6vmJutNWrLuAdkO7qtQEAIwQ8zbQERBzNNVOFfEl+FHO/OtuudS/j0a6OSz6jyIPtLmRmJuAJ5U7embryBmPnMl0QBilb6aAiDtcIfc7XgIp20zKec7+vQfDKlWmCsoz7s1pMneKKL1FDhcDe7JB4Ne0KpNI+pSiRYPsdCjKuGO3jC8h+RKSRbS0/e0mYzmNsh8h/5cIEwLZC6S6/iErkIt+HE+2HG1w6wJRKNuhTu+WgDfgUIN4IQQmX6LiQDI/EW9dgLIs0bVAtaBPwfB/SXg0kSsO2skEPPHAZCwy7pRA4iJtMJ50IyRUwZExhd0C9aAXAmOLAdPVoIhH9aPMQrixJi1CdtQ7riYCoTJXEYBMFU4lyT71er3QFrwQxE4chdY5kej22vcsEsnAJKNM3MjJ4CzBTIX4Ec1gIz3gvtvBVkNVnoRdXuNG/Yh7NAbyCgldZs5AYxa9HdWKY0sA78rBPtLwd358j6D1+01bpyqwuqj5SDrQT4MsgFkpz4XImMoIFItOe1No8Ym8+HlqvyS/VI/KO8Wt9e4EQE8O7PVFym/82bjh/RaIB7XYAIokueylrEOHKoCfyoGf3EAuH3OG2uTcNX2ORpipdrU3twAmbmYGtWCXAEeLgMPloDfi/kKZZ4JBNwe/xRWVRIy5ArFBeJuVdaRe/Rcsr4f5H2q1HxA/d2RUvBAicqeDyrzmpuQ6t58wtGQgmmv60r8FgKHbgdPLVYarAQHblM6XgEeDoJHysDfF4Pvz1HmiUCee89/HWHA35KCdgER7cgCP8sHP80Dv7kF3FugJC+erpnKWJc9w/6XdbJCDmcBkFgMBMqBZJkvAZJEsi4GErIAPzDB034xHPE3ItEVHfq9GOgAAAAASUVORK5CYII=" alt="" aria-hidden="true" />
@@ -38,6 +39,92 @@
         <button id="closeWindow" class="window-button close" type="button" aria-label="Закрыть"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6 18 18M18 6 6 18"/></svg></button>
       </div>
     </header>
+
+    <nav id="viewSwitch" class="view-switch" role="tablist" aria-label="Режим работы">
+      <button type="button" role="tab" data-view="conveyor" aria-selected="true">Конвейер</button>
+      <button type="button" role="tab" data-view="quick" aria-selected="false">Быстрый режим</button>
+      <button type="button" role="tab" data-view="queue" aria-selected="false">Очередь и наблюдение <span id="cvQueueBadge" class="cv-badge hidden">0</span></button>
+      <button type="button" role="tab" data-view="advanced" aria-selected="false">Дополнительно</button>
+    </nav>
+
+    <section id="conveyorView" class="cv-view" data-cv="conveyor" aria-label="Конвейер">
+      <div class="cv-column cv-input">
+        <div id="cvDrop" class="cv-drop" tabindex="0" role="button" aria-label="Перетащите файл или папку">
+          <svg class="ui-icon cv-drop-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4m0 0-4 4m4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
+          <strong>Перетащите файл или папку</strong>
+          <span>Видео, GIF, PNG, JPG, WebP, спрайт-лист, папка кадров, Aseprite, JSON атласа</span>
+          <div class="cv-drop-actions"><button id="cvPickFile" type="button">Выбрать файлы</button><button id="cvPickFolder" type="button">Выбрать папку</button></div>
+        </div>
+        <div id="cvTypeCard" class="cv-card cv-type hidden" aria-live="polite">
+          <div class="cv-type-head"><span class="cv-kicker">Тип входа</span><strong id="cvTypeLabel">-</strong><span id="cvTypeFormat" class="cv-chip-muted"></span></div>
+          <div id="cvTypeName" class="cv-file-name"></div>
+          <ul id="cvWarnings" class="cv-warnings"></ul>
+          <div id="cvUnsupported" class="cv-unsupported hidden" role="alert"></div>
+        </div>
+        <div id="cvToolsCard" class="cv-card hidden">
+          <span class="cv-kicker">Инструменты для этого типа</span>
+          <div id="cvToolGroups" class="cv-tool-groups"></div>
+          <p class="cv-hint">Инструмент откроет файл в разделе «Дополнительно» на нужном шаге.</p>
+        </div>
+      </div>
+      <div class="cv-column cv-stages-col">
+        <span class="cv-kicker">Этапы</span>
+        <ol id="cvStages" class="cv-stages"></ol>
+        <div id="cvResult" class="cv-card cv-result hidden" aria-live="polite"></div>
+      </div>
+      <div class="cv-column cv-run">
+        <div class="cv-card">
+          <label class="cv-field"><span>Пресет</span><select id="cvPreset"></select></label>
+          <div class="cv-field"><span>Куда сохранить</span>
+            <div class="cv-segmented" role="radiogroup" aria-label="Куда сохранить">
+              <button type="button" role="radio" data-output="near" aria-checked="true" class="selected">Рядом с файлом</button>
+              <button type="button" role="radio" data-output="folder" aria-checked="false">В папку</button>
+            </div>
+            <div id="cvOutputPath" class="cv-path">Папка «имя-spritelab» рядом с исходником</div>
+          </div>
+          <button id="cvRunAll" class="cv-primary" type="button" disabled>Сделать всё</button>
+          <button id="cvEnqueue" type="button" disabled>Добавить в очередь</button>
+          <button id="cvCancel" class="hidden" type="button">Остановить</button>
+        </div>
+        <details class="cv-card cv-details"><summary>Настройки пресета</summary><div id="cvPresetInfo" class="cv-preset-info"></div></details>
+      </div>
+    </section>
+
+    <section id="quickView" class="cv-view hidden" data-cv="quick" aria-label="Быстрый режим">
+      <div class="cv-quick">
+        <div id="cvQuickDrop" class="cv-drop cv-drop-large" tabindex="0" role="button" aria-label="Перетащите один файл">
+          <svg class="ui-icon cv-drop-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4m0 0-4 4m4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
+          <strong>Перетащите один файл</strong>
+          <span>Результат появится рядом с ним, в папке «имя-spritelab»</span>
+          <div class="cv-drop-actions"><button id="cvQuickPick" type="button">Выбрать файл</button></div>
+        </div>
+        <div class="cv-quick-options">
+          <label class="cv-check"><input id="cvQuickBackground" type="checkbox" checked /> Убрать фон</label>
+          <label class="cv-check"><input id="cvQuickAtlas" type="checkbox" checked /> Собрать атлас, если кадров несколько</label>
+        </div>
+        <div id="cvQuickStatus" class="cv-card cv-quick-status hidden" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section id="queueView" class="cv-view hidden" data-cv="queue" aria-label="Очередь и наблюдение">
+      <div class="cv-column cv-wide">
+        <div class="cv-row-head"><span class="cv-kicker">Пакетная очередь</span>
+          <div class="cv-row-actions"><button id="cvQueuePause" type="button">Пауза</button><button id="cvQueueResume" type="button" class="hidden">Продолжить</button><button id="cvQueueClear" type="button">Убрать завершённые</button></div>
+        </div>
+        <p id="cvQueueSummary" class="cv-path"></p>
+        <ul id="cvQueueList" class="cv-queue"><li class="cv-empty">Очередь пуста. Перетащите файлы на экран «Конвейер» и нажмите «Добавить в очередь».</li></ul>
+      </div>
+      <div class="cv-column">
+        <div class="cv-card">
+          <span class="cv-kicker">Папка наблюдения</span>
+          <p id="cvWatchState" class="cv-path">Не настроена</p>
+          <label class="cv-field"><span>Пресет для новых файлов</span><select id="cvWatchPreset"></select></label>
+          <button id="cvWatchPick" class="cv-primary" type="button">Выбрать папку</button>
+          <button id="cvWatchStop" type="button" class="hidden">Остановить наблюдение</button>
+          <p class="cv-hint">Новые файлы попадают в очередь, когда запись завершена. Результат сохраняется в «SpriteLab-out» внутри папки; эта папка не отслеживается.</p>
+        </div>
+      </div>
+    </section>
 
     <main id="appShell" class="app-shell" aria-busy="false">
       <section class="control-deck">
@@ -1372,5 +1459,6 @@
     <script src="./shell-motion.js"></script>
     <script src="./shell-art.js"></script>
     <script src="./user-profile.js"></script>
+    <script src="./conveyor.js"></script>
   </body>
 </html>

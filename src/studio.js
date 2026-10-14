@@ -874,6 +874,7 @@ function setDropOverlay(visible) {
 
 document.addEventListener("dragenter", (event) => {
   if (!dragHasFiles(event) || studioModalOpen()) return;
+  if (document.body.dataset.view && document.body.dataset.view !== "advanced") { event.preventDefault(); return; }
   event.preventDefault();
   windowDragDepth += 1;
   setDropOverlay(true);
@@ -890,6 +891,8 @@ document.addEventListener("dragleave", (event) => {
 });
 document.addEventListener("drop", async (event) => {
   if (!dragHasFiles(event)) return;
+  // The "Конвейер" views own drops; this handler serves the "Дополнительно" workspace.
+  if (document.body.dataset.view && document.body.dataset.view !== "advanced") return;
   event.preventDefault();
   windowDragDepth = 0;
   setDropOverlay(false);

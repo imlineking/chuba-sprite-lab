@@ -1,0 +1,80 @@
+/* "Конвейер" views. Grok look: rounded corners, blue and grey only. */
+:root { --cv-blue: #267dff; --cv-blue-2: #4f95ff; }
+body:not([data-view="advanced"]) #appShell { display: none !important; }
+body[data-view="advanced"] .cv-view { display: none !important; }
+.view-switch { display: flex; gap: 6px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.view-switch button { padding: 8px 16px; border-radius: 999px !important; border: 1px solid transparent; background: transparent; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.view-switch button:hover { color: var(--text); background: var(--panel-2); }
+.view-switch button[aria-selected="true"] { color: #fff; background: var(--cv-blue); }
+.cv-badge { min-width: 20px; padding: 1px 7px; border-radius: 999px; background: rgba(255,255,255,.18); font-size: 12px; }
+.view-switch button:not([aria-selected="true"]) .cv-badge { background: var(--line-bright); color: var(--text); }
+.cv-view { display: grid; grid-template-columns: minmax(320px, 1.15fr) minmax(280px, 1fr) minmax(260px, .85fr); gap: 16px; padding: 16px; min-height: 0; flex: 1; overflow: auto; align-content: start; }
+#queueView { grid-template-columns: minmax(420px, 1.6fr) minmax(280px, 1fr); }
+#quickView { grid-template-columns: 1fr; justify-items: center; }
+.cv-column { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.cv-card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.cv-kicker { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.cv-drop { border: 1.5px dashed var(--line-bright); border-radius: 20px; padding: 28px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; background: var(--panel); color: var(--text); cursor: pointer; transition: border-color .15s, background .15s; }
+.cv-drop span { color: var(--muted); font-size: 13px; max-width: 360px; }
+.cv-drop.dragging, .cv-drop:hover { border-color: var(--cv-blue); background: color-mix(in srgb, var(--cv-blue) 8%, var(--panel)); }
+.cv-drop-large { width: min(640px, 100%); padding: 56px 24px; }
+.cv-drop-icon { width: 34px; height: 34px; stroke: var(--cv-blue); fill: none; stroke-width: 1.6; }
+.cv-drop-actions { display: flex; gap: 8px; margin-top: 6px; }
+.cv-view button:not(.cv-tool):not([role="radio"]) { padding: 9px 14px; border-radius: 12px; border: 1px solid var(--line-bright); background: var(--panel-2); color: var(--text); font: inherit; cursor: pointer; }
+.cv-view button:disabled { opacity: .45; cursor: default; }
+.cv-view button.cv-primary:not(.cv-tool):not([role="radio"]) { background: var(--cv-blue); border-color: var(--cv-blue); color: #fff; font-weight: 700; padding: 12px 16px; font-size: 15px; }
+.cv-view button.cv-primary:not(.cv-tool):not([role="radio"]):hover:not(:disabled) { background: var(--cv-blue-2); }
+.cv-type-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.cv-type-head strong { font-size: 18px; }
+.cv-chip-muted { padding: 2px 9px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.cv-file-name { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.cv-warnings { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.cv-warnings li { padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--cv-blue) 10%, var(--panel)); color: var(--text); font-size: 13px; }
+.cv-unsupported { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line-bright); background: var(--panel-2); color: var(--text); line-height: 1.45; }
+.cv-tool-groups { display: grid; gap: 10px; }
+.cv-tool-group { display: grid; gap: 6px; }
+.cv-tool-group > span { font-size: 12px; color: var(--muted); }
+.cv-tool-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.cv-tool { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line-bright); background: var(--panel-2); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+.cv-tool:hover { border-color: var(--cv-blue); color: #fff; background: color-mix(in srgb, var(--cv-blue) 35%, var(--panel-2)); }
+.cv-hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.cv-stages { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: stage; }
+.cv-stage { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 12px; padding: 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--panel); }
+.cv-stage-num { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--panel-2); border: 1px solid var(--line-bright); color: var(--muted); font-weight: 700; }
+.cv-stage strong { display: block; }
+.cv-stage small { color: var(--muted); }
+.cv-stage-status { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--panel-2); color: var(--muted); white-space: nowrap; }
+.cv-stage[data-status="skipped"] { opacity: .5; }
+.cv-stage[data-status="running"] { border-color: var(--cv-blue); }
+.cv-stage[data-status="running"] .cv-stage-num { border-color: var(--cv-blue); color: var(--cv-blue); }
+.cv-stage[data-status="done"] .cv-stage-num { background: var(--cv-blue); border-color: var(--cv-blue); color: #fff; }
+.cv-stage[data-status="done"] .cv-stage-status { color: #fff; background: color-mix(in srgb, var(--cv-blue) 55%, var(--panel-2)); }
+.cv-stage[data-status="failed"] { border-color: var(--line-bright); background: var(--panel-2); }
+.cv-stage[data-status="failed"] .cv-stage-status { color: var(--text); background: var(--line-bright); }
+.cv-field { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+.cv-field select { padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line-bright); background: var(--panel-2); color: var(--text); font: inherit; }
+.cv-segmented { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; gap: 3px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); }
+.cv-segmented button { padding: 7px 8px; border-radius: 9px; border: 0; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+.cv-segmented button.selected { background: var(--cv-blue); color: #fff; }
+.cv-path { margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.cv-details summary { cursor: pointer; color: var(--text); font-weight: 600; }
+.cv-preset-info { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; color: var(--muted); }
+.cv-preset-info b { color: var(--text); font-weight: 500; }
+.cv-result { font-size: 13px; }
+.cv-result strong { font-size: 15px; }
+.cv-quick { width: min(680px, 100%); display: grid; gap: 14px; justify-items: center; padding-top: 24px; }
+.cv-quick-options { display: flex; gap: 18px; color: var(--muted); }
+.cv-check { display: inline-flex; gap: 8px; align-items: center; }
+.cv-quick-status { width: 100%; }
+.cv-row-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.cv-row-actions { display: flex; gap: 8px; }
+.cv-queue { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cv-queue li { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); }
+.cv-queue li.cv-empty { display: block; color: var(--muted); text-align: center; padding: 28px; border-style: dashed; }
+.cv-queue .cv-q-name { overflow-wrap: anywhere; }
+.cv-queue .cv-q-name small { display: block; color: var(--muted); }
+.cv-queue li[data-status="running"] { border-color: var(--cv-blue); }
+.cv-queue li[data-status="done"] .cv-stage-status { color: #fff; background: color-mix(in srgb, var(--cv-blue) 55%, var(--panel-2)); }
+html[data-theme="light"] .view-switch button[aria-selected="true"], html[data-theme="light"] .cv-segmented button.selected { color: #fff; }
+body { grid-template-rows: 44px auto minmax(0, 1fr) 40px; grid-template-columns: minmax(0, 1fr); }
+.cv-view input[type="checkbox"] { accent-color: var(--cv-blue); }

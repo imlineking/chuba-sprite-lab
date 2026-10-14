@@ -8,6 +8,10 @@ import { importSheetManifest, matchSheetFrameNames, readSheetFrameRects } from "
 import sharp from 'sharp';
 import { extractAseprite } from './aseprite-import.mjs';
 import { hasAnimatedPNG, readAnimatedImage } from './animated-images.mjs';
+import { detectFile } from './input-types.mjs';
+
+// GIF / APNG / animated WebP recognised by magic bytes even when the extension lies.
+async function animatedByContent(file){try{const stat=await fs.stat(file);if(!stat.isFile())return false;return(await detectFile(file)).type==='animated-image';}catch{return false;}}
 
 // Describing a source is shared by the desktop window and the command line, so both
 // accept exactly the same inputs and produce exactly the same descriptor. The
@@ -22,7 +26,7 @@ export async function describePaths(appRoot, kind, paths) {
     await finishSheetImport(directory);const source=await inspectSource({kind:'frames',paths:image.framePaths,appRoot});
     return{...source,title:path.basename(paths[0]),animatedImport:true,maskPrepared:true,frameDocuments:image.frameDocuments,frameMetadata:Object.fromEntries(image.durations.map((durationMs,i)=>[i,{durationMs,tag:image.tags.find(t=>i>=t.from&&i<=t.to)?.name}])),importedAnimations:image.tags,importedMetadata:{asepriteTags:image.tags,asepriteSlices:image.slices},sourceIssues:image.warnings.map(message=>({code:'aseprite-extension',message})),previewUrl:source.previewPath?pathToFileURL(source.previewPath).href:null,sampleUrls:(source.samplePaths||[]).map(file=>pathToFileURL(file).href),detail:`${image.durations.length} кадров · слои · Aseprite`,recommendations:{...source.recommendations,keyMode:'alpha'}};
   }
-  if(paths.length===1&&(path.extname(paths[0]).toLowerCase()==='.gif'||await hasAnimatedPNG(paths[0]))){
+  if(paths.length===1&&(path.extname(paths[0]).toLowerCase()==='.gif'||await hasAnimatedPNG(paths[0])||await animatedByContent(paths[0]))){
     const image=await readAnimatedImage(paths[0]),directory=await makeTempWorkspace('chuba-animated-image-'),framePaths=[];
     for(const [index,frame]of image.frames.entries()){const file=path.join(directory,String(index).padStart(4,'0')+'.png');await sharp(frame.pixels,{raw:{width:image.width,height:image.height,channels:4}}).png().toFile(file);framePaths.push(file);}
     await finishSheetImport(directory);const source=await inspectSource({kind:'frames',paths:framePaths,appRoot});

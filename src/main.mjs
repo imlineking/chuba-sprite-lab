@@ -34,6 +34,7 @@ import { reviewAtlas, applyFix, renderPreview, validateCriticConfig } from "./cr
 import { sharedRuntime, stopSharedRuntime } from "./critic/llm-runtime.mjs";
 app.on("before-quit", () => stopSharedRuntime());
 import { readProfile } from "./build-profile.mjs";
+import { createConveyorStages, registerConveyorIpc } from "./conveyor-main.mjs";
 import { formatFeedbackDraft } from "./feedback.mjs";
 import * as editorSession from "./editor-session.mjs";
 import { installedFonts } from './windows-fonts.mjs';
@@ -1287,6 +1288,15 @@ ipcMain.handle("critic:accept-anyway", async (_event, { output, review } = {}) =
   await fs.writeFile(path.join(path.resolve(output), "review.json"), `${JSON.stringify(accepted, null, 2)}\n`);
   return accepted;
 });
+
+// "Конвейер": one window, type-aware tools, "Сделать всё", queue and watch folder.
+const conveyor = registerConveyorIpc({
+  ipcMain, userData: app.getPath("userData"), getWindow: () => mainWindow, isBusy: () => Boolean(activeJob),
+  chooseDirectory: async (title) => { const r = await interfaceDialog("showOpenDialog", mainWindow, { title, properties: ["openDirectory", "createDirectory"] }); return r.canceled || !r.filePaths.length ? null : r.filePaths[0]; },
+  chooseFiles: async (title) => { const r = await interfaceDialog("showOpenDialog", mainWindow, { title, properties: ["openFile", "multiSelections"] }); return r.canceled ? [] : r.filePaths; },
+  stages: createConveyorStages({ appRoot, sharp, describePaths, describeSpriteSheet, executeProcessing, buildAtlas, reviewAtlas, runtime: criticRuntime, modelsDirectory, onProgress: (progress) => mainWindow?.webContents.send("sprites:progress", progress) }),
+});
+app.on("before-quit", () => conveyor.stopWatch());
 
 ipcMain.handle("app:info", () => ({
   version: app.getVersion(),
