@@ -1,23 +1,27 @@
 name: Verify
 
 on:
+  pull_request:
   push:
     branches: [main]
-  pull_request:
+
+permissions:
+  contents: read
 
 jobs:
-  test:
+  verify:
     runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      # Tests run under node --test and never load Electron; skip the binary download on npm ci.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # No engines/.nvmrc in repo; electron@44.4.5 requires node >= 22.12.0
+          node-version: "22"
           cache: npm
-      - name: Ensure FFmpeg is available
-        shell: pwsh
-        run: if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg --no-progress -y }
       - run: npm ci
-      - run: npm run prepare:vendor
-      - run: npm run prepare:ai
-      - run: npm run verify
+      - run: npm run lint
+      - run: npm test
