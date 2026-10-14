@@ -151,7 +151,7 @@ async function updateCopilotGuide(view = copilotState.conveyor) {
     else {
       const video = copilotState.videoFrame || {};
       const name = (state.source?.paths?.[0] || video.video || '').split(/[\\/]/).pop();
-      copilotState.guide = copilotGuideModule.planStudioGuide({ source: state.source, name, frame: video.frame, last: video.last, editors: video.editors || [] });
+      copilotState.guide = copilotGuideModule.planStudioGuide({ source: state.source, name, frame: video.frame, last: video.last, editor: video.editor || null });
     }
   } catch (error) { copilotState.guide = null; copilotReportError(error, 'analysis'); }
   renderCopilot();

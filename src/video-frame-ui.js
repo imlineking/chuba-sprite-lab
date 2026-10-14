@@ -6,8 +6,8 @@
   const api = window.spriteLab ? window.spriteLab.videoFrame : null;
   if (!api) return;
   const q = (s) => document.querySelector(s);
-  const vf = { video: null, info: null, frame: null, last: null, editors: [] };
-  const emit = () => document.dispatchEvent(new CustomEvent("spriteLab:video-frame", { detail: { video: vf.video, frame: vf.frame, last: vf.last, editors: vf.editors } }));
+  const vf = { video: null, info: null, frame: null, last: null, editors: [], current: null };
+  const emit = () => document.dispatchEvent(new CustomEvent("spriteLab:video-frame", { detail: { video: vf.video, frame: vf.frame, last: vf.last, editor: vf.editors.find((e) => e.id === vf.current) || null } }));
   const currentVideo = () => (typeof state !== "undefined" && state.source?.kind === "video" ? state.source.paths?.[0] : null) || vf.video;
   const fps = () => vf.info?.fps || 25;
   const fail = (error, hint) => { vf.last = { error: error.message || String(error), hint }; emit(); };
@@ -55,18 +55,18 @@
         const result = await window.spriteLab.conveyor.run({ paths: [video], quick: true, presetId: "quick", quickOptions: { background: false, atlas: arg === "as-is" } });
         vf.last = result.ok ? { kind: "exported", index: 0, path: result.outputDir } : { error: result.error }; if (result.ok) vf.last.say = arg; emit(); return;
       }
-      if (arg === "edit-internal") {
+      if (arg === "change-editor") { await chooseEditor(); return; }
+      if (arg === "open-editor") {
         const frame = await needFrame(); if (!frame) return;
-        const source = await window.spriteLab.conveyor.openInAdvanced([frame.path]);
-        vf.frame = { ...frame, editor: "sprite-lab" }; if (source && typeof setSource === "function") setSource(source);
-        if (typeof setTab === "function") setTab("process"); emit(); return;
-      }
-      if (arg === "edit-external") {
-        const frame = await needFrame(); if (!frame) return;
-        const editor = extra || "system"; const entry = vf.editors.find((e) => e.id === editor);
-        if (editor !== "system" && !entry?.configured) { const chosen = await api.chooseEditor(editor); if (!chosen) return; vf.editors = (await api.editors()).editors; }
-        const opened = await api.openExternal({ path: frame.path, editor });
-        vf.frame = { ...frame, editor, editorLabel: entry?.label || "программы", savedAt: null }; vf.last = opened.note ? { hint: opened.note } : null; emit(); return;
+        const editor = vf.current || await chooseEditor(); if (!editor) return;
+        if (editor === "sprite-lab") {
+          const source = await window.spriteLab.conveyor.openInAdvanced([frame.path]);
+          vf.frame = { ...frame, editor }; if (source && typeof setSource === "function") setSource(source);
+          if (typeof setTab === "function") setTab("process"); emit(); return;
+        }
+        const entry = vf.editors.find((e) => e.id === editor);
+        await api.openExternal({ path: frame.path, editor });
+        vf.frame = { ...frame, editor, editorLabel: entry?.label || "программы", savedAt: null }; vf.last = null; emit(); return;
       }
       if (arg === "bake") {
         const frame = await needFrame(); if (!frame) return;
@@ -85,6 +85,23 @@
   }
 
   api.onSaved((saved) => { if (vf.frame && saved.path === vf.frame.path) { vf.frame = { ...vf.frame, savedAt: saved.modifiedAt, url: saved.url }; emit(); } });
-  api.editors().then((r) => { vf.editors = r.editors; emit(); }).catch(() => {});
-  window.videoFrameUI = { act, openPicker, state: vf };
+  // «Открыть в редакторе»: the first click (or «сменить редактор») asks which program; remembered in the main process.
+  function chooseEditor() {
+    return new Promise((resolve) => {
+      const modal = q("#editorChoiceModal"); const list = q("#editorChoiceList"); list.replaceChildren();
+      const close = (value) => { modal.classList.add("hidden"); resolve(value); };
+      for (const e of vf.editors) {
+        const b = document.createElement("button"); b.type = "button"; b.className = `button ${e.id === vf.current ? "primary" : "secondary"} editor-choice`;
+        b.textContent = e.label; const small = document.createElement("small");
+        small.textContent = e.builtin ? "Окно Sprite Lab, вкладка «Обработка»" : e.id === "system" ? "Как двойной щелчок по PNG" : e.configured ? "Путь уже указан" : "Укажу, где находится программа";
+        b.append(small);
+        b.onclick = async () => { try { const chosen = await api.chooseEditor(e.id); if (!chosen) return; const r = await api.editors(); vf.editors = r.editors; vf.current = r.current; emit(); close(vf.current); } catch (error) { fail(error); close(null); } };
+        list.append(b);
+      }
+      q("#editorChoiceCancel").onclick = () => close(null);
+      modal.classList.remove("hidden");
+    });
+  }
+  api.editors().then((r) => { vf.editors = r.editors; vf.current = r.current; emit(); }).catch(() => {});
+  window.videoFrameUI = { act, openPicker, chooseEditor, state: vf };
 })();

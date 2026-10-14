@@ -27,3 +27,5 @@ header button { border:0; background:none; color:var(--muted); padding:3px 5px; 
 .planner-control select { min-height:38px; border:1px solid var(--line); border-radius:8px; padding:8px; background:var(--paper); color:var(--ink); font:inherit; }
 .planner-control small { color:var(--muted); line-height:1.5; }
 .assistant-honest { margin: 0; padding: 10px 12px; border-left: 2px solid var(--accent); font-size: 12px; line-height: 1.5; color: var(--ink); }
+.choice .choice-link { display: inline-block; margin: 6px 0 0; padding: 0; border: 0; background: none; color: var(--muted); font-size: 11px; text-decoration: underline; cursor: pointer; }
+.choice .choice-link:hover { color: var(--ink); }

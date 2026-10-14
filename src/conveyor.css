@@ -69,3 +69,7 @@ body:not([data-view="advanced"]) #conveyorShell { display: grid; }
 .video-frame-scrub { display: grid; grid-template-columns: 1fr 110px; gap: 6px 12px; align-items: end; }
 .video-frame-scrub input[type="range"] { accent-color: var(--orange); width: 100%; }
 .video-frame-scrub small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+.editor-choice-card { width: min(480px, 100%); }
+.editor-choice-list { display: grid; gap: 8px; margin: 12px 0; }
+.editor-choice { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; min-height: 48px; text-align: left; }
+.editor-choice small { color: var(--muted); font-size: 11px; font-weight: 400; }

@@ -36,6 +36,8 @@ test("external editors are launched through an injected spawner (never a real ap
   assert.equal(shellPath, "/tmp/f.png");
   assert.throws(() => vf.editorLaunch({ editor: "photoshop", file: "x" }), /Photoshop/);
   assert.throws(() => vf.editorLaunch({ editor: "evil", file: "x" }), /Неизвестный/);
+  assert.throws(() => vf.editorLaunch({ editor: "sprite-lab", file: "x" }), /Встроенный/);
+  assert.ok(vf.externalEditors["sprite-lab"].builtin, "built-in editor is one of the choices");
 });
 
 test("save watcher fires once per completed write", async () => {

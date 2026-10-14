@@ -22,7 +22,10 @@
     if (state.guide) {
       // Conveyor / quick / queue: what to press next, offered as chips in the same cloud.
       if (state.guide.honest) { const note = document.createElement('p'); note.className = 'assistant-honest'; note.textContent = state.guide.honest; choices.append(note); }
-      (state.guide.chips || []).slice(0, 7).forEach(chip => button(chip.title, chip.detail, () => command('conveyor', chip.id)));
+      (state.guide.chips || []).slice(0, 7).forEach(chip => {
+        button(chip.title, chip.detail, () => command('conveyor', chip.id));
+        if (chip.secondary) { const link = document.createElement('span'); link.className = 'choice-link'; link.setAttribute('role', 'button'); link.tabIndex = 0; link.textContent = chip.secondary.title; link.addEventListener('click', event => { event.stopPropagation(); if (!state.busy) command('conveyor', chip.secondary.id); }); link.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); link.click(); } }); choices.lastElementChild.append(link); }
+      });
     } else (state.scenarios || []).slice(0,3).forEach(item => {
       const row = document.createElement('div'); row.className = 'scenario';
       const title = document.createElement('strong'); title.textContent = item.title;
@@ -49,10 +52,11 @@
       models.append(select, info); choices.append(models);
       button('Сравнить два плана', 'Текущие файлы · без применения правок', () => command('compare-planners', 'compare'));
       [['clipping','Исправить обрезание'],['cutout','Вырезать объект'],['atlas','Собрать атлас']].forEach(([id,title])=>button(title,'Перейти к нужному сценарию',()=>command('quick',id)));
-      button('Конвейер · Сделать всё', 'Нарезка, фон, атлас, Приёмка и экспорт за один запуск', () => command('conveyor', 'view:conveyor'));
-      button('Быстрый режим', 'Один файл, результат рядом с ним', () => command('conveyor', 'view:quick'));
-      button('Очередь и наблюдение', 'Много файлов или папка, которая пополняется', () => command('conveyor', 'view:queue'));
-      button('Приёмка атласа', 'Алгоритмы + встроенная Qwen · вердикт и правки', () => command('review', 'open'));
+      const guideIds = new Set((state.guide?.chips || []).map(chip => chip.id));
+      if (!guideIds.has('cv:run') && !guideIds.has('run')) button('Конвейер · Сделать всё', 'Нарезка, фон, атлас, Приёмка и экспорт за один запуск', () => command('conveyor', 'view:conveyor'));
+      if (!guideIds.has('view:quick')) button('Быстрый режим', 'Один файл, результат рядом с ним', () => command('conveyor', 'view:quick'));
+      if (!guideIds.has('view:queue')) button('Очередь и наблюдение', 'Много файлов или папка, которая пополняется', () => command('conveyor', 'view:queue'));
+      if (!guideIds.has('review')) button('Приёмка атласа', 'Алгоритмы + встроенная Qwen · вердикт и правки', () => command('review', 'open'));
       for (const task of state.tasks || []) {
         const row=document.createElement('div'); row.className='group'; const title=document.createElement('span'); title.textContent=task.title; row.append(title);
         for (const approach of ['auto','manual']) { const control=document.createElement('button'); control.textContent=approach==='auto'?'Авто':'Вручную'; control.disabled=Boolean(state.busy); control.onclick=()=>command('task',task.id,approach); row.append(control); }

@@ -8,7 +8,7 @@ import * as vf from "./video-frames.mjs";
 export function registerVideoFrameIpc({ ipcMain, dialog, shell, appRoot, userData, workRoot, resolveBinary, keyFrame, isMain, send, spawnFn }) {
   const prefsPath = () => path.join(userData(), "external-editors.json");
   const watchers = new Map();
-  const readPrefs = async () => { try { return JSON.parse(await fs.readFile(prefsPath(), "utf8")); } catch { return { editor: "system", paths: {} }; } };
+  const readPrefs = async () => { try { return JSON.parse(await fs.readFile(prefsPath(), "utf8")); } catch { return { editor: null, paths: {} }; } };
   const guard = (event) => { if (!isMain(event)) throw new Error("Недопустимый отправитель."); };
   const ffmpeg = () => resolveBinary("ffmpeg", appRoot);
   const asVideo = async (p) => { const v = path.resolve(String(p || "")); await fs.access(v); return v; };
@@ -23,12 +23,12 @@ export function registerVideoFrameIpc({ ipcMain, dialog, shell, appRoot, userDat
     const stat = await fs.stat(out);
     return { ...frame, url: pathToFileURL(out).href, modifiedAt: stat.mtimeMs };
   });
-  ipcMain.handle("video-frame:editors", async (event) => { guard(event); const prefs = await readPrefs(); return { editors: Object.entries(vf.externalEditors).map(([id, e]) => ({ id, ...e, configured: id === "system" || Boolean(prefs.paths?.[id]) })), current: prefs.editor || "system" }; });
+  ipcMain.handle("video-frame:editors", async (event) => { guard(event); const prefs = await readPrefs(); const current = prefs.editor && vf.externalEditors[prefs.editor] && (prefs.editor === "system" || vf.externalEditors[prefs.editor].builtin || prefs.paths?.[prefs.editor]) ? prefs.editor : null; return { current, editors: Object.entries(vf.externalEditors).map(([id, e]) => ({ id, ...e, configured: id === "system" || Boolean(e.builtin) || Boolean(prefs.paths?.[id]) })) }; });
   ipcMain.handle("video-frame:choose-editor", async (event, { editor } = {}) => {
     guard(event);
     if (!vf.externalEditors[editor]) throw new Error("Неизвестный редактор.");
     const prefs = await readPrefs(); prefs.paths ||= {};
-    if (editor !== "system") {
+    if (editor !== "system" && !vf.externalEditors[editor].builtin) {
       const pick = await dialog.showOpenDialog({ title: `Где находится ${vf.externalEditors[editor].exeHint || "программа"}?`, properties: ["openFile"], filters: [{ name: "Программа", extensions: ["exe", "app", "*"] }] });
       if (pick.canceled || !pick.filePaths[0]) return null;
       prefs.paths[editor] = pick.filePaths[0];

@@ -5,6 +5,12 @@
 
 import { capabilitiesFor } from "./capabilities.mjs";
 
+// Several chips that do the same thing collapse into one (same id = same action).
+export function dedupeChips(chips) {
+  const seen = new Set();
+  return chips.filter((c) => (seen.has(c.id) ? false : seen.add(c.id)));
+}
+
 const fixable = new Set(["padding", "extrude", "maxSize", "background"]);
 // Critic fixes that need a human eye map to the tool where they are finished by hand.
 const manualTool = { slice: "slice-sheet", trim: "align-frames", pivot: "align-frames", anchor: "align-frames", order: "pixel-editor", sortBy: "pixel-editor" };
@@ -39,6 +45,11 @@ function manualFor(fix, allowed) {
 const describeFix = (f) => [f.padding != null && `отступ ${f.padding}px`, f.extrude != null && `экструзия ${f.extrude}px`, f.maxSize != null && `страница ${f.maxSize}px`, f.background && "снова убрать фон"].filter(Boolean).join(", ");
 
 export function planConveyorGuide(view = {}) {
+  const guide = planConveyorGuideRaw(view);
+  return { ...guide, chips: dedupeChips(guide.chips) };
+}
+
+function planConveyorGuideRaw(view = {}) {
   const { mode = "conveyor", capabilities: caps = null, detection = null, preset = null, presets = [], result = null, queue = null, watch = null, busy = false, quick = null } = view;
   const chips = []; let say = ""; let honest = null;
   const allowed = new Set((caps?.tools || []).map((t) => t.id));
@@ -147,7 +158,7 @@ const videoChips = [
   ["cv:run", "do-all", "Сделать всё", "Нарезка, фон, атлас, Приёмка, экспорт"],
 ];
 
-export function planStudioGuide({ source = null, name = "", frame = null, last = null, editors = [] } = {}) {
+export function planStudioGuide({ source = null, name = "", frame = null, last = null, editor = null } = {}) {
   const type = studioType(source);
   if (type !== "video" && !frame && !last) return null; // other types keep the original copilot scenarios
   const caps = capabilitiesFor("video");
@@ -160,17 +171,17 @@ export function planStudioGuide({ source = null, name = "", frame = null, last =
   else if (last?.kind === "exported") { say = `Кадр ${last.index + 1} сохранён как есть: ${last.path}.`; chips.push({ id: "vf:reveal", tool: "export-png", title: "Показать в папке", detail: last.path }); }
   if (frame) {
     say ||= frame.savedAt ? `Вижу сохранение кадра ${frame.index + 1}${frame.editor && frame.editor !== "sprite-lab" ? ` из ${frame.editorLabel || frame.editor}` : ""}. Вшить его обратно в видео?` : `Кадр ${frame.index + 1} вынут. Что с ним сделать?`;
-    chips.push(...keep([
-      ["vf:bake", "split-frames", "Вшить кадр обратно в видео", "Перекодирую, fps и звук сохраню"],
-      ["vf:edit-internal", "pixel-editor", "Редактировать в Sprite Lab", "Встроенный редактор кадра"],
-    ]));
-    for (const e of editors.filter((x) => x.id !== "system")) if (allowed.has("pixel-editor")) chips.push({ id: `vf:edit-external:${e.id}`, tool: "pixel-editor", title: e.id === "custom" ? "Открыть в другой программе" : `Открыть в ${e.label}`, detail: e.configured ? "Слежу за сохранением и заберу кадр" : "Сначала укажу, где программа" });
-    if (allowed.has("pixel-editor")) chips.push({ id: "vf:edit-external:system", tool: "pixel-editor", title: "Открыть программой по умолчанию", detail: "Как двойной щелчок по PNG" });
+    chips.push(...keep([["vf:bake", "split-frames", "Вшить кадр обратно в видео", "Перекодирую, fps и звук сохраню"]]));
+    // One chip for every editor (Sprite Lab, default app, Photoshop, Figma, other): the first
+    // click asks which program and remembers it; «сменить редактор» is a small secondary link.
+    if (allowed.has("pixel-editor")) chips.push({ id: "vf:open-editor", tool: "pixel-editor", title: "Открыть в редакторе",
+      detail: editor ? `${editor.label} · слежу за сохранением и заберу кадр` : "Спрошу, в какой программе, и запомню",
+      ...(editor ? { secondary: { id: "vf:change-editor", title: "сменить редактор" } } : {}) });
     chips.push(...keep([["vf:cutout", "remove-background", "Сохранить без фона", "PNG в папку проекта"], ["vf:export-frame", "export-png", "Сохранить как есть", "PNG в папку"], ["vf:pick", "split-frames", "Другой кадр", "Вернуться к ползунку"]]));
-    if (frame.editor === "figma") honest ||= "Figma не открывает PNG с диска как документ: перетащите кадр в Figma и экспортируйте PNG поверх того же файла — я его подхвачу.";
-    return { type: "video", say, chips: chips.slice(0, 9), honest };
+    if ((frame.editor || editor?.id) === "figma") honest ||= "Figma не открывает PNG с диска как документ: перетащите кадр в Figma и экспортируйте PNG поверх того же файла — я его подхвачу.";
+    return { type: "video", say, chips: dedupeChips(chips), honest };
   }
   say ||= `Вижу видео${name ? ` (${name})` : ""}. Что сделать?`;
   chips.push(...keep(videoChips));
-  return { type, say, chips, honest };
+  return { type, say, chips: dedupeChips(chips), honest };
 }

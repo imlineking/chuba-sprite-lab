@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs/promises";
-import { planConveyorGuide, planStudioGuide, autoFixFor, applyFixToPreset, studioType } from "../src/copilot-conveyor.mjs";
+import { planConveyorGuide, planStudioGuide, autoFixFor, applyFixToPreset, studioType, dedupeChips } from "../src/copilot-conveyor.mjs";
 import { capabilitiesFor, hasTool } from "../src/capabilities.mjs";
 
 const preset = { id: "phaser", label: "Phaser", atlas: { formats: ["phaser-hash"], padding: 2, extrude: 1, maxSize: 2048 }, review: true };
@@ -78,19 +78,43 @@ test("studio video: «Вижу видео … Что сделать?» with the 
   for (const c of g.chips) assert.ok(hasTool("video", c.tool), c.tool);
 });
 
-test("studio video: picked frame offers editors, bake-back; reports results honestly", () => {
-  const editors = [{ id: "system", label: "По умолчанию", configured: true }, { id: "photoshop", label: "Photoshop", configured: false }, { id: "figma", label: "Figma", configured: true }];
-  const picked = planStudioGuide({ source: { kind: "video" }, frame: { index: 41 }, editors });
-  assert.match(picked.say, /Кадр 42/);
-  const ids = picked.chips.map((c) => c.id);
-  for (const id of ["vf:bake", "vf:edit-internal", "vf:edit-external:photoshop", "vf:edit-external:figma", "vf:edit-external:system", "vf:cutout"]) assert.ok(ids.includes(id), id);
-  const saved = planStudioGuide({ source: { kind: "video" }, frame: { index: 3, savedAt: 1, editor: "figma", editorLabel: "Figma" }, editors });
-  assert.match(saved.say, /сохранение кадра 4 из Figma/); assert.match(saved.honest, /Figma/);
+test("studio video: picked frame shows ONE editor chip; change link only once a program is remembered", () => {
+  const first = planStudioGuide({ source: { kind: "video" }, frame: { index: 41 } });
+  assert.match(first.say, /Кадр 42/);
+  const editorChips = first.chips.filter((c) => c.tool === "pixel-editor");
+  assert.equal(editorChips.length, 1); assert.equal(editorChips[0].id, "vf:open-editor"); assert.equal(editorChips[0].title, "Открыть в редакторе");
+  assert.match(editorChips[0].detail, /Спрошу/); assert.equal(editorChips[0].secondary, undefined);
+  assert.ok(!first.chips.some((c) => /Photoshop|Figma|по умолчанию|Sprite Lab|edit-external|edit-internal/.test(c.title + c.id)));
+  assert.equal(first.honest, null);
+  for (const id of ["vf:bake", "vf:cutout", "vf:export-frame", "vf:pick"]) assert.ok(first.chips.some((c) => c.id === id), id);
+  const ps = planStudioGuide({ source: { kind: "video" }, frame: { index: 1 }, editor: { id: "photoshop", label: "Photoshop" } });
+  const chip = ps.chips.find((c) => c.id === "vf:open-editor");
+  assert.match(chip.detail, /Photoshop/); assert.deepEqual(chip.secondary, { id: "vf:change-editor", title: "сменить редактор" });
+  assert.equal(ps.honest, null, "Figma note only for Figma");
+  const figma = planStudioGuide({ source: { kind: "video" }, frame: { index: 1 }, editor: { id: "figma", label: "Figma" } });
+  assert.match(figma.honest, /Figma/);
+  const saved = planStudioGuide({ source: { kind: "video" }, frame: { index: 3, savedAt: 1, editor: "figma", editorLabel: "Figma" }, editor: { id: "figma", label: "Figma" } });
+  assert.match(saved.say, /сохранение кадра 4 из Figma/);
   const baked = planStudioGuide({ source: { kind: "video" }, last: { kind: "baked", index: 3, path: "/m/movie-edited.mp4", notes: ["Видео перекодировано."] } });
   assert.match(baked.say, /вшит/); assert.match(baked.honest, /перекодировано/);
-  const empty = planStudioGuide({ source: { kind: "video" }, last: { kind: "cutout", index: 0, path: "/p/a.png", empty: true } });
-  assert.match(empty.honest, /вручную/);
+  assert.match(planStudioGuide({ source: { kind: "video" }, last: { kind: "cutout", index: 0, path: "/p/a.png", empty: true } }).honest, /вручную/);
   assert.match(planStudioGuide({ source: { kind: "video" }, last: { error: "нет ffmpeg" } }).honest, /вручную/);
+});
+
+test("chips that mean the same thing collapse into one", () => {
+  assert.deepEqual(dedupeChips([{ id: "a" }, { id: "b" }, { id: "a" }]).map((c) => c.id), ["a", "b"]);
+  const result = { ok: true, outputDir: "/o", review: { verdict: "needs_fix", issues: [
+    { reason: "Опора прыгает (бег).", fix: { pivot: { x: 0.5, y: 1 } } }, { reason: "Опора прыгает (прыжок).", fix: { anchor: "feet" } } ] } };
+  const g = planConveyorGuide({ mode: "conveyor", capabilities: capabilitiesFor("video"), detection: { paths: ["v.mp4"] }, preset, presets, result });
+  assert.equal(g.chips.filter((c) => c.id === "tool:align-frames").length, 1);
+  for (const guide of [g, planStudioGuide({ source: { kind: "video" } }), planStudioGuide({ source: { kind: "video" }, frame: { index: 0 } })]) {
+    const ids = guide.chips.map((c) => c.id); assert.equal(new Set(ids).size, ids.length);
+  }
+});
+
+test("the companion hides panel extras that duplicate a guide chip and renders the secondary link small", async () => {
+  const companion = await fs.readFile(new URL("../src/companion.js", import.meta.url), "utf8");
+  assert.match(companion, /guideIds\.has\('view:quick'\)/); assert.match(companion, /choice-link/);
 });
 
 test("the companion cloud accepts conveyor/video chips and the review command", async () => {

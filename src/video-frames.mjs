@@ -75,6 +75,7 @@ export const bakedName = (video) => { const p = path.parse(video); return path.j
 
 // External editors. "system" uses the file association; others need the editor's exe.
 export const externalEditors = Object.freeze({
+  "sprite-lab": { label: "Sprite Lab · встроенный редактор", builtin: true },
   system: { label: "Программа по умолчанию" },
   photoshop: { label: "Photoshop", exeHint: "Photoshop.exe" },
   figma: { label: "Figma", exeHint: "Figma.exe", note: "Figma не открывает PNG с диска как документ: перетащите кадр в Figma, затем экспортируйте PNG поверх того же файла." },
@@ -83,6 +84,7 @@ export const externalEditors = Object.freeze({
 
 export function editorLaunch({ editor = "system", exePath = null, file }) {
   if (!externalEditors[editor]) throw new Error("Неизвестный редактор.");
+  if (externalEditors[editor].builtin) throw new Error("Встроенный редактор открывается в окне Sprite Lab.");
   if (editor === "system") return { shell: true, file };
   if (!exePath) throw new Error(`Укажите путь к ${externalEditors[editor].exeHint || "программе"}.`);
   return { command: exePath, args: [file], file };
