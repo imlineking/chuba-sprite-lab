@@ -1,0 +1,67 @@
+{"provider":"cpu","run":"first","ms":35941,"rssMiB":4266}
+{"provider":"cpu","run":"warm-1","ms":33652,"rssMiB":6761}
+{"provider":"cpu","run":"warm-2","ms":32901,"rssMiB":6846}
+{"provider":"cpu","run":"warm-3","ms":34474,"rssMiB":6846}
+2026-10-15 19:43:19.6872997 [W:onnxruntime:, session_state.cc:1397 onnxruntime::VerifyEachNodeIsAssignedToAnEp] Some nodes were not assigned to the preferred execution providers which may or may not have an negative impact on performance. e.g. ORT explicitly assigns shape related ops to CPU to improve perf.
+2026-10-15 19:43:19.6876215 [W:onnxruntime:, session_state.cc:1399 onnxruntime::VerifyEachNodeIsAssignedToAnEp] Rerunning with verbose output on a non-minimal build will show node assignments.
+{"provider":"dml","run":"first","ms":9836,"rssMiB":1631}
+{"provider":"dml","run":"warm-1","ms":4689,"rssMiB":1641}
+{"provider":"dml","run":"warm-2","ms":4493,"rssMiB":1648}
+{"provider":"dml","run":"warm-3","ms":4650,"rssMiB":1656}
+{
+  "startedAt": "2026-10-15T16:40:58.793Z",
+  "input": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\cpu-gpu-compare\\input-white.png",
+  "reference": "C:\\Users\\User\\Pictures\\Chuba\\chuba the game\\public\\images\\enemies\\ordinary-pig-left-rescue-v1\\ordinary-pig-left-rescue-v1\\frames\\0000.png",
+  "sourceSha256": "14c6d6376d6863bf0a8c46f473e68ca06e8e7116dfda603420ff433081308f10",
+  "modelSha256": "b9eec8cc66541c9a55a69986d3b0ca44150cf19ed399f42022ee81edf528f48a",
+  "warmRuns": 3,
+  "method": "Fresh process per provider; clearRenderCache before every preview; first includes model loading; Windows file cache not reset; CPU uses application limit of 2 intra-op threads",
+  "providers": {
+    "cpu": {
+      "requestedProvider": "cpu",
+      "runsMs": [
+        35941,
+        33652,
+        32901,
+        34474
+      ],
+      "actualProvider": "cpu",
+      "sampledPeakRssMiB": 6846,
+      "firstMs": 35941,
+      "warmMedianMs": 33652,
+      "warmAverageMs": 33676,
+      "quality": {
+        "foregroundRecall": 0.9971460518609233,
+        "maskIoU": 0.9963926960074913
+      }
+    },
+    "dml": {
+      "requestedProvider": "dml",
+      "runsMs": [
+        9836,
+        4689,
+        4493,
+        4650
+      ],
+      "actualProvider": "dml",
+      "sampledPeakRssMiB": 1656,
+      "firstMs": 9836,
+      "warmMedianMs": 4650,
+      "warmAverageMs": 4611,
+      "quality": {
+        "foregroundRecall": 0.9971460518609233,
+        "maskIoU": 0.9963926960074913
+      }
+    }
+  },
+  "cpuVsGpu": {
+    "warmSpeedup": 7.236989247311828,
+    "firstSpeedup": 3.654026026840179,
+    "changedAlphaPixels": 0,
+    "totalPixels": 222345,
+    "alphaMeanAbsoluteDifference": 0,
+    "maskIoU": 1
+  },
+  "sourceUnchanged": true,
+  "completedAt": "2026-10-15T16:43:43.165Z"
+}

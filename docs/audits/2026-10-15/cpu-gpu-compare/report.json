@@ -1,0 +1,57 @@
+{
+  "startedAt": "2026-10-15T16:40:58.793Z",
+  "input": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\cpu-gpu-compare\\input-white.png",
+  "reference": "C:\\Users\\User\\Pictures\\Chuba\\chuba the game\\public\\images\\enemies\\ordinary-pig-left-rescue-v1\\ordinary-pig-left-rescue-v1\\frames\\0000.png",
+  "sourceSha256": "14c6d6376d6863bf0a8c46f473e68ca06e8e7116dfda603420ff433081308f10",
+  "modelSha256": "b9eec8cc66541c9a55a69986d3b0ca44150cf19ed399f42022ee81edf528f48a",
+  "warmRuns": 3,
+  "method": "Fresh process per provider; clearRenderCache before every preview; first includes model loading; Windows file cache not reset; CPU uses application limit of 2 intra-op threads",
+  "providers": {
+    "cpu": {
+      "requestedProvider": "cpu",
+      "runsMs": [
+        35941,
+        33652,
+        32901,
+        34474
+      ],
+      "actualProvider": "cpu",
+      "sampledPeakRssMiB": 6846,
+      "firstMs": 35941,
+      "warmMedianMs": 33652,
+      "warmAverageMs": 33676,
+      "quality": {
+        "foregroundRecall": 0.9971460518609233,
+        "maskIoU": 0.9963926960074913
+      }
+    },
+    "dml": {
+      "requestedProvider": "dml",
+      "runsMs": [
+        9836,
+        4689,
+        4493,
+        4650
+      ],
+      "actualProvider": "dml",
+      "sampledPeakRssMiB": 1656,
+      "firstMs": 9836,
+      "warmMedianMs": 4650,
+      "warmAverageMs": 4611,
+      "quality": {
+        "foregroundRecall": 0.9971460518609233,
+        "maskIoU": 0.9963926960074913
+      }
+    }
+  },
+  "cpuVsGpu": {
+    "warmSpeedup": 7.236989247311828,
+    "firstSpeedup": 3.654026026840179,
+    "changedAlphaPixels": 0,
+    "totalPixels": 222345,
+    "alphaMeanAbsoluteDifference": 0,
+    "maskIoU": 1
+  },
+  "sourceUnchanged": true,
+  "completedAt": "2026-10-15T16:43:43.165Z"
+}

@@ -1,0 +1,14 @@
+{
+  "requestedProvider": "dml",
+  "runsMs": [
+    9836,
+    4689,
+    4493,
+    4650
+  ],
+  "actualProvider": "dml",
+  "sampledPeakRssMiB": 1656,
+  "firstMs": 9836,
+  "warmMedianMs": 4650,
+  "warmAverageMs": 4611
+}

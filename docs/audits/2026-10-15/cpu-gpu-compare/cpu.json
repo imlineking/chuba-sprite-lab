@@ -1,0 +1,14 @@
+{
+  "requestedProvider": "cpu",
+  "runsMs": [
+    35941,
+    33652,
+    32901,
+    34474
+  ],
+  "actualProvider": "cpu",
+  "sampledPeakRssMiB": 6846,
+  "firstMs": 35941,
+  "warmMedianMs": 33652,
+  "warmAverageMs": 33676
+}
