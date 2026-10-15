@@ -1,0 +1,77 @@
+{
+  "ok": true,
+  "startedAt": "2026-10-15T16:20:25.061Z",
+  "appRoot": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\7697dad7a5d3bf9f2b3f471a\\resources\\app",
+  "checks": [
+    {
+      "name": "sharp",
+      "ok": true
+    },
+    {
+      "name": "ffmpeg",
+      "ok": true,
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\7697dad7a5d3bf9f2b3f471a\\resources\\vendor\\ffmpeg.exe"
+    },
+    {
+      "name": "model",
+      "ok": true,
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\7697dad7a5d3bf9f2b3f471a\\resources\\models\\toonout.onnx"
+    },
+    {
+      "name": "inference",
+      "ok": true,
+      "provider": "dml",
+      "model": "toonout",
+      "inputSize": 1024
+    },
+    {
+      "name": "lama",
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\7697dad7a5d3bf9f2b3f471a\\resources\\models\\lama_fp32.onnx",
+      "bundled": true,
+      "ok": true,
+      "inputSize": 512,
+      "inputName": "image + mask",
+      "output": "output",
+      "outputLength": 786432,
+      "ms": 8106
+    },
+    {
+      "name": "rife",
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\7697dad7a5d3bf9f2b3f471a\\resources\\models\\RIFE_fp32_timestep.onnx",
+      "bundled": true,
+      "ok": true,
+      "inputSize": 32,
+      "inputName": "input + timestep",
+      "output": "output",
+      "outputLength": 3072,
+      "ms": 34
+    },
+    {
+      "name": "real-esrgan",
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\7697dad7a5d3bf9f2b3f471a\\resources\\models\\realesrgan-x4plus.onnx",
+      "bundled": true,
+      "ok": true,
+      "inputSize": 32,
+      "inputName": "input",
+      "output": "output",
+      "outputLength": 49152,
+      "ms": 334
+    },
+    {
+      "name": "depth-anything-v2",
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\7697dad7a5d3bf9f2b3f471a\\resources\\models\\depth-anything-v2-small.onnx",
+      "bundled": true,
+      "ok": true,
+      "inputSize": 518,
+      "inputName": "pixel_values",
+      "output": "predicted_depth",
+      "outputLength": 268324,
+      "ms": 2031
+    }
+  ],
+  "provider": "dml",
+  "model": "toonout",
+  "modelInput": 1024,
+  "userData": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-exe-models",
+  "finishedAt": "2026-10-15T16:21:08.446Z"
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "case": "release-built-info",
+    "ms": 4203,
+    "exit": 0
+  },
+  {
+    "case": "stage5-ui-working-final",
+    "ms": 9181,
+    "exit": 0
+  },
+  {
+    "case": "stage5-ui-playback",
+    "ms": 9512,
+    "exit": 0
+  }
+]

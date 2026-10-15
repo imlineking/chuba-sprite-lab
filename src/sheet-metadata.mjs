@@ -59,7 +59,8 @@ export function normalizeSheetManifest(manifest, defaultImage) {
     if (a.page === b.page && a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height && !(a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height)) throw new Error(`Пересечение кадров ${a.name} и ${b.name}.`);
   }
   const extra = Object.fromEntries(Object.entries(manifest).filter(([key]) => !rootKeys.has(key)));
-  const metaExtra = Object.fromEntries(Object.entries(manifest.meta || {}).filter(([key]) => !["image", "size", "scale", "format", "app", "version", "frameTags", "note"].includes(key)));
+  if (manifest.meta?.animationLoop != null) extra.animationLoop = manifest.meta.animationLoop;
+  const metaExtra = Object.fromEntries(Object.entries(manifest.meta || {}).filter(([key]) => !["image", "size", "scale", "format", "app", "version", "frameTags", "note", "animationLoop"].includes(key)));
   if (Object.keys(metaExtra).length) extra.meta = metaExtra;
   return { pages, frames, animations: manifest.animations || manifest.meta?.frameTags || [], extra, warnings: Object.keys(extra).length || frames.some(f => Object.keys(f.extra).length) ? ["Пользовательские поля JSON сохраняются; другие игровые профили могут их не понимать."] : [] };
 }

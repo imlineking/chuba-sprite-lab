@@ -1,0 +1,32 @@
+[
+  {
+    "exit": 0,
+    "case": "release-built-info",
+    "ms": 2452
+  },
+  {
+    "exit": 0,
+    "case": "stage4-ui",
+    "ms": 4055
+  },
+  {
+    "exit": 0,
+    "case": "stage5-ui-working-final",
+    "ms": 3064
+  },
+  {
+    "exit": 0,
+    "case": "stage5-ui-playback",
+    "ms": 12731
+  },
+  {
+    "exit": 0,
+    "case": "stage5-ui-marks",
+    "ms": 2764
+  },
+  {
+    "exit": 0,
+    "case": "stage3-cancel-ui",
+    "ms": 2592
+  }
+]

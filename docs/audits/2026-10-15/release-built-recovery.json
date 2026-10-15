@@ -1,0 +1,10 @@
+[
+  {
+    "kind": "direct",
+    "exit": 0
+  },
+  {
+    "kind": "queue",
+    "exit": 0
+  }
+]

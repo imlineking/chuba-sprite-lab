@@ -25,6 +25,7 @@ function frameEntry(frame) {
     spriteSourceSize: { ...frame.spriteSourceSize },
     sourceSize: { ...frame.sourceSize },
     pivot: { ...frame.pivot },
+    ...(frame.durationMs > 0 ? { durationMs: frame.durationMs, animation: frame.animation } : {}),
   };
 }
 
@@ -44,11 +45,24 @@ function texturePacker(atlas, { array, suffix }) {
       frames: array ? frames.map((frame) => ({ filename: frame.name, ...frameEntry(frame) })) : Object.fromEntries(frames.map((frame) => [frame.name, frameEntry(frame)])),
       meta: meta(atlas, page, {
         animations: Object.fromEntries(frameTags.map((tag) => [tag.name, tag.frames])),
+        ...(atlas.animationMetadata ? { frameTags: Object.entries(atlas.animationMetadata).map(([name, value]) => ({ ...value, name })) } : {}),
+        ...(atlas.animationLoop != null ? { animationLoop: atlas.animationLoop } : {}),
         ...(atlas.pages.length > 1 ? { related_multi_packs: atlas.pages.map((_, i) => pageFileName(atlas, i, suffix)).filter((_, i) => i !== pageIndex) } : {}),
       }),
     };
     return { file: pageFileName(atlas, pageIndex, suffix), text: `${JSON.stringify(content, null, 2)}\n` };
   });
+}
+
+function animationFrames(atlas, name, list) {
+  const byName = new Map(atlas.frames.map((frame) => [frame.name, frame]));
+  const metadata = atlas.animationMetadata?.[name];
+  const loop = metadata?.loop;
+  const selected = loop ? list.slice(loop.from ?? 0, (loop.to ?? list.length - 1) + 1) : [...list];
+  if (["reverse", "pingpong_reverse"].includes(metadata?.direction)) selected.reverse();
+  const order = loop?.mode === "pingpong" || ["pingpong", "pingpong_reverse"].includes(metadata?.direction)
+    ? [...selected, ...selected.slice(1, -1).reverse()] : selected;
+  return order.map((key) => byName.get(key));
 }
 
 function phaser(atlas, { array }) {
@@ -61,7 +75,16 @@ function phaser(atlas, { array }) {
     }));
     files.push({ file: `${atlas.name}.phaser-multiatlas.json`, text: `${JSON.stringify({ textures, meta: meta(atlas, atlas.pages[0]) }, null, 2)}\n` });
   }
-  const anims = Object.entries(atlas.animations).map(([key, list]) => ({ key, type: "frame", frameRate: atlas.fps || 12, repeat: -1, frames: list.map((frame) => ({ key: atlas.name, frame })) }));
+  const anims = Object.entries(atlas.animations).map(([key, list]) => {
+    const frames = animationFrames(atlas, key, list);
+    const fps = atlas.animationMetadata?.[key]?.fps || atlas.fps || 12;
+    // Phaser adds per-frame duration to its base interval. Keep that interval
+    // no longer than the shortest source frame instead of stretching it.
+    const base = Math.min(1000 / fps, ...frames.map((frame) => frame.durationMs || 1000 / fps));
+    return { key, type: "frame", frameRate: 1000 / base, repeat: atlas.animationLoop > 0 ? atlas.animationLoop - 1 : -1,
+      frames: frames.map((frame) => ({ key: atlas.name, frame: frame.name, ...(frame.durationMs > 0 ? { duration: Math.max(0, frame.durationMs - base) } : {}) })),
+    };
+  });
   files.push({ file: `${atlas.name}.phaser-anims.json`, text: `${JSON.stringify({ anims }, null, 2)}\n` });
   return files;
 }
@@ -83,17 +106,20 @@ function godot(atlas, { spriteFrames }) {
   const subIds = new Map();
   const sub = [];
   const animations = Object.entries(atlas.animations).map(([name, list]) => {
-    const entries = list.map((frameName) => {
-      const frame = byName.get(frameName) ?? byName.get(atlas.aliases?.[frameName]);
+    const fps = atlas.animationMetadata?.[name]?.fps || atlas.fps || 12;
+    const entries = animationFrames(atlas, name, list).map((entry) => {
+      const frame = byName.get(entry.name) ?? byName.get(atlas.aliases?.[entry.name]);
       const key = `${frame.page}:${frame.x}:${frame.y}`;
       if (!subIds.has(key)) {
         const id = `AtlasTexture_${subIds.size}`;
         subIds.set(key, id);
         sub.push(`[sub_resource type="AtlasTexture" id="${id}"]\natlas = ExtResource("${frame.page + 1}_sheet")\n${godotAtlasTextureBody(frame)}`);
       }
-      return `{\n"duration": 1.0,\n"texture": SubResource("${subIds.get(key)}")\n}`;
+      const duration = frame.durationMs > 0 ? round(frame.durationMs * fps / 1000) : "1.0";
+      return `{\n"duration": ${duration},\n"texture": SubResource("${subIds.get(key)}")\n}`;
     });
-    return `{\n"frames": [${entries.join(", ")}],\n"loop": true,\n"name": &"${name.replace(/["\\]/g, "")}",\n"speed": ${(atlas.fps || 12).toFixed(1)}\n}`;
+    const speed = atlas.animationMetadata ? String(fps) : fps.toFixed(1);
+    return `{\n"frames": [${entries.join(", ")}],\n"loop": ${atlas.animationLoop === 1 ? "false" : "true"},\n"name": &"${name.replace(/["\\]/g, "")}",\n"speed": ${speed}\n}`;
   });
   const ext = atlas.pages.map((page, index) => `[ext_resource type="Texture2D" path="res://${page.file}" id="${index + 1}_sheet"]`);
   const text = `[gd_resource type="SpriteFrames" load_steps=${ext.length + sub.length + 1} format=3]\n\n${ext.join("\n")}\n\n${sub.join("\n")}\n[resource]\nanimations = [${animations.join(", ")}]\n`;
@@ -156,8 +182,10 @@ function unityJson(atlas) {
   const content = {
     app: atlas.app || "Chuba Sprite Lab", fps: atlas.fps || 12,
     pages: atlas.pages.map((page) => ({ ...page })),
-    frames: atlas.frames.map((frame) => ({ name: frame.name, page: frame.page, rect: { x: frame.x, y: atlas.pages[frame.page].height - frame.y - frame.h, width: frame.w, height: frame.h }, pivot: { x: round((frame.pivot.x * frame.sourceSize.w - frame.spriteSourceSize.x) / frame.w), y: round(1 - (frame.pivot.y * frame.sourceSize.h - frame.spriteSourceSize.y) / frame.h) } })),
+    frames: atlas.frames.map((frame) => ({ name: frame.name, page: frame.page, rect: { x: frame.x, y: atlas.pages[frame.page].height - frame.y - frame.h, width: frame.w, height: frame.h }, pivot: { x: round((frame.pivot.x * frame.sourceSize.w - frame.spriteSourceSize.x) / frame.w), y: round(1 - (frame.pivot.y * frame.sourceSize.h - frame.spriteSourceSize.y) / frame.h) }, ...(frame.durationMs > 0 ? { durationMs: frame.durationMs } : {}) })),
     animations: atlas.animations,
+    ...(atlas.animationMetadata ? { animationMetadata: atlas.animationMetadata } : {}),
+    ...(atlas.animationLoop != null ? { animationLoop: atlas.animationLoop } : {}),
   };
   return [{ file: `${atlas.name}.unity.json`, text: `${JSON.stringify(content, null, 2)}\n` }];
 }

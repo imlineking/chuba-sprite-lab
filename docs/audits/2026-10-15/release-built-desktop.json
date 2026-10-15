@@ -1,0 +1,103 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "name": "copilot-before-main-import",
+      "ok": true,
+      "text": "Загрузка."
+    },
+    {
+      "name": "native-drag",
+      "ok": true,
+      "suppliedDipCursor": true,
+      "physicalMouseTest": false,
+      "bounds": {
+        "x": 730,
+        "y": 190,
+        "width": 113,
+        "height": 129
+      }
+    },
+    {
+      "name": "no-file-drag",
+      "ok": true
+    },
+    {
+      "name": "persisted-position",
+      "ok": true,
+      "bounds": {
+        "x": 730,
+        "y": 190,
+        "width": 113,
+        "height": 129
+      }
+    },
+    {
+      "name": "independent-of-minimize",
+      "ok": true
+    },
+    {
+      "name": "guided-task-command",
+      "ok": true
+    },
+    {
+      "name": "topmost-after-main-focus",
+      "ok": true
+    },
+    {
+      "name": "animated-loading",
+      "ok": true
+    },
+    {
+      "name": "image-scenarios-in-desktop-bubble",
+      "ok": true,
+      "scenarios": [
+        {
+          "title": "Редактировать изображения",
+          "actions": 2
+        },
+        {
+          "title": "Собрать спрайт-лист",
+          "actions": 2
+        },
+        {
+          "title": "Собрать атлас",
+          "actions": 2
+        }
+      ]
+    },
+    {
+      "name": "bubble-themes-and-fixed-pet",
+      "ok": true,
+      "themeGeometry": [
+        {
+          "width": 346.022705078125,
+          "height": 540.2556762695312,
+          "clipped": []
+        },
+        {
+          "width": 346.022705078125,
+          "height": 540.2556762695312,
+          "clipped": []
+        }
+      ]
+    },
+    {
+      "name": "separate-windows",
+      "ok": true,
+      "petBounds": {
+        "x": 730,
+        "y": 190,
+        "width": 113,
+        "height": 129
+      },
+      "windowBounds": {
+        "x": 522,
+        "y": 243,
+        "width": 1285,
+        "height": 825
+      }
+    }
+  ],
+  "text": "Помощник\nСкрыть\n×\n\nПривет, Dmitriy! Давай начнём работу.\n\nРедактировать изображения\nПравка изображений: обрезка, цвет в выделении и фон; каждый PNG сохраняется отдельно, без анимации и изменения размеров.\nСделать автоматически\nОткрыть инструмент\nСобрать спрайт-лист\nФайлы готовы: собрать регулярный спрайт-лист и JSON без очистки, на прозрачном или выбранном фоне.\nСделать автоматически\nОткрыть инструмент\nСобрать атлас\nФайлы готовы: упаковать атлас MaxRects и JSON; исходные пиксели и альфа сохраняются.\nСделать автоматически\nОткрыть инструмент\nИнструменты и локальные настройки"
+}

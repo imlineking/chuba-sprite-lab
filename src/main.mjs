@@ -1449,6 +1449,9 @@ async function runDesktopProbe() {
     report.checks.push({ name: "guided-task-command", ok: true });
     mainWindow.focus();
     companion.raise();
+    // Win32 applies the topmost change through its message queue. The previous
+    // immediate assertion raced that update when the helper rendered faster.
+    await new Promise(resolve => setTimeout(resolve, 150));
     if (!companion.pet.isAlwaysOnTop() || !companion.bubble.isAlwaysOnTop()) throw new Error("Окна помощника потеряли режим поверх окон.");
     report.checks.push({ name: "topmost-after-main-focus", ok: true });
     companion.state.loading = true; companion.send();

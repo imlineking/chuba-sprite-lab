@@ -33,6 +33,8 @@ async function checked(relative) {
 }
 await fs.rm(await checked(".build"), { recursive: true, force: true });
 
+// Build a directory only as an intermediate. The existing single-file launcher
+// then embeds it with fast compression and reuses its verified extraction cache.
 const builderArgs = [builder, "--win", "--x64", "--dir", "--publish", "never"];
 
 // A prepared local Electron distribution avoids Windows cache rename errors on
@@ -52,9 +54,14 @@ const result = spawnSync(process.execPath, builderArgs, {
 });
 if (result.status !== 0) throw new Error(`electron-builder завершился с кодом ${result.status ?? "unknown"}.`);
 
-const staging = await checked(".build/win-unpacked");
-await fs.access(path.join(staging, "Chuba Sprite Lab.exe"));
-await fs.writeFile(path.join(staging, "START-HERE.txt"), `Chuba Sprite Lab ${packageInfo.version}\n\nЗапуск: Chuba Sprite Lab.exe\nКопируйте на флешку ВСЮ папку portable. Resources и DLL нужны приложению.\n\nВсе ${models.length} поддержанных моделей работают локально. Интернет нужен только для\nпроверки обновлений и внешних сайтов/онлайн-редакторов. Node.js и Python не нужны.\nВнутренние EXE (FFmpeg, Python-runtime Подорожника и компоненты Electron) не являются другими версиями программы.\n`);
+const artifact = await checked(".build/Chuba-Sprite-Lab-portable.exe");
+const packedApp = await checked(".build/win-unpacked");
+const singleFile = spawnSync(process.execPath, [path.join(appRoot, "scripts", "build-single-exe.mjs"), artifact, packedApp], { cwd: appRoot, stdio: "inherit", windowsHide: true });
+if (singleFile.status !== 0) throw new Error(`Однофайловая упаковка завершилась с кодом ${singleFile.status ?? "unknown"}.`);
+await fs.access(artifact);
+const staging = await checked(".build/portable-container");
+await fs.mkdir(staging);
+await fs.rename(artifact, path.join(staging, "Chuba Sprite Lab.exe"));
 assertNoRunningBuild();
 await fs.mkdir(await checked(".build-archive"), { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -76,4 +83,5 @@ const archiveFolder = async (relative, label) => {
 await archiveFolder("portable", "previous-portable");
 await renameWithRetry(staging, await checked("portable"));
 for (const relative of ["dist", "release"]) await archiveFolder(relative, `legacy-${relative}`);
-console.log(`Offline portable folder created:\n${path.join(appRoot, "portable")}\nIncluded models: ${models.length}`);
+const modelFiles = packageInfo.build.extraResources.find(entry => entry.to === "models").filter;
+console.log(`Offline single-file portable ${packageInfo.version} created:\n${path.join(appRoot, "portable", "Chuba Sprite Lab.exe")}\nIncluded models: ${models.filter(entry => modelFiles.includes(entry.file)).length}`);

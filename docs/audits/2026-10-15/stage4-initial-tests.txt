@@ -1,0 +1,70 @@
+✔ every tool in the map is declared and every type has a label (1.2614ms)
+✔ 'Разложить на кадры' only appears for moving inputs (0.1413ms)
+✔ single images get no packing, slicing or interpolation; sheets get slicing (0.6797ms)
+✔ unsupported types carry a clear Russian message and no tools (0.4245ms)
+✔ groups preserve tool order and drop empty groups (0.1639ms)
+✔ every advertised manual tool has a route to real studio controls (3.283ms)
+✔ cancel remains available while other copilot commands are blocked (0.1999ms)
+✖ copilot presents at most three choices and keeps the rest discoverable (1.353ms)
+✔ review accepts the conveyor timeline and rejects metadata paths escaping output (0.8219ms)
+✔ presets validate and built-ins are protected (8.4813ms)
+✔ planStages follows the capability map (1.0554ms)
+✔ runConveyor runs stages in order and reports progress (0.8544ms)
+✔ runConveyor skips packing for one image and stops on unsupported input (0.3976ms)
+✔ runConveyor reports the failed stage (0.2362ms)
+✔ processorOptions maps presets onto existing processor keys (0.1039ms)
+✔ queue persists, survives restart, pauses, cancels and summarises (11.3827ms)
+✔ queue re-runs an item that was running when the app closed (2.764ms)
+✔ watch folder waits for stable files and ignores the output folder (4.2214ms)
+✔ real stages: frames folder through cut, clean, pack, check and export (291.415ms)
+✔ animated WebP and a mislabelled GIF are split into frames by content (98.9631ms)
+✔ background off preserves opaque PNG pixels through the real conveyor (pixel art: false) (77.0931ms)
+✔ background off preserves opaque PNG pixels through the real conveyor (pixel art: true) (83.101ms)
+✔ gif: real conveyor preserves opaque frames, order, timing and loop count (242.2546ms)
+✔ apng: real conveyor preserves opaque frames, order, timing and loop count (225.5191ms)
+✔ atlas conveyor retains named clips, per-clip speeds, pivots and original canvas after trimming (174.5087ms)
+✔ empty conveyor: copilot explains and offers file, folder, quick and queue (1.3985ms)
+✔ conveyor only offers tools valid for the detected type (0.5769ms)
+✔ unsupported type: honest message, no tools (0.1256ms)
+✔ after a run: verdict, clickable fixes for safe remarks, honest hand-work for the rest (0.3537ms)
+✔ failed run says where it stopped and offers manual tools (0.1627ms)
+✔ quick and queue modes (0.1681ms)
+✔ critic fixes only touch padding / extrude / page size / background (0.158ms)
+✔ studio video: «Вижу видео … Что сделать?» with the required options (0.348ms)
+✔ studio video: picked frame shows ONE editor chip; change link only once a program is remembered (0.9785ms)
+✔ chips that mean the same thing collapse into one (0.3654ms)
+✔ the companion hides panel extras that duplicate a guide chip and renders the secondary link small (3.9524ms)
+✔ the companion cloud accepts conveyor/video chips and the review command (0.8216ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 36
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1401.8103
+
+✖ failing tests:
+
+test at test\conveyor-tools.test.mjs:30:1
+✖ copilot presents at most three choices and keeps the rest discoverable (1.353ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'intent:images'
+  - 'run'
+
+      at TestContext.<anonymous> (file:///C:/Users/User/Documents/ChatGPT/lab/chuba-sprite-lab/test/conveyor-tools.test.mjs:34:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'intent:images',
+    expected: 'run',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

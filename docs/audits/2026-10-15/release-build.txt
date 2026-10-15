@@ -1,0 +1,47 @@
+
+> chuba-sprite-lab@1.9.0 pack
+> node scripts/package.mjs
+
+ToonOut: verified local copy
+LaMa: verified local copy
+RIFE: verified local copy
+Увеличение изображения · Real-ESRGAN: verified local copy
+Depth Anything V2 small: verified local copy
+  • electron-builder  version=26.15.3 os=10.0.26300
+  • loaded configuration  file=package.json ("build" field)
+  • executing @electron/rebuild  electronVersion=44.4.5 arch=x64 buildFromSource=false workspaceRoot=C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab projectDir=./ appDir=./
+  • installing native dependencies  arch=x64
+  • completed installing native dependencies
+  • packaging       platform=win32 arch=x64 electron=44.4.5 appOutDir=.build\win-unpacked
+  • using custom unpacked Electron distribution  electronDist=node_modules\electron\dist
+  • copying unpacked Electron  source=C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab\node_modules\electron\dist destination=C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab\.build\win-unpacked
+  • asar usage is disabled — this is strongly not recommended  solution=enable asar and use asarUnpack to unpack files that must be externally available
+  • searching for node modules  pm=npm searchDir=C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab
+  • signing with signtool.exe  path=.build\win-unpacked\resources\vendor\healing-runtime\python.exe
+  • asar usage is disabled — this is strongly not recommended  solution=enable asar and use asarUnpack to unpack files that must be externally available
+  • signing with signtool.exe  path=.build\win-unpacked\Chuba Sprite Lab.exe
+  • building        target=portable file=.build\Chuba-Sprite-Lab-portable.exe archs=x64
+  • signing with signtool.exe  path=.build\win-unpacked\resources\elevate.exe
+  ⨯ C:\Users\User\AppData\Local\electron-builder\Cache\7zip@1.0.0\7zip-win-x64-a34pt\bin\7za.exe process failed 4294967295
+Exit code:
+4294967295
+Output:
+Exit code: 4294967295. Command failed: C:\Users\User\AppData\Local\electron-builder\Cache\7zip@1.0.0\7zip-win-x64-a34pt\bin\7za.exe a -bd -mx=9 -mtc=off -mtm=off -mta=off C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab\.build\chuba-sprite-lab-1.9.0-x64.nsis.7z .
+  failedTask=build stackTrace=Error: C:\Users\User\AppData\Local\electron-builder\Cache\7zip@1.0.0\7zip-win-x64-a34pt\bin\7za.exe process failed 4294967295
+Exit code:
+4294967295
+Output:
+Exit code: 4294967295. Command failed: C:\Users\User\AppData\Local\electron-builder\Cache\7zip@1.0.0\7zip-win-x64-a34pt\bin\7za.exe a -bd -mx=9 -mtc=off -mtm=off -mta=off C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab\.build\chuba-sprite-lab-1.9.0-x64.nsis.7z .
+                                                                                                                                                                                                                                                                                                                                                                                                                                             at C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab\node_modules\builder-util\src\util.ts:192:18
+    at ChildProcess.exithandler (node:child_process:424:5)
+    at ChildProcess.emit (node:events:509:28)
+    at maybeClose (node:internal/child_process:1141:16)
+    at Process.ChildProcess._handle.onexit (node:internal/child_process:306:5)
+file:///C:/Users/User/Documents/ChatGPT/lab/chuba-sprite-lab/scripts/package.mjs:55
+if (result.status !== 0) throw new Error(`electron-builder завершился с кодом ${result.status ?? "unknown"}.`);
+                               ^
+
+Error: electron-builder завершился с кодом 1.
+    at file:///C:/Users/User/Documents/ChatGPT/lab/chuba-sprite-lab/scripts/package.mjs:55:32
+
+Node.js v24.19.0

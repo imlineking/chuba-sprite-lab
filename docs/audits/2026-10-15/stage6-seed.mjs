@@ -1,0 +1,9 @@
+import fs from 'node:fs/promises';import path from 'node:path';import sharp from 'sharp';
+import {ConveyorSessions} from '../../../src/conveyor-sessions.mjs';import {builtinPresets,writeJsonAtomic} from '../../../src/conveyor.mjs';import {createConveyorStages} from '../../../src/conveyor-main.mjs';import * as processor from '../../../src/processor.mjs';import {describePaths,describeSpriteSheet} from '../../../src/source-describe.mjs';import {buildAtlas} from '../../../src/pipeline/build.mjs';import {reviewAtlas} from '../../../src/critic/critic.mjs';
+const profile=process.argv[2],kind=process.argv[3]||'direct',root=path.resolve('.'),file=path.join(root,'docs/audits/2026-10-15/timing-shaped.gif');
+const deps=createConveyorStages({appRoot:root,sharp,describePaths:(k,p)=>describePaths(root,k,p),describeSpriteSheet:(f,o)=>describeSpriteSheet(root,f,o),executeProcessing:(op,args)=>processor[op](args),buildAtlas,reviewAtlas,modelsDirectory:()=>path.join(root,'models')});deps.check=async()=>{throw new Error('Контрольное прерывание после упаковки')};
+const outputDir=path.join(root,'docs/audits/2026-10-15/stage6-'+kind+'-out'),preset=builtinPresets.find(p=>p.id==='pixel-art');
+const slot=kind==='queue'?'queue-interrupted6':'direct';
+const result=await new ConveyorSessions(deps,{directory:path.join(profile,'conveyor-checkpoints')}).run({paths:[file],preset,outputDir,quick:false,intent:null,slot});if(!result.resumeId)throw new Error(result.error);
+if(kind==='queue')await writeJsonAtomic(path.join(profile,'conveyor-queue.json'),{paused:false,items:[{id:'interrupted6',paths:[file],presetId:'pixel-art',quick:false,intent:null,outputDir,status:'running',detail:'Контрольное прерывание'}]});
+await writeJsonAtomic(path.join(root,'docs/audits/2026-10-15/stage6-seeded-'+kind+'.json'),{profile,resumeId:result.resumeId,stage:result.failedStage});

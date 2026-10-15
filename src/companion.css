@@ -29,3 +29,7 @@ header button { border:0; background:none; color:var(--muted); padding:3px 5px; 
 .assistant-honest { margin: 0; padding: 10px 12px; border-left: 2px solid var(--accent); font-size: 12px; line-height: 1.5; color: var(--ink); }
 .choice .choice-link { display: inline-block; margin: 6px 0 0; padding: 0; border: 0; background: none; color: var(--muted); font-size: 11px; text-decoration: underline; cursor: pointer; }
 .choice .choice-link:hover { color: var(--ink); }
+.choice-primary { border-color: var(--ink) !important; font-weight: 700; }
+.assistant-more { margin-top: 8px; }
+.assistant-more summary { cursor: pointer; padding: 8px 2px; }
+.assistant-more summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

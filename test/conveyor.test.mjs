@@ -10,6 +10,7 @@ import * as processor from "../src/processor.mjs";
 import { describePaths, describeSpriteSheet } from "../src/source-describe.mjs";
 import { buildAtlas } from "../src/pipeline/build.mjs";
 import { reviewAtlas } from "../src/critic/critic.mjs";
+import { writeAnimatedImage, readAnimatedImage } from "../src/animated-images.mjs";
 
 const appRoot = path.resolve(import.meta.dirname, "..");
 const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "spritelab-conveyor-"));
@@ -42,10 +43,10 @@ test("presets validate and built-ins are protected", async () => {
 });
 
 test("planStages follows the capability map", () => {
-  assert.deepEqual(planStages("image", phaser).filter((s) => s.run).map((s) => s.id), ["clean", "export"]);
+  assert.deepEqual(planStages("image", phaser).filter((s) => s.run).map((s) => s.id), ["clean", "check", "export"]);
   assert.deepEqual(planStages("video", phaser).filter((s) => s.run).map((s) => s.id), ["cut", "clean", "pack", "check", "export"]);
   assert.deepEqual(planStages("frames-folder", { ...phaser, review: false }).filter((s) => s.run).map((s) => s.id), ["clean", "pack", "export"]);
-  assert.deepEqual(planStages("video", { ...phaser, pack: false }).filter((s) => s.run).map((s) => s.id), ["cut", "clean", "export"]);
+  assert.deepEqual(planStages("video", { ...phaser, pack: false }).filter((s) => s.run).map((s) => s.id), ["cut", "clean", "check", "export"]);
   assert.ok(planStages("pdf", phaser).every((s) => !s.run));
 });
 
@@ -75,10 +76,12 @@ test("runConveyor reports the failed stage", async () => {
 });
 
 test("processorOptions maps presets onto existing processor keys", () => {
-  assert.equal(processorOptions({ ...phaser, background: "none" }).keyMode, "none");
+  assert.equal(processorOptions({ ...phaser, background: "none" }).keyMode, "alpha");
   assert.equal(processorOptions({ ...phaser, background: "ai" }).keyMode, "ai");
   assert.equal(processorOptions(phaser, { keyMode: "alpha" }).keyMode, "alpha");
-  assert.equal(processorOptions(builtinPresets.find((p) => p.id === "pixel-art")).pixelate.gridMode, "adaptive");
+  const pixelOptions = processorOptions(builtinPresets.find((p) => p.id === "pixel-art"));
+  assert.equal(pixelOptions.pixelate, null);
+  assert.equal(pixelOptions.pixelPerfect, true);
 });
 
 test("queue persists, survives restart, pauses, cancels and summarises", async () => {
@@ -130,7 +133,7 @@ test("real stages: frames folder through cut, clean, pack, check and export", as
     executeProcessing: (op, { signal: _s, onProgress: _p, ...payload }) => processor[op](payload), buildAtlas, reviewAtlas, runtime: null, modelsDirectory: () => path.join(tmp, "models"),
   });
   const out = path.join(tmp, "real-out");
-  const result = await runConveyor({ paths: [frames], preset: { ...phaser, useModel: false }, outputDir: out, deps: stages });
+  const result = await runConveyor({ paths: [frames], intent: "animation", preset: { ...phaser, useModel: false }, outputDir: out, deps: stages });
   assert.equal(result.ok, true, result.error);
   assert.equal(result.type, "frames-folder");
   assert.deepEqual(result.stages.map((s) => s.status), ["skipped", "done", "done", "done", "done"]);
@@ -164,4 +167,102 @@ test("animated WebP and a mislabelled GIF are split into frames by content", asy
     assert.equal(source.animatedImport, true, file);
     assert.equal(source.paths.length, 3, file);
   }
+});
+
+function realStages() {
+  return createConveyorStages({
+    appRoot, sharp, describePaths: (kind, paths) => describePaths(appRoot, kind, paths), describeSpriteSheet: (p, o) => describeSpriteSheet(appRoot, p, o),
+    executeProcessing: (op, payload) => processor[op](payload), buildAtlas, reviewAtlas, runtime: null, modelsDirectory: () => path.join(tmp, "models"),
+  });
+}
+
+for (const pixelArt of [false, true]) test(`background off preserves opaque PNG pixels through the real conveyor (pixel art: ${pixelArt})`, async () => {
+  const file = path.join(tmp, "opaque.png");
+  const pixels = Buffer.alloc(32 * 32 * 4);
+  for (let i = 0; i < 32 * 32; i++) pixels.set(i % 31 ? [i % 256, Math.floor(i / 256) * 48, 60, 255] : [255, 255, 255, 255], i * 4);
+  await sharp(pixels, { raw: { width: 32, height: 32, channels: 4 } }).png().toFile(file);
+  const result = await runConveyor({ paths: [file], preset: { ...phaser, pixelArt, background: "none", edgeCleanup: false, review: false }, outputDir: path.join(tmp, "opaque-out"), deps: realStages() });
+  assert.equal(result.ok, true, result.error);
+  const output = await sharp(path.join(result.outputDir, "opaque.png")).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  assert.deepEqual([output.info.width, output.info.height], [32, 32]);
+  assert.deepEqual(output.data, pixels);
+});
+
+for (const format of ["gif", "apng"]) test(`${format}: real conveyor preserves opaque frames, order, timing and loop count`, async () => {
+  const file = path.join(tmp, `timed.${format}`);
+  const solid = (color) => { const pixels = Buffer.alloc(32 * 32 * 4); for (let i = 0; i < 32 * 32; i++) pixels.set(color, i * 4); return pixels; };
+  // Repeated pixels must share atlas storage without losing their timeline entry.
+  await writeAnimatedImage(file, { width: 32, height: 32, loop: 3, frames: [
+    { pixels: solid([100, 40, 60, 255]), durationMs: 80 },
+    { pixels: solid([40, 100, 60, 255]), durationMs: 240 },
+    { pixels: solid([100, 40, 60, 255]), durationMs: 120 },
+  ] }, format);
+  const original = await readAnimatedImage(file);
+  const previewStages = realStages();
+  previewStages.describe = () => { throw new Error("Static preview must not extract the entire animation"); };
+  const preview = await previewStages.preview([file]);
+  assert.match(preview.url, /^data:image\/png;base64,/);
+  assert.equal((await sharp(Buffer.from(preview.url.split(",")[1], "base64")).metadata()).width, 32);
+  const result = await runConveyor({ paths: [file], preset: { ...phaser, background: "none", edgeCleanup: false, review: false, atlas: { ...phaser.atlas, formats: ["phaser-hash", "texturepacker-hash", "godot-spriteframes", "unity-json"] } }, outputDir: path.join(tmp, `${format}-out`), deps: realStages() });
+  assert.equal(result.ok, true, result.error);
+  const atlasDir = path.join(result.outputDir, "atlas");
+  const atlas = JSON.parse(await fs.readFile(path.join(atlasDir, "timed.json"), "utf8"));
+  const entries = Object.entries(atlas.frames);
+  assert.equal(entries.length, 3);
+  assert.deepEqual(Object.values(atlas.meta.animations), [entries.map(([name]) => name)]);
+  assert.equal(atlas.meta.animationLoop, original.loop);
+  assert.deepEqual(entries.map(([, frame]) => frame.durationMs), [80, 240, 120]);
+  const page = await sharp(path.join(atlasDir, atlas.meta.image)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  entries.forEach(([, frame], index) => {
+    assert.deepEqual(frame.sourceSize, { w: 32, h: 32 });
+    const { x, y } = frame.frame;
+    assert.deepEqual(page.data.subarray((y * page.info.width + x) * 4, (y * page.info.width + x) * 4 + 4), original.frames[index].pixels.subarray(0, 4));
+  });
+  assert.deepEqual(entries[0][1].frame, entries[2][1].frame, "duplicate pixels share storage, not playback identity");
+  const { anims } = JSON.parse(await fs.readFile(path.join(atlasDir, "timed.phaser-anims.json"), "utf8"));
+  assert.equal(anims.length, 1);
+  assert.equal(anims[0].repeat, original.loop - 1);
+  assert.deepEqual(anims[0].frames.map((frame) => 1000 / anims[0].frameRate + (frame.duration || 0)), [80, 240, 120]);
+  const godot = await fs.readFile(path.join(atlasDir, "timed.tres"), "utf8");
+  const speed = Number(/"speed": ([\d.]+)/.exec(godot)[1]);
+  assert.deepEqual([...godot.matchAll(/"duration": ([\d.]+)/g)].map((match) => Math.round(Number(match[1]) / speed * 1000)), [80, 240, 120]);
+  const unity = JSON.parse(await fs.readFile(path.join(atlasDir, "timed.unity.json"), "utf8"));
+  assert.deepEqual(unity.frames.map((frame) => frame.durationMs), [80, 240, 120]);
+  assert.equal(unity.animationLoop, original.loop);
+  const summary = JSON.parse(await fs.readFile(path.join(result.outputDir, "conveyor.json"), "utf8"));
+  assert.match(summary.warnings[0], /Godot SpriteFrames/);
+  assert.match(result.exported.summary, /конечное число повторов/);
+  const reimported = await realStages().describe({ type: "atlas-json", files: [path.join(atlasDir, "timed.json")] });
+  assert.deepEqual(Object.values(reimported.frameMetadata).map((frame) => frame.durationMs), [80, 240, 120]);
+  assert.equal(reimported.importedMetadata.animationLoop, original.loop);
+});
+
+test("atlas conveyor retains named clips, per-clip speeds, pivots and original canvas after trimming", async () => {
+  const inputDir = path.join(tmp, "tagged"); await fs.mkdir(inputDir);
+  const image = path.join(inputDir, "actors.png"), file = path.join(inputDir, "actors.json");
+  await sharp({ create: { width: 64, height: 32, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([5, 37].map((left) => ({ input: { create: { width: 12, height: 18, channels: 4, background: { r: 100, g: 40, b: 60, alpha: 1 } } }, left, top: 7 })))
+    .png().toFile(image);
+  const pivots = [{ x: .25, y: .75 }, { x: .8, y: .9 }];
+  await fs.writeFile(file, JSON.stringify({ image: "actors.png", animationLoop: 1,
+    frames: ["walk_0", "rescue_0"].map((name, i) => ({ name, x: i * 32, y: 0, width: 32, height: 32, durationMs: [80, 240][i], pivot: pivots[i] })),
+    animations: [{ name: "walk", from: 0, to: 0, fps: 10 }, { name: "rescue", from: 1, to: 1, fps: 14.5 }],
+  }));
+  const result = await runConveyor({ paths: [file], preset: { ...phaser, background: "none", edgeCleanup: false, review: false, atlas: { ...phaser.atlas, formats: ["texturepacker-hash", "godot-spriteframes"] } }, outputDir: path.join(tmp, "tagged-out"), deps: realStages() });
+  assert.equal(result.ok, true, result.error);
+  const atlasDir = path.join(result.outputDir, "atlas");
+  const atlas = JSON.parse(await fs.readFile(path.join(atlasDir, "actors.json"), "utf8"));
+  assert.deepEqual(atlas.meta.animations, { rescue: ["rescue_0"], walk: ["walk_0"] });
+  assert.deepEqual(Object.values(atlas.frames).map((frame) => frame.pivot), pivots);
+  for (const frame of Object.values(atlas.frames)) {
+    assert.deepEqual(frame.sourceSize, { w: 32, h: 32 });
+    assert.deepEqual(frame.spriteSourceSize, { x: 5, y: 7, w: 12, h: 18 });
+  }
+  const godot = await fs.readFile(path.join(atlasDir, "actors.tres"), "utf8");
+  assert.deepEqual([...godot.matchAll(/"speed": ([\d.]+)/g)].map((match) => Number(match[1])), [14.5, 10]);
+  assert.equal([...godot.matchAll(/"loop": false/g)].length, 2);
+  const reimported = await realStages().describe({ type: "atlas-json", files: [path.join(atlasDir, "actors.json")] });
+  assert.deepEqual(Object.values(reimported.frameMetadata).map((frame) => frame.pivot), pivots);
+  assert.deepEqual(reimported.importedAnimations.map((tag) => tag.name), ["walk", "rescue"]);
+  assert.equal(reimported.importedMetadata.animationLoop, 1);
 });

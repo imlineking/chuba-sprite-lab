@@ -11,19 +11,20 @@ const toolIds = (g) => g.chips.filter((c) => c.id.startsWith("tool:")).map((c) =
 test("empty conveyor: copilot explains and offers file, folder, quick and queue", () => {
   const g = planConveyorGuide({ mode: "conveyor" });
   assert.match(g.say, /Перетащите/);
-  assert.deepEqual(g.chips.map((c) => c.id), ["pick-file", "pick-folder", "view:quick", "view:queue"]);
+  assert.deepEqual(g.chips.map((c) => c.id), ["pick-file", "pick-folder", "view:quick"]);
+  assert.deepEqual(g.moreChips.map((c) => c.id), ["view:queue"]);
 });
 
 test("conveyor only offers tools valid for the detected type", () => {
   for (const type of ["image", "video", "sprite-sheet", "aseprite", "frames-folder"]) {
-    const g = planConveyorGuide({ mode: "conveyor", capabilities: capabilitiesFor(type), detection: { paths: ["x"], warnings: [] }, preset, presets });
+    const g = planConveyorGuide({ mode: "conveyor", intent: "animation", capabilities: capabilitiesFor(type), detection: { paths: ["x"], warnings: [] }, preset, presets });
     for (const id of toolIds(g)) assert.ok(hasTool(type, id), `${type} -> ${id}`);
     assert.equal(g.chips[0].id, "run");
   }
   const png = planConveyorGuide({ mode: "conveyor", capabilities: capabilitiesFor("image"), detection: { paths: ["a.png"] }, preset, presets });
   assert.ok(!toolIds(png).includes("split-frames"));
   assert.ok(!png.chips.some((c) => c.id === "enqueue"));
-  assert.match(png.honest, /атлас/);
+  assert.match(png.honest, /Атлас/);
   assert.ok(png.chips.some((c) => c.id === "preset:godot"));
   assert.ok(!png.chips.some((c) => c.id === "preset:quick"));
 });
@@ -44,7 +45,7 @@ test("after a run: verdict, clickable fixes for safe remarks, honest hand-work f
   assert.ok(g.chips.some((c) => c.id === "fix:0" && /отступ 2px/.test(c.detail)));
   assert.ok(g.chips.some((c) => c.id === "tool:align-frames" && /вручную/.test(c.title)));
   assert.match(g.honest, /руками/);
-  assert.ok(g.chips.some((c) => c.id === "review"));
+  assert.ok([...g.chips, ...g.moreChips].some((c) => c.id === "review"));
 });
 
 test("failed run says where it stopped and offers manual tools", () => {

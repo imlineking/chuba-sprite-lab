@@ -1,5 +1,5 @@
 // Build a single offline Windows executable without NSIS' large-archive limit.
-// Always archive the freshly built portable directory; never reuse an old bundle.
+// Always archive the freshly built unpacked directory; never wrap an old bundle.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
@@ -13,7 +13,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
 const version = JSON.parse(await fsp.readFile(path.join(root, "package.json"), "utf8")).version;
 const archive = path.join(root, ".build", "one-file", `chuba-sprite-lab-${version}-x64.nsis.7z`);
-const portable = path.join(root, "portable");
+const portable = process.argv[3] ? path.resolve(process.argv[3]) : path.join(root, ".build", "win-unpacked");
 const csc = "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe";
 const stub = path.join(root, ".build", "one-file", "single-exe-launcher.exe");
 const output = process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, `.build/one-file/Chuba-Sprite-Lab-${version}-offline.exe`);
@@ -21,6 +21,8 @@ const partial = `${output}.partial`;
 const license = path.join(here, "7zip-LICENSE.txt");
 if (path.dirname(output) === path.parse(output).root) throw new Error("Output must not be a filesystem root");
 await fsp.access(path.join(portable, "Chuba Sprite Lab.exe"));
+const packedInfo = JSON.parse(await fsp.readFile(path.join(portable, "resources", "app", "package.json"), "utf8"));
+if (packedInfo.version !== version) throw new Error(`Stale unpacked application: ${packedInfo.version}, expected ${version}`);
 await fsp.access(license);
 await fsp.access(path.join(root, "assets", "app.ico"));
 await fsp.mkdir(path.dirname(archive), { recursive: true });

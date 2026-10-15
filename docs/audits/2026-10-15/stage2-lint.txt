@@ -1,0 +1,3 @@
+
+> chuba-sprite-lab@1.8.2 lint
+> eslint .

@@ -18,10 +18,10 @@ test("'Разложить на кадры' only appears for moving inputs", () =
 });
 
 test("single images get no packing, slicing or interpolation; sheets get slicing", () => {
-  for (const id of ["pack-atlas", "slice-sheet", "interpolate", "review", "trim-time"]) assert.ok(!hasTool("image", id), id);
+  for (const id of ["pack-atlas", "slice-sheet", "interpolate", "trim-time"]) assert.ok(!hasTool("image", id), id);
   assert.ok(hasTool("image", "remove-background")); assert.ok(hasTool("image", "ocr"));
   assert.ok(hasTool("sprite-sheet", "slice-sheet")); assert.ok(!hasTool("video", "slice-sheet"));
-  assert.deepEqual(capabilitiesFor("image").stages.filter((s) => s.applies).map((s) => s.id), ["clean", "export"]);
+  assert.deepEqual(capabilitiesFor("image").stages.filter((s) => s.applies).map((s) => s.id), ["clean", "check", "export"]);
   assert.deepEqual(capabilitiesFor("video").stages.filter((s) => s.applies).map((s) => s.id), ["cut", "clean", "pack", "check", "export"]);
 });
 

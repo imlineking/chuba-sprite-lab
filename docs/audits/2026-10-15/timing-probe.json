@@ -1,0 +1,252 @@
+{
+  "sourceMetadata": {
+    "0": {
+      "durationMs": 80
+    },
+    "1": {
+      "durationMs": 240
+    }
+  },
+  "sourceAnimations": [
+    {
+      "name": "timing",
+      "from": 0,
+      "to": 1
+    }
+  ],
+  "solidPreservation": {
+    "presetBackground": "none",
+    "ok": false,
+    "error": "После удаления фона не осталось ни одного непустого кадра. Уменьшите допуск цвета."
+  },
+  "result": {
+    "ok": true,
+    "type": "animated-image",
+    "label": "Анимированное изображение (GIF / APNG / WebP)",
+    "stages": [
+      {
+        "id": "cut",
+        "label": "Нарезка",
+        "status": "done",
+        "detail": "2 кадров"
+      },
+      {
+        "id": "clean",
+        "label": "Очистка фона",
+        "status": "done",
+        "detail": "2 кадров"
+      },
+      {
+        "id": "pack",
+        "label": "Упаковка",
+        "status": "done",
+        "detail": "1 стр."
+      },
+      {
+        "id": "check",
+        "label": "Проверка",
+        "status": "skipped",
+        "detail": "выключено в пресете"
+      },
+      {
+        "id": "export",
+        "label": "Экспорт",
+        "status": "done",
+        "detail": "2 файлов"
+      }
+    ],
+    "outputDir": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\timing-shaped-output\\timing-shaped",
+    "review": null,
+    "exported": {
+      "files": [
+        "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\timing-shaped-output\\timing-shaped\\timing-shaped.sheet.png",
+        "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\timing-shaped-output\\timing-shaped\\atlas\\timing-shaped.png"
+      ],
+      "summary": "2 файлов"
+    },
+    "detection": {
+      "type": "animated-image",
+      "paths": [
+        "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\timing-shaped.gif"
+      ],
+      "files": [
+        "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\timing-shaped.gif"
+      ],
+      "format": "gif",
+      "facts": {},
+      "warnings": []
+    }
+  },
+  "atlas": {
+    "timing-shaped.json": {
+      "frames": {
+        "0000": {
+          "frame": {
+            "x": 2,
+            "y": 2,
+            "w": 12,
+            "h": 18
+          },
+          "rotated": false,
+          "trimmed": true,
+          "spriteSourceSize": {
+            "x": 10,
+            "y": 7,
+            "w": 12,
+            "h": 18
+          },
+          "sourceSize": {
+            "w": 32,
+            "h": 32
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 0.5
+          }
+        },
+        "0001": {
+          "frame": {
+            "x": 2,
+            "y": 24,
+            "w": 12,
+            "h": 18
+          },
+          "rotated": false,
+          "trimmed": true,
+          "spriteSourceSize": {
+            "x": 10,
+            "y": 7,
+            "w": 12,
+            "h": 18
+          },
+          "sourceSize": {
+            "w": 32,
+            "h": 32
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 0.5
+          }
+        }
+      },
+      "meta": {
+        "app": "Chuba Sprite Lab",
+        "version": "1",
+        "image": "timing-shaped.png",
+        "format": "RGBA8888",
+        "size": {
+          "w": 16,
+          "h": 64
+        },
+        "scale": "1",
+        "animations": {
+          "0000": [
+            "0000"
+          ],
+          "0001": [
+            "0001"
+          ]
+        }
+      }
+    },
+    "timing-shaped.phaser-anims.json": {
+      "anims": [
+        {
+          "key": "0000",
+          "type": "frame",
+          "frameRate": 8,
+          "repeat": -1,
+          "frames": [
+            {
+              "key": "timing-shaped",
+              "frame": "0000"
+            }
+          ]
+        },
+        {
+          "key": "0001",
+          "type": "frame",
+          "frameRate": 8,
+          "repeat": -1,
+          "frames": [
+            {
+              "key": "timing-shaped",
+              "frame": "0001"
+            }
+          ]
+        }
+      ]
+    },
+    "timing-shaped.phaser-hash.json": {
+      "frames": {
+        "0000": {
+          "frame": {
+            "x": 2,
+            "y": 2,
+            "w": 12,
+            "h": 18
+          },
+          "rotated": false,
+          "trimmed": true,
+          "spriteSourceSize": {
+            "x": 10,
+            "y": 7,
+            "w": 12,
+            "h": 18
+          },
+          "sourceSize": {
+            "w": 32,
+            "h": 32
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 0.5
+          }
+        },
+        "0001": {
+          "frame": {
+            "x": 2,
+            "y": 24,
+            "w": 12,
+            "h": 18
+          },
+          "rotated": false,
+          "trimmed": true,
+          "spriteSourceSize": {
+            "x": 10,
+            "y": 7,
+            "w": 12,
+            "h": 18
+          },
+          "sourceSize": {
+            "w": 32,
+            "h": 32
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 0.5
+          }
+        }
+      },
+      "meta": {
+        "app": "Chuba Sprite Lab",
+        "version": "1",
+        "image": "timing-shaped.png",
+        "format": "RGBA8888",
+        "size": {
+          "w": 16,
+          "h": 64
+        },
+        "scale": "1",
+        "animations": {
+          "0000": [
+            "0000"
+          ],
+          "0001": [
+            "0001"
+          ]
+        }
+      }
+    }
+  }
+}

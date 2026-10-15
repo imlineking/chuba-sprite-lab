@@ -1,0 +1,13 @@
+✔ desktop bubble immediately says Loading and animates 1,2,3,2,1 dots until ready (4.493ms)
+✔ every advertised manual tool has a route to real studio controls (2.8056ms)
+✔ cancel remains available while other copilot commands are blocked (0.1592ms)
+✔ copilot presents at most three choices and keeps the rest discoverable (0.7256ms)
+✔ review accepts the conveyor timeline and rejects metadata paths escaping output (0.5871ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 151.9398

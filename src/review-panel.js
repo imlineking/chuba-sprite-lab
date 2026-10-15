@@ -20,12 +20,15 @@
     if (state.busy) { body.append(el('p', 'review-muted', state.busy)); return; }
     if (state.error) { body.append(el('p', 'review-error', state.error)); return; }
     const { review, preview, output } = state.result;
+    dialog.querySelector('h2').textContent = review.kind === 'png' ? 'Проверка PNG' : 'Приёмка';
     const head = el('div', 'review-head');
-    const badge = el('span', `review-badge review-${review.verdict}`, labels[review.verdict] || review.verdict);
-    const score = el('strong', 'review-score', `${review.score}/100`);
+    const badge = el('span', `review-badge review-${review.verdict}`, review.kind === 'png' ? review.verdictLabel : labels[review.verdict] || review.verdict);
+    const score = el('strong', 'review-score', review.kind === 'png' ? `Файлов: ${review.metrics.length}` : `${review.score}/100`);
     const mode = el('span', 'review-mode', review.mode === 'qwen' ? `Алгоритмы + Qwen (встроенная) · ${review.elapsedMs} мс` : `Только алгоритмы · ${review.elapsedMs} мс`);
     head.append(badge, score, mode);
     body.append(head);
+    if (review.summary) body.append(el('p', 'review-note', review.summary));
+    for (const m of review.metrics || []) body.append(el('p', 'review-muted', `${m.file.split(/[\\/]/).pop()} · ${m.width}×${m.height} · прозрачных: ${m.clear} · полупрозрачных: ${m.partial}`));
     if (review.fallbackReason) body.append(el('p', 'review-note', review.fallbackReason));
     if (review.overriddenBy) body.append(el('p', 'review-note', `Принято вручную (было: ${labels[review.overriddenFrom]}).`));
     const grid = el('div', 'review-grid');
@@ -37,7 +40,12 @@
       const top = el('div', 'review-issue-top');
       top.append(el('span', 'review-sev', severityLabels[issue.severity] || issue.severity), el('span', 'review-target', targetText(issue.target)), el('span', 'review-source', issue.source === 'qwen' ? 'Qwen' : 'алгоритм'));
       item.append(top, el('p', 'review-reason', issue.reason));
-      if (issue.fix && Object.keys(issue.fix).some((key) => key !== 'sortBy' && key !== 'anchor' && key !== 'order')) {
+      if (Number.isInteger(issue.target?.frameIndex) && state.result.onInspect) {
+        const inspect = el('button', 'review-secondary', 'Показать кадр и участки'); inspect.type = 'button';
+        inspect.onclick = () => { dialog.close(); state.result.onInspect(issue); }; item.append(inspect);
+        if (state.result.onEdit) { const edit = el('button', 'review-secondary', 'Править маску этого кадра'); edit.type = 'button'; edit.onclick = () => { dialog.close(); state.result.onEdit(issue); }; item.append(edit); }
+      }
+      if (review.kind !== 'png' && issue.fix && Object.keys(issue.fix).some((key) => key !== 'sortBy' && key !== 'anchor' && key !== 'order')) {
         const fix = el('button', 'review-fix', `Исправить и пересобрать · ${fixText(issue.fix)}`);
         fix.type = 'button';
         fix.onclick = () => run(dialog, () => window.spriteLab.criticApplyFix({ config: state.result.config, fix: issue.fix }), 'Применяю правку и пересобираю…');
@@ -51,8 +59,8 @@
     footer.replaceChildren();
     const again = el('button', 'review-secondary', 'Проверить снова'); again.type = 'button';
     again.onclick = () => run(dialog, () => window.spriteLab.criticReview({ config: state.result.config }), 'Проверяю…');
-    footer.append(again);
-    if (review.verdict !== 'accepted' && output && !review.issues.some((i) => i.code === 'build_failed')) {
+    if (review.kind !== 'png') footer.append(again);
+    if (review.kind !== 'png' && review.verdict !== 'accepted' && output && !review.issues.some((i) => i.code === 'build_failed')) {
       const accept = el('button', 'review-secondary', 'Принять всё равно'); accept.type = 'button';
       accept.onclick = async () => { try { current.result = { ...current.result, review: await window.spriteLab.criticAcceptAnyway({ output, review }) }; render(dialog, current); } catch (error) { current.error = error.message; render(dialog, current); } };
       footer.append(accept);

@@ -255,6 +255,7 @@ function pushHistory(label = "Изменение") {
   if (state.history.length > 60) state.history.shift();
   state.historyIndex = state.history.length - 1;
   updateHistoryActions(); saveSessionSoon();
+  window.conveyorUI?.studioChanged();
 }
 
 function scheduleHistory(label) {
@@ -289,7 +290,7 @@ function applyHistorySnapshot(snapshot) {
   const preview = historyPreviews.get(snapshot);
   if (preview?.result) { updatePreview(preview.result); state.resultDirty = preview.dirty; updateActionState(); }
   setStatus(snapshot.label || "История применена", "done", 0);
-  savePreferences();
+  savePreferences(); window.conveyorUI?.studioChanged();
 }
 
 function undoWorkspace() {
@@ -864,6 +865,7 @@ function resetPreview() {
 function markPreviewDirty() {
   if (!state.result || state.busy) return;
   state.resultDirty = true;
+  window.conveyorUI?.studioChanged();
   $("#previewFreshness").classList.remove("hidden");
   updateActionState();
 }
@@ -2142,9 +2144,12 @@ async function requestFramePreview(inputPath) {
   if (!state.busy) setStatus("Обновляю предпросмотр…", "busy", 0);
   try {
     const gridSources = state.source?.kind === "frames" || state.source?.kind === "sheet" ? state.source.paths.map((p, i) => state.frameOverrides[i] || p) : [];
+    const conveyorSignature = window.conveyorUI?.workingSignature?.();
+    const previewSourceIndex = state.selectedFrameIndex;
     const result = await window.spriteLab.previewFrame({ inputPath, options: collectOptions(), gridSources });
     if (token !== state.quickToken || revision !== state.sourceRevision) return;
     state.framePreview = result;
+    window.conveyorUI?.framePreviewReady?.({ result, signature: conveyorSignature, frameIndex: previewSourceIndex });
     if (state.intent === "images") {
       $("#metaCell").textContent = result.imageSize ? result.imageSize.width + " × " + result.imageSize.height : "Исходный размер";
       $("#metaAtlas").textContent = baseName(state.source.paths[state.selectedFrameIndex]);

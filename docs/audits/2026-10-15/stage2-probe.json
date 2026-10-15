@@ -1,0 +1,124 @@
+[
+  {
+    "name": "timing",
+    "sourceUnchanged": true,
+    "outputDir": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\stage2-output\\timing",
+    "frames": [
+      {
+        "durationMs": 80,
+        "sourceSize": {
+          "w": 32,
+          "h": 32
+        },
+        "spriteSourceSize": {
+          "x": 0,
+          "y": 0,
+          "w": 32,
+          "h": 32
+        }
+      },
+      {
+        "durationMs": 240,
+        "sourceSize": {
+          "w": 32,
+          "h": 32
+        },
+        "spriteSourceSize": {
+          "x": 0,
+          "y": 0,
+          "w": 32,
+          "h": 32
+        }
+      }
+    ],
+    "animations": {
+      "timing": [
+        "timing_0000",
+        "timing_0001"
+      ]
+    },
+    "phaser": {
+      "anims": [
+        {
+          "key": "timing",
+          "type": "frame",
+          "frameRate": 12.5,
+          "repeat": -1,
+          "frames": [
+            {
+              "key": "timing",
+              "frame": "timing_0000",
+              "duration": 0
+            },
+            {
+              "key": "timing",
+              "frame": "timing_0001",
+              "duration": 160
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "timing-shaped",
+    "sourceUnchanged": true,
+    "outputDir": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\stage2-output\\timing-shaped",
+    "frames": [
+      {
+        "durationMs": 80,
+        "sourceSize": {
+          "w": 32,
+          "h": 32
+        },
+        "spriteSourceSize": {
+          "x": 10,
+          "y": 7,
+          "w": 12,
+          "h": 18
+        }
+      },
+      {
+        "durationMs": 240,
+        "sourceSize": {
+          "w": 32,
+          "h": 32
+        },
+        "spriteSourceSize": {
+          "x": 10,
+          "y": 7,
+          "w": 12,
+          "h": 18
+        }
+      }
+    ],
+    "animations": {
+      "timing-shaped": [
+        "timing-shaped_0000",
+        "timing-shaped_0001"
+      ]
+    },
+    "phaser": {
+      "anims": [
+        {
+          "key": "timing-shaped",
+          "type": "frame",
+          "frameRate": 12.5,
+          "repeat": -1,
+          "frames": [
+            {
+              "key": "timing-shaped",
+              "frame": "timing-shaped_0000",
+              "duration": 0
+            },
+            {
+              "key": "timing-shaped",
+              "frame": "timing-shaped_0001",
+              "duration": 160
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

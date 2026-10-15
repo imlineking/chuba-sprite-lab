@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="./theme.css" />
     <link rel="stylesheet" href="./shell-theme.css" />
     <link rel="stylesheet" href="./review-panel.css" />
-    <link rel="stylesheet" href="./conveyor.css" />
+    <link rel="stylesheet" href="./conveyor.css" />
     <script src="./theme.js"></script>
   </head>
   <body data-view="advanced">
@@ -19,7 +19,7 @@
       <div class="brand">
         <img class="brand-logo brand-logo-compact brand-orange" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASGSURBVFhH7ZZ/TJVVGMe/773cuwsUgZXQrEg3KxGM6SC2ILjyI0FvrrZrc7ioVq4BtTBLsMGFruXFiC2WhYZlmbPQfid/uPVPrVqtbOuH5ixTUdCk/rHVH8L9tuc958jLOzQqhv/4bN+dc97LPd/P8zzn3BfgYkxSzJiLYSwB3c+nLGq2gf78CwhQvwtMyrlQABYYqAFRjg/dH01F3HHnpiso/c/t9hAlU1kFCzTmSMWJ+rk4gzxwXrZdjckHYQQeApatYiScNU/TZrNw7aKeFCIdRCYIOZTB/wnCMLxDFdj7aym+5bugrQ9A7h7N/ssm8OY0sDOccWZ2M3h5OxTEjSBusChV+U8gdVnp0X25IN8A2QvyTZCf+Mko6CvyMLx5ur0xnwf5HFiQDKa3goHmBE5r1ZXJEnkUxEQjEoHnaCH+sI3fArlrNGtuA9mjshdZXpAxkFvA09VgUex6Tl/jY04smbndl6pWyJnItojSCUD09vZ6+9LxF18DuV1nfixKbgb55+fkTpBtIJvBY49APX9Jj4/ZBgy/Oos5Gy7jgk4f0eYjMi0FIVUoR5fbc0z0LUJKfAvidqaS+UAHeXwD2f+0AhKAt7WhrAX0ZVUBdoOHQqDlAdPWeXnN+kvoaQ0QMT9xnQBY578dcsoHF4J8RZt8nUoOxMjBLrX+Io/sX6vmJutNWrLuAdkO7qtQEAIwQ8zbQERBzNNVOFfEl+FHO/OtuudS/j0a6OSz6jyIPtLmRmJuAJ5U7embryBmPnMl0QBilb6aAiDtcIfc7XgIp20zKec7+vQfDKlWmCsoz7s1pMneKKL1FDhcDe7JB4Ne0KpNI+pSiRYPsdCjKuGO3jC8h+RKSRbS0/e0mYzmNsh8h/5cIEwLZC6S6/iErkIt+HE+2HG1w6wJRKNuhTu+WgDfgUIN4IQQmX6LiQDI/EW9dgLIs0bVAtaBPwfB/SXg0kSsO2skEPPHAZCwy7pRA4iJtMJ50IyRUwZExhd0C9aAXAmOLAdPVoIhH9aPMQrixJi1CdtQ7riYCoTJXEYBMFU4lyT71er3QFrwQxE4chdY5kej22vcsEsnAJKNM3MjJ4CzBTIX4Ec1gIz3gvtvBVkNVnoRdXuNG/Yh7NAbyCgldZs5AYxa9HdWKY0sA78rBPtLwd358j6D1+01bpyqwuqj5SDrQT4MsgFkpz4XImMoIFItOe1No8Ym8+HlqvyS/VI/KO8Wt9e4EQE8O7PVFym/82bjh/RaIB7XYAIokueylrEOHKoCfyoGf3EAuH3OG2uTcNX2ORpipdrU3twAmbmYGtWCXAEeLgMPloDfi/kKZZ4JBNwe/xRWVRIy5ArFBeJuVdaRe/Rcsr4f5H2q1HxA/d2RUvBAicqeDyrzmpuQ6t58wtGQgmmv60r8FgKHbgdPLVYarAQHblM6XgEeDoJHysDfF4Pvz1HmiUCee89/HWHA35KCdgER7cgCP8sHP80Dv7kF3FugJC+erpnKWJc9w/6XdbJCDmcBkFgMBMqBZJkvAZJEsi4GErIAPzDB034xHPE3ItEVHfq9GOgAAAAASUVORK5CYII=" alt="" aria-hidden="true" />
         <span class="brand-name">CHUBA SPRITE LAB</span>
-        <span id="versionBadge" class="version">1.8.2</span>
+        <span id="versionBadge" class="version">1.9.0</span>
       </div>
       <div class="workspace-actions" aria-label="Проект">
         <button id="newProject" type="button">Новый</button>
@@ -785,25 +785,31 @@
           <button class="tab" type="button" role="tab" aria-selected="false" data-cv-tab="queue"><span>C</span>Очередь <span id="cvQueueBadge" class="cv-badge hidden">0</span></button>
         </nav>
         <div id="conveyorView" class="panel cv-view active" data-cv="conveyor" role="tabpanel">
-          <div class="panel-heading compact"><p class="eyebrow">КОНВЕЙЕР</p><h1>Сделать всё</h1><p>Нарезка, фон, упаковка, проверка и экспорт за один запуск. Инструменты — только те, что подходят файлу.</p></div>
+          <div class="panel-heading compact"><p class="eyebrow">КОНВЕЙЕР</p><h1>Подготовить файл</h1><p>Добавьте материал, выберите профиль и проверьте результат.</p></div>
           <div id="cvDrop" class="drop-zone cv-drop" tabindex="0" role="button" aria-label="Перетащите файл или папку">
             <div class="drop-icon" aria-hidden="true"><span></span><span></span><span></span></div>
             <strong>Перетащите файл или папку</strong>
             <small>ВИДЕО · GIF · PNG · ЛИСТ · КАДРЫ · ASEPRITE · JSON</small>
           </div>
           <div class="button-grid"><button id="cvPickFile" class="button secondary" type="button">Выбрать файлы</button><button id="cvPickFolder" class="button secondary" type="button">Выбрать папку</button></div>
+          <div id="cvRecovery" class="cv-card hidden" aria-live="polite"><strong>Есть незавершённая задача</strong><span id="cvRecoveryName" class="cv-path"></span><div class="cv-result-actions"><button id="cvRecover" class="button primary" type="button">Продолжить</button><button id="cvRecoverFolder" class="button secondary" type="button">В другую папку</button><button id="cvForgetRecovery" class="button ghost" type="button">Убрать</button></div></div>
           <div id="cvTypeCard" class="cv-card cv-type hidden" aria-live="polite">
             <div class="cv-type-head"><span class="ai-chip">ТИП</span><strong id="cvTypeLabel">-</strong><span id="cvTypeFormat" class="cv-chip-muted"></span></div>
             <div id="cvTypeName" class="cv-file-name"></div>
             <ul id="cvWarnings" class="cv-warnings"></ul>
             <div id="cvUnsupported" class="cv-unsupported hidden" role="alert"></div>
           </div>
-          <div id="cvToolsCard" class="cv-card hidden">
-            <span class="cv-kicker">Инструменты для этого типа</span>
-            <div id="cvToolGroups" class="cv-tool-groups"></div>
-            <p class="cv-hint">Инструмент откроет файл в студии на нужной вкладке.</p>
-          </div>
+          <fieldset id="cvIntent" class="cv-card hidden"><legend>Что подготовить?</legend><div class="cv-intents">
+            <button type="button" class="button secondary" data-intent="images" aria-pressed="false">Отдельные PNG</button>
+            <button type="button" class="button secondary" data-intent="atlas" aria-pressed="false">Атлас объектов</button>
+            <button type="button" class="button secondary" data-intent="animation" aria-pressed="false">Анимация</button>
+          </div><p id="cvIntentHint" class="cv-hint">Выберите цель. Исходные файлы сохранятся.</p></fieldset>
           <label class="field cv-field"><span>Пресет</span><select id="cvPreset"></select></label>
+          <div class="cv-run-actions">
+            <button id="cvRunAll" class="button primary" type="button" disabled>Подготовить файл</button>
+            <button id="cvCancel" class="button ghost hidden" type="button">Остановить</button>
+          </div>
+          <details class="cv-card cv-details" id="cvSettings"><summary>Настройки и сохранение</summary>
           <div class="field cv-field"><span>Куда сохранить</span>
             <div class="cv-segmented preview-tabs" role="radiogroup" aria-label="Куда сохранить">
               <button type="button" role="radio" data-output="near" aria-checked="true" class="selected">Рядом с файлом</button>
@@ -812,11 +818,13 @@
             <div id="cvOutputPath" class="cv-path">Папка «имя-spritelab» рядом с исходником</div>
           </div>
           <div class="cv-run-actions">
-            <button id="cvRunAll" class="button primary" type="button" disabled>Сделать всё</button>
             <button id="cvEnqueue" class="button secondary" type="button" disabled>Добавить в очередь</button>
-            <button id="cvCancel" class="button ghost hidden" type="button">Остановить</button>
           </div>
-          <details class="cv-card cv-details"><summary>Настройки пресета</summary><div id="cvPresetInfo" class="cv-preset-info"></div></details>
+          <div id="cvPresetInfo" class="cv-preset-info"></div></details>
+          <details id="cvToolsCard" class="cv-card cv-details hidden">
+            <summary>Все инструменты</summary><div id="cvToolGroups" class="cv-tool-groups"></div>
+            <p class="cv-hint">Правка откроет текущий результат. Нарезка и диапазон — исходный материал.</p>
+          </details>
         </div>
         <div id="quickView" class="panel cv-view" data-cv="quick" role="tabpanel">
           <div class="panel-heading compact"><p class="eyebrow">БЫСТРЫЙ РЕЖИМ</p><h1>Один файл</h1><p>Результат появится рядом с файлом, в папке «имя-spritelab». Без пресета и проверки.</p></div>
@@ -829,6 +837,7 @@
           <label class="toggle-row"><span><strong>Убрать фон</strong><small>Цвет фона определяется автоматически</small></span><input id="cvQuickBackground" type="checkbox" checked /><i></i></label>
           <label class="toggle-row"><span><strong>Собрать атлас</strong><small>Если кадров несколько</small></span><input id="cvQuickAtlas" type="checkbox" checked /><i></i></label>
           <div id="cvQuickStatus" class="cv-card cv-quick-status hidden" aria-live="polite"></div>
+          <button id="cvQuickCancel" class="button ghost hidden" type="button">Остановить</button>
         </div>
         <div id="queueView" class="panel cv-view" data-cv="queue" role="tabpanel">
           <div class="panel-heading compact"><p class="eyebrow">ОЧЕРЕДЬ И НАБЛЮДЕНИЕ</p><h1>В фоне</h1><p>Новые файлы попадают в очередь, когда запись завершена. Результат — в «SpriteLab-out» внутри папки; эта папка не отслеживается.</p></div>
@@ -839,11 +848,15 @@
         </div>
       </section>
       <section class="preview-deck cv-deck">
-        <header class="preview-header"><div><span class="live-dot"></span><strong id="cvDeckTitle">ЭТАПЫ</strong></div><div class="preview-switches"><button id="cvBackToStudio" class="button ghost" type="button">Студия · вкладки 01–03</button></div></header>
+        <header class="preview-header"><div><span class="live-dot"></span><strong id="cvDeckTitle">ПРЕДПРОСМОТР</strong></div><div class="preview-switches"><button id="cvBackToStudio" class="button ghost" type="button">Студия</button></div></header>
         <div class="cv-deck-body">
           <div id="cvStagesBox" class="cv-deck-section" data-cv-deck="conveyor quick">
-            <ol id="cvStages" class="cv-stages"></ol>
+            <div class="cv-preview-toolbar"><div class="preview-tabs" role="group" aria-label="Что показать"><button id="cvShowSource" type="button" class="selected" aria-pressed="true">Исходник</button><button id="cvShowResult" type="button" disabled aria-pressed="false">Результат</button></div><button id="cvPreviewFit" class="button ghost" type="button" aria-pressed="true">Вписать</button><select id="cvPreviewBackdrop" class="cv-preview-background" aria-label="Фон просмотра" title="Подложка только для просмотра, в PNG не сохраняется"><option value="checker">Прозрачность</option><option value="white">Белый фон</option><option value="black">Тёмный фон</option></select><span id="cvPreviewCaption" class="cv-path">Добавьте файл для просмотра</span></div>
+            <figure class="cv-preview" aria-label="Просмотр материала"><img id="cvPreviewImage" class="hidden" alt="" /><canvas id="cvIssueOverlay" aria-hidden="true" class="hidden"></canvas><figcaption id="cvPreviewEmpty">Перетащите материал в левую панель.<br />Здесь появится изображение для проверки.</figcaption></figure>
+            <div id="cvPlayback" class="cv-playback hidden" role="group" aria-label="Просмотр кадров"><select id="cvClip" aria-label="Анимация"></select><button id="cvPrevFrame" class="button secondary" type="button" aria-label="Предыдущий кадр">←</button><button id="cvPlay" class="button secondary" type="button">Воспроизвести</button><button id="cvNextFrame" class="button secondary" type="button" aria-label="Следующий кадр">→</button><input id="cvFrameSeek" type="range" min="0" max="0" value="0" aria-label="Кадр" /><span id="cvFrameLabel" class="cv-path"></span><button id="cvHideMarks" type="button" class="button ghost hidden">Убрать отметки</button></div>
+            <div id="cvWorking" class="cv-card hidden" aria-live="polite"><strong>Есть ручные правки</strong><span class="cv-hint">Проверка и экспорт обновятся после применения рабочей версии.</span><button id="cvApplyWorking" type="button" class="button primary">Применить правки и экспортировать</button></div>
             <div id="cvResult" class="cv-card cv-result hidden" aria-live="polite"></div>
+            <details id="cvStageDetails" class="cv-card cv-details"><summary id="cvStageSummary">Этапы обработки</summary><ol id="cvStages" class="cv-stages"></ol></details>
           </div>
           <div id="cvQueueBox" class="cv-deck-section hidden" data-cv-deck="queue">
             <p id="cvQueueSummary" class="cv-path"></p>
@@ -888,7 +901,7 @@
         </div>
         <p class="eyebrow">О ПРОГРАММЕ</p>
         <h2 id="aboutTitle">Chuba Sprite Lab</h2>
-        <p class="about-version">Версия <strong id="aboutVersion">1.8.2</strong></p>
+        <p class="about-version">Версия <strong id="aboutVersion">1.9.0</strong></p>
         <label class="about-locale"><span>Язык интерфейса</span>
           <select id="locale" aria-label="Язык интерфейса">
             <option value="ru">Русский</option>

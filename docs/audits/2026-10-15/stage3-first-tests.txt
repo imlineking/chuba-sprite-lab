@@ -1,0 +1,94 @@
+✔ presets validate and built-ins are protected (7.4319ms)
+✔ planStages follows the capability map (0.8691ms)
+✔ runConveyor runs stages in order and reports progress (0.6848ms)
+✔ runConveyor skips packing for one image and stops on unsupported input (0.3881ms)
+✔ runConveyor reports the failed stage (0.2529ms)
+✖ processorOptions maps presets onto existing processor keys (0.1975ms)
+✔ queue persists, survives restart, pauses, cancels and summarises (12.4295ms)
+✔ queue re-runs an item that was running when the app closed (2.6022ms)
+✔ watch folder waits for stable files and ignores the output folder (4.2682ms)
+✔ real stages: frames folder through cut, clean, pack, check and export (308.472ms)
+✔ animated WebP and a mislabelled GIF are split into frames by content (97.1723ms)
+✔ background off preserves opaque PNG pixels through the real conveyor (79.2388ms)
+✔ gif: real conveyor preserves opaque frames, order, timing and loop count (214.8621ms)
+✔ apng: real conveyor preserves opaque frames, order, timing and loop count (220.394ms)
+✔ atlas conveyor retains named clips, per-clip speeds, pivots and original canvas after trimming (182.2152ms)
+✖ empty conveyor: copilot explains and offers file, folder, quick and queue (1.8113ms)
+✔ conveyor only offers tools valid for the detected type (0.6392ms)
+✔ unsupported type: honest message, no tools (0.1409ms)
+✖ after a run: verdict, clickable fixes for safe remarks, honest hand-work for the rest (3.2738ms)
+✔ failed run says where it stopped and offers manual tools (0.1791ms)
+✔ quick and queue modes (0.2762ms)
+✔ critic fixes only touch padding / extrude / page size / background (0.1624ms)
+✔ studio video: «Вижу видео … Что сделать?» with the required options (0.3148ms)
+✔ studio video: picked frame shows ONE editor chip; change link only once a program is remembered (0.419ms)
+✔ chips that mean the same thing collapse into one (0.376ms)
+✔ the companion hides panel extras that duplicate a guide chip and renders the secondary link small (4.2594ms)
+✔ the companion cloud accepts conveyor/video chips and the review command (0.6918ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 24
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1359.4671
+
+✖ failing tests:
+
+test at test\conveyor.test.mjs:78:1
+✖ processorOptions maps presets onto existing processor keys (0.1975ms)
+  TypeError: Cannot read properties of null (reading 'gridMode')
+      at TestContext.<anonymous> (file:///C:/Users/User/Documents/ChatGPT/lab/chuba-sprite-lab/test/conveyor.test.mjs:82:91)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7)
+
+test at test\copilot-guide.test.mjs:11:1
+✖ empty conveyor: copilot explains and offers file, folder, quick and queue (1.8113ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    [
+      'pick-file',
+      'pick-folder',
+      'view:quick',
+  -   'view:queue'
+    ]
+
+      at TestContext.<anonymous> (file:///C:/Users/User/Documents/ChatGPT/lab/chuba-sprite-lab/test/copilot-guide.test.mjs:14:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'pick-file', 'pick-folder', 'view:quick' ],
+    expected: [ 'pick-file', 'pick-folder', 'view:quick', 'view:queue' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test\copilot-guide.test.mjs:37:1
+✖ after a run: verdict, clickable fixes for safe remarks, honest hand-work for the rest (3.2738ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+
+    assert.ok(g.chips.some((c) => c.id === "review"))
+
+      at TestContext.<anonymous> (file:///C:/Users/User/Documents/ChatGPT/lab/chuba-sprite-lab/test/copilot-guide.test.mjs:47:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

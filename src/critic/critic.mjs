@@ -155,7 +155,7 @@ export function applyFix(config, fix) {
   return next;
 }
 
-const configKeys = new Set([...Object.keys(buildDefaults), "prefixFolder"]);
+const configKeys = new Set([...Object.keys(buildDefaults), "prefixFolder", "frameMetadata", "animationMetadata", "animationLoop"]);
 const absolute = (value) => typeof value === "string" && value.length < 1024 && !value.includes("\0") && path.isAbsolute(value);
 
 /**
@@ -178,6 +178,12 @@ export function validateCriticConfig(config) {
   }
   if (config.name !== undefined && (typeof config.name !== "string" || !/^[\w.-]{1,128}$/.test(config.name))) throw new Error("name: только буквы, цифры, _ . -");
   if (config.formats !== undefined && (!Array.isArray(config.formats) || !config.formats.every((f) => typeof f === "string"))) throw new Error("formats: нужен список строк.");
+  for (const key of ["frameMetadata", "animationMetadata"]) if (config[key] != null && (typeof config[key] !== "object" || Array.isArray(config[key]) || Object.keys(config[key]).length > 4096)) throw new Error(`${key}: нужен объект метаданных до 4096 элементов.`);
+  if (config.animationLoop != null && (!Number.isInteger(config.animationLoop) || config.animationLoop < 0 || config.animationLoop > 65535)) throw new Error("animationLoop: целое число от 0 до 65535.");
+  for (const frame of Object.values(config.frameMetadata || {})) {
+    if (!frame || typeof frame !== "object") throw new Error("Повреждены метаданные кадра.");
+    if (frame.name != null && (typeof frame.name !== "string" || !frame.name || frame.name.length > 256 || path.isAbsolute(frame.name) || frame.name.split(/[\\/]/).includes(".."))) throw new Error("Имя кадра не может выходить за папку результата.");
+  }
   return { ...config, input, output };
 }
 

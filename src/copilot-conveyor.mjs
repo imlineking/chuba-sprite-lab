@@ -46,11 +46,12 @@ const describeFix = (f) => [f.padding != null && `отступ ${f.padding}px`, 
 
 export function planConveyorGuide(view = {}) {
   const guide = planConveyorGuideRaw(view);
-  return { ...guide, chips: dedupeChips(guide.chips) };
+  const chips = dedupeChips(guide.chips);
+  return { ...guide, chips: chips.slice(0, 3), moreChips: chips.slice(3) };
 }
 
 function planConveyorGuideRaw(view = {}) {
-  const { mode = "conveyor", capabilities: caps = null, detection = null, preset = null, presets = [], result = null, queue = null, watch = null, busy = false, quick = null } = view;
+  const { mode = "conveyor", capabilities: caps = null, detection = null, preset = null, presets = [], result = null, queue = null, watch = null, busy = false, quick = null, intent = null, workingDirty = false, recovery = null } = view;
   const chips = []; let say = ""; let honest = null;
   const allowed = new Set((caps?.tools || []).map((t) => t.id));
   const chip = (id, title, detail) => chips.push({ id, title, detail });
@@ -72,6 +73,7 @@ function planConveyorGuideRaw(view = {}) {
     return { say, chips, honest };
   }
 
+  if (recovery && !detection && mode === "conveyor") return { say: "Сохранилась незавершённая задача. Продолжить с готового этапа?", honest: "Перед продолжением проверю исходники и готовые файлы.", chips: [{ id: "recover", title: "Продолжить сохранённую задачу", detail: recovery.request.paths[0] }] };
   if (mode === "quick") {
     if (quick?.error) { say = `Быстрый режим не справился: ${quick.error}`; honest = "Откройте файл в «Конвейере»: там видно, какой этап не прошёл, и можно доделать вручную."; chip("view:conveyor", "Открыть в конвейере", "Пошагово, с выбором пресета"); return { say, chips, honest }; }
     if (quick?.outputDir) { say = `Готово: результат лежит в ${quick.outputDir}.`; chip("reveal", "Показать в папке", quick.outputDir); chip("view:conveyor", "Нужно точнее", "Конвейер с пресетом и проверкой"); return { say, chips, honest }; }
@@ -96,20 +98,37 @@ function planConveyorGuideRaw(view = {}) {
   const what = detection?.format === "folder" ? `${caps.label}, ${detection.files?.length || 0} кадров` : caps.label;
   const warn = (detection?.warnings || []).length ? ` Замечу: ${detection.warnings[0]}` : "";
 
+  if (["image-set", "frames-folder"].includes(caps.type) && !intent) {
+    return { say: "Что подготовить из этих изображений?", honest: "В отдельных PNG и атласе объектов размеры каждого изображения сохранятся.", chips: [
+      { id: "intent:images", title: "Отдельные PNG", detail: "Каждое изображение отдельно" },
+      { id: "intent:atlas", title: "Атлас объектов", detail: "Разные объекты на одном листе" },
+      { id: "intent:animation", title: "Анимация", detail: "Последовательные кадры" },
+    ] };
+  }
+  if (workingDirty) return { say: "В студии есть ручные правки. Применить их к результату?", honest: "Соберу рабочую версию, обновлю проверку и сохраню новый экспорт. Предыдущий экспорт останется.", chips: [{ id: "apply-working", title: "Применить правки и экспортировать", detail: "Текущая рабочая версия" }, { id: "tool:pixel-editor", title: "Продолжить правку", detail: "Вернуться к открытому материалу" }] };
   if (result) {
     if (!result.ok) {
       say = `Конвейер остановился${result.failedStage ? ` на этапе «${result.failedStage}»` : ""}: ${result.error || "ошибка"}.`;
-      honest = "Автоматически дальше не пройти. Лучше открыть нужный инструмент и доделать вручную.";
-      for (const t of ["split-frames", "slice-sheet", "remove-background", "pack-atlas"]) toolChip(t);
+      honest = "Исходники сохранены. Можно повторить запуск или проверить остановившийся этап вручную.";
+      if (result.resumeId) chip("resume", "Продолжить с этапа ошибки", "Проверю неизменность файлов и использую готовые этапы");
+      const stageTools = { cut: ["slice-sheet", "split-frames"], clean: ["remove-background", "edge-cleanup"], pack: ["pack-atlas"], check: ["review"], export: ["export-engines", "export-png"] };
+      for (const t of stageTools[result.failedStage] || ["pixel-editor"]) toolChip(t);
       chip("run", "Повторить", "Тот же пресет");
       return { say, chips: chips.slice(0, 5), honest };
     }
     const review = result.review;
     if (!review) { say = `Готово: ${what}. Результат в ${result.outputDir}. Проверка в этом пресете выключена.`; chip("reveal", "Показать в папке", result.outputDir); toolChip("review"); return { say, chips, honest }; }
     const issues = review.issues || [];
+    if (review.kind === "png") {
+      say = `PNG: ${review.verdictLabel}. ${issues.length ? `Наблюдений: ${issues.length}.` : "Технических замечаний нет."}`;
+      honest = review.summary;
+      chip("review", "Открыть проверку", "Размеры, прозрачность и наблюдения");
+      toolChip("pixel-editor"); chip("reveal", "Показать в папке", result.outputDir);
+      return { say, chips, honest };
+    }
     say = `Готово: ${what}. Приёмка: ${review.verdictLabel || review.verdict}${Number.isFinite(review.score) ? `, ${review.score}/100` : ""}. ${issues.length ? `Замечаний: ${issues.length}.` : "Замечаний нет."}`;
     const manual = [];
-    issues.slice(0, 6).forEach((issue, index) => {
+    issues.filter(issue => issue.severity !== "info").slice(0, 6).forEach((issue, index) => {
       const auto = autoFixFor(issue.fix);
       if (auto) chip(`fix:${index}`, `Исправить: ${issue.reason}`.slice(0, 90), `Пересоберу: ${describeFix(auto)}`);
       else { const tool = manualFor(issue.fix, allowed) || (issue.code === "missing_frame" || issue.code === "near_duplicate" ? (allowed.has("pixel-editor") ? "pixel-editor" : null) : null); manual.push({ issue, tool }); }
@@ -119,17 +138,18 @@ function planConveyorGuideRaw(view = {}) {
     }
     if (manual.length) honest = `${manual.length === 1 ? "Одно замечание" : `${manual.length} замечания`} автоматически не исправлю честно: ${manual[0].issue.reason} Лучше доделать руками.`;
     chip("reveal", "Показать в папке", result.outputDir);
-    if (issues.length) chip("review", "Открыть Приёмку", "Все замечания и «Принять всё равно»");
+    chip("review", "Открыть проверку", review.kind === "png" ? "Размеры и прозрачность сохранённых PNG" : "Замечания по атласу");
     return { say, chips, honest };
   }
 
-  say = `Вижу: ${what}. «Сделать всё» пройдёт этапы ${caps.stages.filter((s) => s.applies).map((s) => s.label.toLowerCase()).join(" → ")} с пресетом «${preset?.label || "—"}».${warn}`;
-  chip("run", "Сделать всё", `Пресет ${preset?.label || ""}, результат рядом с файлом`);
-  for (const p of presets.filter((x) => x.id !== "quick" && x.id !== preset?.id).slice(0, 2)) chip(`preset:${p.id}`, `Пресет ${p.label}`, p.pixelArt ? "без сглаживания, отступ 1px" : `форматы: ${(p.atlas?.formats || []).join(", ")}`);
+  say = `Вижу: ${what}. Подготовить с профилем «${preset?.label || "—"}»?${warn}`;
+  chip("run", caps.type === "image" ? "Подготовить PNG" : "Подготовить файл", `Профиль ${preset?.label || ""} · сохранить в выбранное место`);
+  toolChip("pixel-editor");
+  for (const p of presets.filter((x) => x.id !== "quick" && x.id !== preset?.id).slice(0, 1)) chip(`preset:${p.id}`, `Профиль ${p.label}`, "Сменить формат результата");
   if (allowed.has("quick")) chip("view:quick", "Быстро, без настроек", "Результат рядом с файлом");
-  if (allowed.has("batch")) chip("enqueue", "В очередь", "Каждый файл отдельно, в фоне");
+  if (allowed.has("batch")) chip("enqueue", "В очередь", "Выбранная цель, в фоне");
   for (const t of ["split-frames", "slice-sheet", "import-aseprite", "remove-background"]) if (chips.length < 7) toolChip(t);
-  if (caps.type === "image") honest = "Одна картинка без кадров: атлас и Приёмку не делаю, только фон, края и экспорт PNG.";
+  if (caps.type === "image") honest = "Одна картинка: фон, края, техническая проверка и экспорт PNG. Атлас не нужен.";
   return { say, chips, honest };
 }
 

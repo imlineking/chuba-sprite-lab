@@ -1,0 +1,11 @@
+(async()=>{await window.userProfileReady;if(!document.querySelector('#userNameModal').classList.contains('hidden'))document.querySelector('#skipUserName').click();await window.conveyorUI.ready;
+if(document.querySelector('#cvRecovery').classList.contains('hidden'))throw new Error('No recovery card after restart');
+if(!window.conveyorUI.snapshot().recovery)throw new Error('No saved task');
+await window.conveyorUI.act('recover');const result=window.conveyorUI.snapshot().result;if(!result?.ok)throw new Error(result?.error||'Recovery failed');
+if(result.artifacts.frames.map(f=>f.durationMs).join(',')!=='80,240')throw new Error('Timing lost');
+if(await window.spriteLab.conveyor.recovery())throw new Error('Checkpoint not cleared');
+if(!document.querySelector('#cvRecovery').classList.contains('hidden'))throw new Error('Recovery card remained');
+await window.conveyorUI.renderPreview('result');document.querySelector('#cvNextFrame').click();
+if(!document.querySelector('#cvFrameLabel').textContent.includes('240'))throw new Error('Recovered playback failed');
+document.documentElement.dataset.theme='dark';document.documentElement.dataset.shellMotion='off';
+})();

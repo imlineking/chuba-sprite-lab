@@ -1,0 +1,15 @@
+✔ frame clock respects unequal durations, pause, stepping and long stalls (0.5841ms)
+✔ working signature ignores selection but includes pixels, masks and timing (0.156ms)
+✔ independent objects remap only their own override and mask (0.5631ms)
+✔ animation: rebuilding exports edited pixels, dimensions and timing without modifying old files (215.3517ms)
+✔ images: rebuilding exports edited pixels, dimensions and timing without modifying old files (215.8083ms)
+✔ atlas: rebuilding exports edited pixels, dimensions and timing without modifying old files (246.6838ms)
+✔ PNG findings carry correct frame and bounded image coordinates without altering alpha (6.0984ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 838.2671

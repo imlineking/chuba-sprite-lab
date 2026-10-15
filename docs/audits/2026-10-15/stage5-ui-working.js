@@ -1,0 +1,26 @@
+(async()=>{await window.userProfileReady;
+if (!document.querySelector('#userNameModal').classList.contains('hidden')) document.querySelector('#skipUserName').click();
+await window.conveyorUI.ready;window.conveyorUI.setView('conveyor');
+const base='C:/Users/User/Documents/ChatGPT/lab/chuba-sprite-lab/docs/audits/2026-10-15/';
+
+await window.conveyorUI.detect([base+'fixture.png']);await window.conveyorUI.act('preset:pixel-art');await window.conveyorUI.act('run');
+const first=window.conveyorUI.snapshot().result;if(!first.ok)throw new Error(first.error);
+await window.conveyorUI.act('tool:pixel-editor');
+if(!pixelEditor.sessionId)throw new Error('No editor');
+const answer=await window.spriteLab.pixelEditorOp({sessionId:pixelEditor.sessionId,op:'paint',from:[12,12],to:[12,12],color:[220,10,40,255],size:1});pixelEditorApplyState(answer);
+if(!await pixelEditorSave())throw new Error('Save failed');await pixelEditorClose();
+window.conveyorUI.setView('conveyor');await window.conveyorUI.renderPreview('result');
+if(!window.conveyorUI.snapshot().workingDirty)throw new Error('Working version not dirty');
+const {planConveyorGuide}=await import('./copilot-conveyor.mjs');if(planConveyorGuide(window.conveyorUI.snapshot()).chips[0].id!=='apply-working')throw new Error('Copilot not using working version');
+await window.conveyorUI.act('apply-working');
+const result=window.conveyorUI.snapshot().result;if(!result.ok)throw new Error(result.error);
+if(result.outputDir===first.outputDir||window.conveyorUI.snapshot().workingDirty)throw new Error('Wrong version exported');
+const preview=await window.spriteLab.conveyor.preview([result.artifacts.previewPath]);
+const img=new Image();await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=preview.url});
+const canvas=document.createElement('canvas');canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;canvas.getContext('2d').drawImage(img,0,0);
+const color=[...canvas.getContext('2d').getImageData(12,12,1,1).data];if(color.join(',')!=='220,10,40,255')throw new Error('Exported wrong pixels '+color);
+if(img.naturalWidth!==64)throw new Error('Canvas changed');
+await window.conveyorUI.act('tool:pixel-editor');if(!state.frameOverrides[0])throw new Error('Edits lost on return');await pixelEditorClose();
+window.conveyorUI.setView('conveyor');await window.conveyorUI.renderPreview('result');
+document.documentElement.dataset.theme='dark';document.documentElement.dataset.shellMotion='off';
+})();

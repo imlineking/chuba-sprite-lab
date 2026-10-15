@@ -1,0 +1,27 @@
+[
+  {
+    "exit": 0,
+    "case": "stage4-ui",
+    "ms": 3047
+  },
+  {
+    "exit": 0,
+    "case": "stage5-ui-working-final",
+    "ms": 2879
+  },
+  {
+    "exit": 0,
+    "case": "stage5-ui-playback",
+    "ms": 2602
+  },
+  {
+    "exit": 0,
+    "case": "stage5-ui-marks",
+    "ms": 2491
+  },
+  {
+    "exit": 0,
+    "case": "stage3-cancel-ui",
+    "ms": 2259
+  }
+]

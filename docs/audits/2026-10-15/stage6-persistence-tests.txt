@@ -1,0 +1,28 @@
+✔ restart after extraction survives deletion of the temporary frames (195.5573ms)
+✔ restart after packing restores atlas pixels from PNG without repacking or cleaning (193.7941ms)
+✔ restart and new destination reuse completed review; old and existing exports survive (240.4132ms)
+✔ persistent resume rejects changed input before executing stages (152.457ms)
+✔ persistent resume rejects changed cache before executing stages (150.1756ms)
+✔ persistent resume rejects changed atlas before executing stages (148.9231ms)
+✔ queue IPC retries one failed task in a new folder using its disk checkpoint (191.2334ms)
+✔ multiple images require a purpose before processing; guide offers exactly three choices (8.3039ms)
+✔ images: different canvas sizes and white artwork survive real processing (193.0486ms)
+✔ atlas: different canvas sizes and white artwork survive real processing (211.2964ms)
+✔ PNG review detects empty output and leaves white details byte-for-byte intact (12.4281ms)
+✔ resume after pack reuses successful real stages (169.8608ms)
+✔ resume after exportResult reuses successful real stages (200.5594ms)
+✔ resume rejects changed input without processing (96.9974ms)
+✔ resume rejects changed output without processing (96.9336ms)
+✔ resume rejects changed settings without processing (90.5347ms)
+✔ resume rejects changed folder-list without processing (102.7037ms)
+✔ resume rejects changed expired without processing (88.551ms)
+✔ queue persists the chosen purpose (5.433ms)
+✔ cancelled processing releases its checkpoint and offers no resume (26.8532ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1472.0399

@@ -1,0 +1,22 @@
+(async () => {
+  await window.userProfileReady;
+  if (!document.querySelector('#userNameModal').classList.contains('hidden')) document.querySelector('#skipUserName').click();
+  await window.conveyorUI.ready;
+  window.conveyorUI.setView('conveyor');
+  const input = 'C:/Users/User/Documents/ChatGPT/lab/chuba-sprite-lab/docs/audits/2026-10-15/fixture.png';
+  await window.conveyorUI.detect([input]);
+  await window.conveyorUI.act('preset:pixel-art');
+  await window.conveyorUI.act('run');
+  const result = window.conveyorUI.snapshot().result;
+  if (!result?.ok || window.conveyorUI.snapshot().busy) throw new Error(result?.error || 'Конвейер не завершился');
+  await window.conveyorUI.renderPreview('result');
+  const image = document.querySelector('#cvPreviewImage');
+  if (!image.complete) await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('Нет изображения')); });
+  if (image.naturalWidth !== 64) throw new Error('Размер исходника изменён');
+  if (!document.querySelector('#cvSettings').matches(':not([open])')) throw new Error('Настройки открыты без запроса');
+  const { planConveyorGuide } = await import('./copilot-conveyor.mjs');
+  const guide = planConveyorGuide(window.conveyorUI.snapshot());
+  if (guide.chips.length > 3) throw new Error('Слишком много действий');
+  document.documentElement.dataset.theme = 'dark';
+  document.documentElement.dataset.shellMotion = 'off';
+})();

@@ -1,0 +1,62 @@
+
+> chuba-sprite-lab@1.9.0 pack
+> node scripts/package.mjs
+
+ToonOut: verified local copy
+LaMa: verified local copy
+RIFE: verified local copy
+Увеличение изображения · Real-ESRGAN: verified local copy
+Depth Anything V2 small: verified local copy
+  • electron-builder  version=26.15.3 os=10.0.26300
+  • loaded configuration  file=package.json ("build" field)
+  • executing @electron/rebuild  electronVersion=44.4.5 arch=x64 buildFromSource=false workspaceRoot=C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab projectDir=./ appDir=./
+  • installing native dependencies  arch=x64
+  • completed installing native dependencies
+  • packaging       platform=win32 arch=x64 electron=44.4.5 appOutDir=.build\win-unpacked
+  • using custom unpacked Electron distribution  electronDist=node_modules\electron\dist
+  • copying unpacked Electron  source=C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab\node_modules\electron\dist destination=C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab\.build\win-unpacked
+  • asar usage is disabled — this is strongly not recommended  solution=enable asar and use asarUnpack to unpack files that must be externally available
+  • searching for node modules  pm=npm searchDir=C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab
+  • signing with signtool.exe  path=.build\win-unpacked\resources\vendor\healing-runtime\python.exe
+  • asar usage is disabled — this is strongly not recommended  solution=enable asar and use asarUnpack to unpack files that must be externally available
+  • signing with signtool.exe  path=.build\win-unpacked\Chuba Sprite Lab.exe
+
+7-Zip (a) 24.09 (x86) : Copyright (c) 1999-2024 Igor Pavlov : 2024-11-29
+
+Scanning the drive:
+275 folders, 2486 files, 2053814950 bytes (1959 MiB)
+
+Creating archive: C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab\.build\one-file\chuba-sprite-lab-1.9.0-x64.nsis.7z
+
+Add new data to archive: 275 folders, 2486 files, 2053814950 bytes (1959 MiB)
+
+
+Files read from disk: 2460
+Archive size: 1345700951 bytes (1284 MiB)
+Everything is Ok
+
+7-Zip (a) 24.09 (x86) : Copyright (c) 1999-2024 Igor Pavlov : 2024-11-29
+
+Scanning the drive for archives:
+1 file, 1345700951 bytes (1284 MiB)
+
+Testing archive: C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab\.build\one-file\chuba-sprite-lab-1.9.0-x64.nsis.7z
+--
+Path = C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab\.build\one-file\chuba-sprite-lab-1.9.0-x64.nsis.7z
+Type = 7z
+Physical Size = 1345700951
+Headers Size = 36617
+Method = LZMA2:18 BCJ
+Solid = +
+Blocks = 13
+
+Everything is Ok
+
+Folders: 275
+Files: 2486
+Size:       2053814950
+Compressed: 1345700951
+{"output":"C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\.build\\Chuba-Sprite-Lab-portable.exe","bytes":"1346630206","archiveBytes":"1345700951"}
+Offline single-file portable 1.9.0 created:
+C:\Users\User\Documents\ChatGPT\lab\chuba-sprite-lab\portable\Chuba Sprite Lab.exe
+Included models: 5

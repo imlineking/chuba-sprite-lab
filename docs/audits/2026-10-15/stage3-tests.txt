@@ -1,0 +1,39 @@
+✔ every advertised manual tool has a route to real studio controls (3.1177ms)
+✔ cancel remains available while other copilot commands are blocked (0.215ms)
+✔ copilot presents at most three choices and keeps the rest discoverable (0.8026ms)
+✔ presets validate and built-ins are protected (6.9821ms)
+✔ planStages follows the capability map (0.926ms)
+✔ runConveyor runs stages in order and reports progress (0.7887ms)
+✔ runConveyor skips packing for one image and stops on unsupported input (0.4013ms)
+✔ runConveyor reports the failed stage (0.2512ms)
+✔ processorOptions maps presets onto existing processor keys (0.1016ms)
+✔ queue persists, survives restart, pauses, cancels and summarises (12.1367ms)
+✔ queue re-runs an item that was running when the app closed (3.6618ms)
+✔ watch folder waits for stable files and ignores the output folder (4.5633ms)
+✔ real stages: frames folder through cut, clean, pack, check and export (297.7371ms)
+✔ animated WebP and a mislabelled GIF are split into frames by content (97.4693ms)
+✔ background off preserves opaque PNG pixels through the real conveyor (pixel art: false) (90.0975ms)
+✔ background off preserves opaque PNG pixels through the real conveyor (pixel art: true) (86.6047ms)
+✔ gif: real conveyor preserves opaque frames, order, timing and loop count (217.86ms)
+✔ apng: real conveyor preserves opaque frames, order, timing and loop count (209.3372ms)
+✔ atlas conveyor retains named clips, per-clip speeds, pivots and original canvas after trimming (163.7409ms)
+✔ empty conveyor: copilot explains and offers file, folder, quick and queue (1.2243ms)
+✔ conveyor only offers tools valid for the detected type (0.5122ms)
+✔ unsupported type: honest message, no tools (0.1094ms)
+✔ after a run: verdict, clickable fixes for safe remarks, honest hand-work for the rest (0.3983ms)
+✔ failed run says where it stopped and offers manual tools (0.1829ms)
+✔ quick and queue modes (0.1986ms)
+✔ critic fixes only touch padding / extrude / page size / background (0.2049ms)
+✔ studio video: «Вижу видео … Что сделать?» with the required options (0.3793ms)
+✔ studio video: picked frame shows ONE editor chip; change link only once a program is remembered (0.9093ms)
+✔ chips that mean the same thing collapse into one (0.3304ms)
+✔ the companion hides panel extras that duplicate a guide chip and renders the secondary link small (3.6006ms)
+✔ the companion cloud accepts conveyor/video chips and the review command (0.6989ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1461.6905

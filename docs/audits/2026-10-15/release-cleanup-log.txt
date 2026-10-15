@@ -1,0 +1,173 @@
+{
+  "deleted": [
+    {
+      "bytes": 1346630122,
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\.build-archive\\2026-10-15T16-26-33-296Z-previous-portable"
+    },
+    {
+      "bytes": 0,
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\.build-archive"
+    },
+    {
+      "bytes": 3399590444,
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\.build"
+    },
+    {
+      "bytes": 43117,
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\fixture-spritelab"
+    },
+    {
+      "bytes": 27962955,
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\release-real-output"
+    },
+    {
+      "bytes": 17929,
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\stage2-output"
+    },
+    {
+      "bytes": 14994,
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\stage4-a-spritelab"
+    },
+    {
+      "bytes": 6602,
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\stage5-pale-spritelab"
+    },
+    {
+      "bytes": 11898,
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\stage6-direct-out"
+    },
+    {
+      "bytes": 11892,
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\stage6-queue-out"
+    },
+    {
+      "bytes": 0,
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\timing-output"
+    },
+    {
+      "bytes": 7534,
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\timing-shaped-output"
+    },
+    {
+      "bytes": 11936,
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\docs\\audits\\2026-10-15\\timing-shaped-spritelab"
+    },
+    {
+      "bytes": 7195971,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-built-desktop"
+    },
+    {
+      "bytes": 8330146,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-built-recovery-direct"
+    },
+    {
+      "bytes": 8437883,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-built-recovery-queue"
+    },
+    {
+      "bytes": 8330160,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-built-release-built-info"
+    },
+    {
+      "bytes": 8437606,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-built-stage3-cancel-ui"
+    },
+    {
+      "bytes": 8330124,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-built-stage4-ui"
+    },
+    {
+      "bytes": 8330146,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-built-stage5-ui-marks"
+    },
+    {
+      "bytes": 8330160,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-built-stage5-ui-playback"
+    },
+    {
+      "bytes": 8561377,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-built-stage5-ui-working-final"
+    },
+    {
+      "bytes": 1115338,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-exe-models"
+    },
+    {
+      "bytes": 1115338,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-exe-models-final"
+    },
+    {
+      "bytes": 7195973,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-final-desktop"
+    },
+    {
+      "bytes": 8334464,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-final-recovery"
+    },
+    {
+      "bytes": 8330160,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-final-release-built-info"
+    },
+    {
+      "bytes": 8334454,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-final-stage5-ui-playback"
+    },
+    {
+      "bytes": 8561377,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-final-stage5-ui-working-final"
+    },
+    {
+      "bytes": 1346630206,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-portable"
+    },
+    {
+      "bytes": 8437582,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-stage3-cancel-ui"
+    },
+    {
+      "bytes": 8330100,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-stage4-ui"
+    },
+    {
+      "bytes": 8330124,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-stage5-ui-marks"
+    },
+    {
+      "bytes": 8330136,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-stage5-ui-playback"
+    },
+    {
+      "bytes": 8561335,
+      "path": "C:\\Users\\User\\AppData\\Local\\Temp\\sprite-release-stage5-ui-working-final"
+    },
+    {
+      "bytes": 2054670965,
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\7697dad7a5d3bf9f2b3f471a"
+    }
+  ],
+  "archived": [
+    {
+      "from": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\Chuba Sprite Lab 1.8.2.exe",
+      "to": "C:\\Users\\User\\Pictures\\Chuba\\chuba the game\\not used\\sprite-lab-previous-builds-2026-10-15\\Chuba Sprite Lab 1.8.2.exe"
+    },
+    {
+      "from": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\Chuba Sprite Lab 1.8.2 - UI fixes.exe",
+      "to": "C:\\Users\\User\\Pictures\\Chuba\\chuba the game\\not used\\sprite-lab-previous-builds-2026-10-15\\Chuba Sprite Lab 1.8.2 - UI fixes.exe"
+    },
+    {
+      "from": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\.build-archive\\2026-10-15T16-17-20-739Z-previous-portable",
+      "to": "C:\\Users\\User\\Pictures\\Chuba\\chuba the game\\not used\\sprite-lab-previous-builds-2026-10-15\\2026-10-15T16-17-20-739Z-previous-portable"
+    }
+  ],
+  "shortcuts": [
+    "C:/Users/User/Desktop/Sprite Lab.lnk",
+    "C:/Users/User/Documents/ChatGPT/lab/Sprite Lab.lnk"
+  ],
+  "deletedBytes": 8334870548,
+  "artifact": {
+    "bytes": 1346630206,
+    "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\portable\\Chuba Sprite Lab.exe",
+    "version": "1.9.0",
+    "sha256": "5037788494b12430709c72feae65cf50e4b1acb6a8deb64f666ec6a4d4bedb88"
+  }
+}

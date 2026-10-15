@@ -1,0 +1,102 @@
+{
+  "image": {
+    "text": "Вижу: Изображение. «Сделать всё» пройдёт этапы очистка фона → экспорт с пресетом «Phaser».",
+    "actionCount": 5,
+    "actions": [
+      "run",
+      "preset:godot",
+      "preset:unity",
+      "view:quick",
+      "tool:remove-background"
+    ]
+  },
+  "video": {
+    "text": "Вижу: Видео. «Сделать всё» пройдёт этапы нарезка → очистка фона → упаковка → проверка → экспорт с пресетом «Phaser».",
+    "actionCount": 6,
+    "actions": [
+      "run",
+      "preset:godot",
+      "preset:unity",
+      "view:quick",
+      "tool:split-frames",
+      "tool:remove-background"
+    ]
+  },
+  "image-set": {
+    "text": "Вижу: Несколько изображений. «Сделать всё» пройдёт этапы очистка фона → упаковка → проверка → экспорт с пресетом «Phaser».",
+    "actionCount": 5,
+    "actions": [
+      "run",
+      "preset:godot",
+      "preset:unity",
+      "enqueue",
+      "tool:remove-background"
+    ]
+  },
+  "sprite-sheet": {
+    "text": "Вижу: Спрайт-лист. «Сделать всё» пройдёт этапы нарезка → очистка фона → упаковка → проверка → экспорт с пресетом «Phaser».",
+    "actionCount": 6,
+    "actions": [
+      "run",
+      "preset:godot",
+      "preset:unity",
+      "view:quick",
+      "tool:slice-sheet",
+      "tool:remove-background"
+    ]
+  },
+  "busy": {
+    "say": "Конвейер работает. Скажу, что получилось, когда закончит.",
+    "chips": [
+      {
+        "id": "cancel",
+        "title": "Остановить",
+        "detail": "Прервать текущий запуск"
+      }
+    ],
+    "honest": null
+  },
+  "pixelPreset": {
+    "keyMode": "auto",
+    "fringeCleanup": false,
+    "edgeDecontaminate": false,
+    "pixelate": {
+      "gridMode": "adaptive",
+      "size": 4,
+      "colors": 32,
+      "palette": "auto",
+      "mode": "clean",
+      "dither": "none",
+      "shadingSteps": 0,
+      "detail": 50,
+      "softAlpha": false,
+      "paletteScope": "series"
+    }
+  },
+  "failed": {
+    "say": "Конвейер остановился на этапе «export»: Fixture only; export permission denied.",
+    "chips": [
+      {
+        "id": "tool:split-frames",
+        "title": "Разложить на кадры",
+        "detail": "проверить кадры до упаковки"
+      },
+      {
+        "id": "tool:remove-background",
+        "title": "Убрать фон",
+        "detail": "если фон сложный"
+      },
+      {
+        "id": "tool:pack-atlas",
+        "title": "Упаковать в атлас",
+        "detail": "открыть инструмент"
+      },
+      {
+        "id": "run",
+        "title": "Повторить",
+        "detail": "Тот же пресет"
+      }
+    ],
+    "honest": "Автоматически дальше не пройти. Лучше открыть нужный инструмент и доделать вручную."
+  }
+}

@@ -1,0 +1,14 @@
+✔ the version is the same in the package, the lockfile and the window (2.5267ms)
+✔ every bridge method the window calls exists in the preload (0.8784ms)
+✔ every bridge method is used somewhere, so no dead surface is left behind (1.7416ms)
+✔ an IPC channel registered in the main process is reachable from the preload (0.8925ms)
+✔ the shipped stylesheets are all linked and all linked files exist (6.1274ms)
+✔ UI, lockfile and real engine exports use the application version (63.9401ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 207.2573

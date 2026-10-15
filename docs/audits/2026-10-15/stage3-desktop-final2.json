@@ -1,0 +1,45 @@
+{
+  "ok": false,
+  "checks": [
+    {
+      "name": "copilot-before-main-import",
+      "ok": true,
+      "text": "Загрузка."
+    },
+    {
+      "name": "native-drag",
+      "ok": true,
+      "suppliedDipCursor": true,
+      "physicalMouseTest": false,
+      "bounds": {
+        "x": 730,
+        "y": 190,
+        "width": 113,
+        "height": 129
+      }
+    },
+    {
+      "name": "no-file-drag",
+      "ok": true
+    },
+    {
+      "name": "persisted-position",
+      "ok": true,
+      "bounds": {
+        "x": 730,
+        "y": 190,
+        "width": 113,
+        "height": 129
+      }
+    },
+    {
+      "name": "independent-of-minimize",
+      "ok": true
+    },
+    {
+      "name": "guided-task-command",
+      "ok": true
+    }
+  ],
+  "error": "Окна помощника потеряли режим поверх окон."
+}

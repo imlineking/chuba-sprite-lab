@@ -1,0 +1,20 @@
+✔ multiple images require a purpose before processing; guide offers exactly three choices (8.6236ms)
+✔ images: different canvas sizes and white artwork survive real processing (171.1373ms)
+✔ atlas: different canvas sizes and white artwork survive real processing (168.085ms)
+✔ PNG review detects empty output and leaves white details byte-for-byte intact (13.0549ms)
+✔ resume after pack reuses successful real stages (153.0662ms)
+✔ resume after exportResult reuses successful real stages (171.3534ms)
+✔ resume rejects changed input without processing (90.422ms)
+✔ resume rejects changed output without processing (99.9112ms)
+✔ resume rejects changed settings without processing (90.5821ms)
+✔ resume rejects changed folder-list without processing (94.1238ms)
+✔ resume rejects changed expired without processing (89.4642ms)
+✔ queue persists the chosen purpose (3.7027ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1313.7554

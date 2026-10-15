@@ -1,0 +1,26 @@
+[
+  {
+    "Path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\src\\conveyor-main.mjs",
+    "Hash": "B9DC286216BD94AF5D2496D77DB2FF92FC7325DA824D41A26B9ED0D24F3117D1"
+  },
+  {
+    "Path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\src\\conveyor.mjs",
+    "Hash": "439528BB56886B77C5D3097E36B428F1B7527307C6764AEFDB2400FCF04482A3"
+  },
+  {
+    "Path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\src\\pipeline\\build.mjs",
+    "Hash": "7E5E794133B40B56842F4BA9A97773ED25B44BAF825CC56C53E408803018CD76"
+  },
+  {
+    "Path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\src\\pipeline\\exporters.mjs",
+    "Hash": "296E380976644904AAC7DCF69CC08832C89C32DBA56ECBEDB0163C26CD778E4F"
+  },
+  {
+    "Path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\src\\sheet-metadata.mjs",
+    "Hash": "E847688EED2E3520ED19174D6DA5AE45C2299A2A625F7379660F1582B0FEB814"
+  },
+  {
+    "Path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\test\\conveyor.test.mjs",
+    "Hash": "3351B8A40DDB3B87886C8A79463F7412EA035D4841D34D78DA17EDFF7B80761D"
+  }
+]

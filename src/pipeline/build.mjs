@@ -112,11 +112,14 @@ export async function collectFrames(config, files) {
     }
     const names = frameNamesFor(base, images.length);
     images.forEach((image, i) => {
-      const name = folderTag && config.prefixFolder ? `${folderTag}/${names[i]}` : names[i];
+      const metadata = config.frameMetadata?.[path.resolve(file)] || {};
+      const name = metadata.name || (folderTag && config.prefixFolder ? `${folderTag}/${names[i]}` : names[i]);
       const parsed = parseFrameName(names[i]);
       const trimmed = config.trim ? trim(image, config.alphaThreshold) : { image, offset: { x: 0, y: 0 } };
       const frame = {
-        name, file, folderTag, animation: parsed.animation, index: parsed.index,
+        name, file, folderTag, animation: metadata.animation ?? parsed.animation, index: metadata.index ?? parsed.index,
+        ...(metadata.durationMs > 0 ? { durationMs: metadata.durationMs } : {}),
+        ...(metadata.pivot ? { pivot: metadata.pivot } : {}),
         width: trimmed.image.width, height: trimmed.image.height, rgba: trimmed.image.rgba,
         offset: trimmed.offset, sourceSize: { w: image.width, h: image.height },
         trimmed: trimmed.image.width !== image.width || trimmed.image.height !== image.height,
@@ -165,11 +168,15 @@ export async function buildAtlas(rawConfig, { baseDir = process.cwd(), write = t
     return {
       name: frame.name, page: target.page, x: target.x, y: target.y, w: frame.width, h: frame.height, rotated: target.rotated,
       trimmed: frame.trimmed, spriteSourceSize: { x: frame.offset.x, y: frame.offset.y, w: frame.width, h: frame.height }, sourceSize: frame.sourceSize,
-      pivot: { ...config.pivot }, animation: frame.animation, index: frame.index, tags: frame.tags, duplicateOf: aliasOf.get(frame.name) ?? null,
+      pivot: { ...(frame.pivot || config.pivot) }, animation: frame.animation, index: frame.index, tags: frame.tags, duplicateOf: aliasOf.get(frame.name) ?? null,
+      ...(frame.durationMs > 0 ? { durationMs: frame.durationMs } : {}),
     };
   });
   const animations = Object.fromEntries(Object.entries(groupAnimations(atlasFrames)).map(([name, list]) => [name, list.map((frame) => frame.name)]));
-  const atlas = { name: config.name, app: "Chuba Sprite Lab", version: "1", fps: config.fps, pages: pages.map(({ file, width, height }) => ({ file, width, height })), frames: atlasFrames, animations };
+  const atlas = { name: config.name, app: "Chuba Sprite Lab", version: "1", fps: config.fps, pages: pages.map(({ file, width, height }) => ({ file, width, height })), frames: atlasFrames, animations,
+    ...(config.animationMetadata ? { animationMetadata: config.animationMetadata } : {}),
+    ...(config.animationLoop != null ? { animationLoop: config.animationLoop } : {}),
+  };
   const outputs = config.formats.flatMap((format) => exportAtlas(atlas, format));
   const stats = { sources: files.length, frames: frames.length, unique: unique.length, duplicates: frames.length - unique.length, pages: pages.length, fill: Math.round((unique.reduce((s, f) => s + f.width * f.height, 0) / pages.reduce((s, p) => s + p.width * p.height, 0)) * 1000) / 10 };
   let removedStale = [];

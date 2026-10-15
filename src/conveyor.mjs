@@ -53,10 +53,14 @@ export class PresetStore {
 export function processorOptions(preset, recommendations = {}) {
   return {
     ...recommendations,
-    keyMode: preset.background === "none" ? "none" : preset.background === "ai" || preset.ai ? "ai" : (recommendations.keyMode || "auto"),
+    keyMode: preset.background === "none" ? "alpha" : preset.background === "ai" || preset.ai ? "ai" : (recommendations.keyMode || "auto"),
+    // Cleaning must not silently fit an input into the studio's default 600×400 cell.
+    preserveFrameCanvas: true,
     fringeCleanup: preset.edgeCleanup, edgeDecontaminate: preset.edgeCleanup,
     // Packing settings go to the atlas stage (pipeline/build); the processor keeps its own sheet defaults.
-    pixelate: preset.pixelArt ? { gridMode: "adaptive", size: 4, colors: 32, palette: "auto", mode: "clean", dither: "none", shadingSteps: 0, detail: 50, softAlpha: false, paletteScope: "series" } : null,
+    // A pixel-art preset preserves existing artwork. Conversion is an explicit tool.
+    pixelate: null,
+    pixelPerfect: Boolean(preset.pixelArt),
   };
 }
 
@@ -68,13 +72,14 @@ export function quickOutputDir(filePath) {
 export function safeAtlasName(value) { return String(value || "atlas").replace(/[^\w.-]+/g, "_").replace(/^[_.]+|[_.]+$/g, "").slice(0, 64) || "atlas"; }
 
 // Plan which stages run for a detected type and preset.
-export function planStages(type, preset) {
+export function planStages(type, preset, intent = null) {
   const caps = capabilitiesFor(type);
   return caps.stages.map((s) => {
     if (!caps.supported) return { ...s, run: false, reason: caps.message };
     if (!s.applies) return { ...s, run: false, reason: "не нужен для этого типа" };
+    if (s.id === "pack" && intent === "images") return { ...s, run: false, reason: "отдельные PNG" };
     if (s.id === "pack" && preset.pack === false) return { ...s, run: false, reason: "выключено" };
-    if (s.id === "check" && (!preset.review || preset.pack === false)) return { ...s, run: false, reason: "выключено в пресете" };
+    if (s.id === "check" && (!preset.review)) return { ...s, run: false, reason: "выключено в пресете" };
     return { ...s, run: true };
   });
 }
@@ -84,48 +89,58 @@ export function planStages(type, preset) {
  * deps: { detect(paths), describe(detection), clean({source, outputDir, name, options}), pack(config), check(built, preset), exportResult({...}) }
  * Returns { ok, type, stages:[{id,status,detail}], outputDir, review?, error? }.
  */
-export async function runConveyor({ paths, preset, outputDir = null, quick = false, deps, onStage = () => {}, signal = null }) {
+export async function runConveyor({ paths, preset, outputDir = null, quick = false, intent = null, name: requestedName = null, resume = null, onCheckpoint = async () => {}, deps, onStage = () => {}, signal = null }) {
   const detection = await deps.detect(paths);
   const caps = capabilitiesFor(detection.type);
-  const plan = planStages(detection.type, preset);
+  const plan = planStages(detection.type, preset, intent);
   const stages = plan.map((s) => ({ id: s.id, label: s.label, status: s.run ? "pending" : "skipped", detail: s.run ? "" : s.reason }));
   const report = (id, status, detail = "") => { const s = stages.find((x) => x.id === id); if (s) { s.status = status; s.detail = detail; } onStage({ id, status, detail, stages: stages.map((x) => ({ ...x })) }); };
   if (!caps.supported) return { ok: false, type: detection.type, label: caps.label, stages, error: caps.message, detection };
+  if (["image-set", "frames-folder"].includes(detection.type) && !["images", "atlas", "animation"].includes(intent)) return { ok: false, needsIntent: true, type: detection.type, stages, error: "Выберите цель: отдельные PNG, атлас объектов или анимация.", detection };
   if (detection.type === "project") return { ok: false, type: detection.type, label: caps.label, stages, error: "Проект открывается кнопкой «Открыть проект».", detection };
   const target = outputDir || (quick ? quickOutputDir(detection.paths[0]) : null);
   if (!target) throw new Error("Выберите папку для результата.");
-  const name = safeAtlasName(path.parse(detection.paths[0]).name);
-  let current = null, source = null, cleaned = null, built = null, review = null;
+  const name = safeAtlasName(requestedName || path.parse(detection.paths[0]).name);
+  let current = null, source = resume?.source || null, cleaned = resume?.cleaned || null, built = resume?.built || null, review = resume?.review || null;
+  const completed = new Set(resume?.completed || []);
+  const checkpoint = async () => { completed.add(current); await onCheckpoint({ source, cleaned, built, review, completed: [...completed] }); };
+  const artifacts = () => cleaned ? { manifestPath: cleaned.manifestPath, previewPath: cleaned.framePaths?.[0], frameCount: cleaned.frameCount, frames: cleaned.playbackFrames || [] } : null;
   const abortCheck = () => { if (signal?.aborted) throw new Error("Конвейер отменён."); };
   try {
     current = "cut"; abortCheck();
     if (stages.find((s) => s.id === "cut").status === "pending") report("cut", "running");
-    source = await deps.describe(detection);
-    if (stages.find((s) => s.id === "cut").status === "running") report("cut", "done", `${source.frameCount ?? source.paths?.length ?? 0} кадров`);
+    const reusedSource = Boolean(source);
+    source ||= await deps.describe(detection);
+    if (stages.find((s) => s.id === "cut").status === "running") report("cut", "done", reusedSource ? "Использован готовый результат" : `${source.frameCount ?? source.paths?.length ?? 0} кадров`);
+    await checkpoint();
     current = "clean"; abortCheck();
     const cleanRuns = stages.find((s) => s.id === "clean").status === "pending";
     if (cleanRuns) report("clean", "running");
     const options = processorOptions(cleanRuns ? preset : { ...preset, background: "none", edgeCleanup: false }, source.recommendations);
-    cleaned = await deps.clean({ source, outputDir: target, name, options, signal });
-    if (cleanRuns) report("clean", "done", `${cleaned.frameCount ?? 0} кадров`);
+    const reusedClean = Boolean(cleaned);
+    cleaned ||= await deps.clean({ source, outputDir: target, name, options, intent, signal });
+    if (cleanRuns) report("clean", "done", reusedClean ? "Использован готовый результат" : `${cleaned.frameCount ?? 0} изображений`);
+    await checkpoint();
     const framesDir = cleaned.framesDir;
     if (stages.find((s) => s.id === "pack").status === "pending") {
       current = "pack"; abortCheck(); report("pack", "running");
-      built = await deps.pack({ name, input: [framesDir], output: path.join(cleaned.outputDir, "atlas"), formats: preset.atlas.formats, padding: preset.atlas.padding, extrude: preset.atlas.extrude, maxSize: preset.atlas.maxSize, powerOfTwo: preset.atlas.powerOfTwo, fps: source.recommendations?.fps || 12 });
+      built ||= await deps.pack({ name, input: [framesDir], output: path.join(cleaned.outputDir, "atlas"), formats: preset.atlas.formats, padding: preset.atlas.padding, extrude: preset.atlas.extrude, maxSize: preset.atlas.maxSize, powerOfTwo: preset.atlas.powerOfTwo, fps: cleaned.fps || source.recommendations?.fps || 12, ...cleaned.packingMetadata });
       report("pack", "done", `${built.pages?.length ?? 1} стр.`);
+      await checkpoint();
     }
-    if (built && stages.find((s) => s.id === "check").status === "pending") {
+    if ((built || deps.checkImages) && stages.find((s) => s.id === "check").status === "pending") {
       current = "check"; abortCheck(); report("check", "running");
-      review = await deps.check(built, preset);
+      review ||= built ? await deps.check(built, preset, cleaned) : await deps.checkImages(cleaned, preset);
       report("check", "done", review?.verdictLabel || review?.verdict || "");
+      await checkpoint();
     }
     current = "export"; abortCheck(); report("export", "running");
-    const exported = await deps.exportResult({ detection, source, cleaned, built, review, preset, quick, outputDir: cleaned.outputDir });
+    const exported = await deps.exportResult({ detection, source, cleaned, built, review, preset, quick, intent, outputDir: cleaned.outputDir });
     report("export", "done", exported?.summary || "");
-    return { ok: true, type: detection.type, label: caps.label, stages, outputDir: cleaned.outputDir, review, exported, detection };
+    return { ok: true, type: detection.type, label: caps.label, stages, outputDir: cleaned.outputDir, artifacts: artifacts(), reviewConfig: built?.config, review, exported, detection };
   } catch (error) {
     report(current, "failed", error.message);
-    return { ok: false, type: detection.type, label: caps.label, stages, error: error.message, failedStage: current, detection };
+    return { ok: false, type: detection.type, label: caps.label, stages, error: error.message, failedStage: current, artifacts: artifacts(), detection };
   }
 }
 
@@ -134,22 +149,35 @@ export class ConveyorQueue {
   constructor({ file, run, onChange = () => {} }) { this.file = file; this.run = run; this.onChange = onChange; this.items = []; this.paused = false; this.running = null; this.controller = null; }
   async load() {
     const saved = await readJson(this.file, { items: [], paused: false });
-    this.items = (saved.items || []).map((i) => (i.status === "running" ? { ...i, status: "pending", detail: "Прервано, будет повторено" } : i));
+    this.items = (saved.items || []).map((i) => (i.status === "running" ? { ...i, status: "pending", detail: "Прервано · можно продолжить", interrupted: true } : i));
     this.paused = Boolean(saved.paused);
     return this.snapshot();
   }
   snapshot() { return { paused: this.paused, running: this.running, items: this.items.map((i) => ({ ...i })) }; }
-  async persist() { await writeJsonAtomic(this.file, { paused: this.paused, items: this.items }); this.onChange(this.snapshot()); }
-  async add({ paths, presetId, outputDir = null, quick = false, origin = "user" }) {
+  async persist() {
+    const saved = JSON.parse(JSON.stringify({ paused: this.paused, items: this.items }));
+    this.persisting = (this.persisting || Promise.resolve()).catch(() => {}).then(() => writeJsonAtomic(this.file, saved));
+    await this.persisting; this.onChange(this.snapshot());
+  }
+  async retry(id, { outputDir, fresh = false } = {}) {
+    const item = this.items.find(i => i.id === id);
+    if (!item || !["failed", "pending"].includes(item.status) || this.running === id) throw new Error("Задача сейчас недоступна для продолжения.");
+    if (outputDir !== undefined) { item.outputDir = outputDir; item.quick = !outputDir; }
+    if (fresh) item.resumeId = null;
+    if (this.paused) this.oneShot = id;
+    item.status = "pending"; item.detail = item.resumeId ? "Продолжение готовых этапов" : "Повторный запуск";
+    await this.persist(); return item;
+  }
+  async add({ paths, presetId, outputDir = null, quick = false, intent = null, origin = "user" }) {
     if (!Array.isArray(paths) || !paths.length) throw new Error("Нечего добавить в очередь.");
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-    this.items.push({ id, paths, presetId, outputDir, quick, origin, status: "pending", detail: "Ожидает", addedAt: new Date().toISOString() });
+    this.items.push({ id, paths, presetId, outputDir, quick, intent, origin, status: "pending", detail: "Ожидает", addedAt: new Date().toISOString() });
     await this.persist();
     return id;
   }
   async remove(id) { if (this.running === id) throw new Error("Задание выполняется; сначала отмените его."); this.items = this.items.filter((i) => i.id !== id); await this.persist(); }
   async clearFinished() { this.items = this.items.filter((i) => !["done", "failed", "cancelled"].includes(i.status)); await this.persist(); }
-  async pause() { this.paused = true; await this.persist(); }
+  async pause() { this.paused = true; this.oneShot = null; await this.persist(); }
   async resume() { this.paused = false; await this.persist(); return this.drain(); }
   async cancel(id) {
     const item = this.items.find((i) => i.id === id);
@@ -162,17 +190,20 @@ export class ConveyorQueue {
     if (this.draining) return this.draining;
     this.draining = (async () => {
       for (;;) {
-        if (this.paused) break;
-        const item = this.items.find((i) => i.status === "pending");
-        if (!item) break;
+        if (this.paused && !this.oneShot) break;
+        const item = this.items.find((i) => i.status === "pending" && (!this.oneShot || i.id === this.oneShot));
+        if (!item) { this.oneShot = null; break; }
         this.running = item.id; this.controller = new AbortController();
         item.status = "running"; item.detail = "Выполняется"; await this.persist();
         try {
           const result = await this.run(item, { signal: this.controller.signal, onStage: (s) => { item.detail = `${s.stages.find((x) => x.status === "running")?.label || ""}`.trim() || item.detail; this.onChange(this.snapshot()); } });
           item.status = this.controller.signal.aborted ? "cancelled" : result.ok ? "done" : "failed";
           item.detail = item.status === "done" ? (result.review?.verdictLabel || "Готово") : item.status === "cancelled" ? "Отменено" : result.error;
-          item.outputDir = result.outputDir || item.outputDir;
+          item.resumeId = item.status === "failed" ? result.resumeId || null : null; item.interrupted = false;
+          item.failedStage = result.failedStage || null;
+          if (result.ok) item.resultDir = result.outputDir;
         } catch (error) { item.status = this.controller.signal.aborted ? "cancelled" : "failed"; item.detail = error.message; }
+        if (this.oneShot === item.id) this.oneShot = null;
         item.finishedAt = new Date().toISOString();
         this.running = null; this.controller = null; await this.persist();
       }
@@ -225,7 +256,7 @@ export function createFolderWatcher({ dir, onFiles, intervalMs = 1000, stableChe
 async function readJson(file, fallback) { try { return JSON.parse(await fs.readFile(file, "utf8")); } catch { return fallback; } }
 export async function writeJsonAtomic(file, value) {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   await fs.writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`);
   await fs.rename(tmp, file);
 }

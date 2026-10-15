@@ -1,0 +1,33 @@
+✔ presets validate and built-ins are protected (7.3502ms)
+✔ planStages follows the capability map (0.8717ms)
+✔ runConveyor runs stages in order and reports progress (0.7048ms)
+✔ runConveyor skips packing for one image and stops on unsupported input (0.3937ms)
+✔ runConveyor reports the failed stage (0.2321ms)
+✔ processorOptions maps presets onto existing processor keys (0.1035ms)
+✔ queue persists, survives restart, pauses, cancels and summarises (11.3707ms)
+✔ queue re-runs an item that was running when the app closed (3.7381ms)
+✔ watch folder waits for stable files and ignores the output folder (4.2343ms)
+✔ real stages: frames folder through cut, clean, pack, check and export (293.4029ms)
+✔ animated WebP and a mislabelled GIF are split into frames by content (103.4354ms)
+✔ background off preserves opaque PNG pixels through the real conveyor (86.993ms)
+✔ gif: real conveyor preserves opaque frames, order, timing and loop count (232.371ms)
+✔ apng: real conveyor preserves opaque frames, order, timing and loop count (226.3968ms)
+✔ atlas conveyor retains named clips, per-clip speeds, pivots and original canvas after trimming (174.3412ms)
+✔ pipeline builds the synthetic project and matches golden files (69.1925ms)
+✔ background key, grid and auto slicing through the pipeline (26.3903ms)
+✔ every exporter round-trips frame rectangles through its parser (36.8163ms)
+✔ rotated frames survive the TexturePacker round trip; Godot/Unity refuse rotation (48.1583ms)
+✔ CLI builds with defaults, batch presets and reports bad input (97.466ms)
+✔ reads frame names from an array manifest (Chuba and Aseprite shapes) (1.2625ms)
+✔ keeps object-style manifests (TexturePacker) working (0.1706ms)
+✔ falls back to the manifest cell size and drops unusable rectangles (0.1242ms)
+✔ matches detected cells to the rectangle containing their centre (0.1354ms)
+✔ normalises paths and extensions (0.1302ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1769.0147

@@ -1,0 +1,44 @@
+✔ multiple images require a purpose before processing; guide offers exactly three choices (8.292ms)
+✔ images: different canvas sizes and white artwork survive real processing (183.2128ms)
+✔ atlas: different canvas sizes and white artwork survive real processing (209.455ms)
+✔ PNG review detects empty output and leaves white details byte-for-byte intact (15.3878ms)
+✔ resume after pack reuses successful real stages (188.2599ms)
+✔ resume after exportResult reuses successful real stages (205.734ms)
+✔ resume rejects changed input without processing (104.595ms)
+✔ resume rejects changed output without processing (108.2802ms)
+✔ resume rejects changed settings without processing (101.0187ms)
+✔ resume rejects changed folder-list without processing (102.6133ms)
+✔ resume rejects changed expired without processing (119.7095ms)
+✔ queue persists the chosen purpose (9.2359ms)
+✔ cancelled processing releases its checkpoint and offers no resume (25.8332ms)
+✔ frame clock respects unequal durations, pause, stepping and long stalls (0.6447ms)
+✔ working signature ignores selection but includes pixels, masks and timing (0.1478ms)
+✔ independent objects remap only their own override and mask (0.6467ms)
+✔ animation: rebuilding exports edited pixels, dimensions and timing without modifying old files (407.3592ms)
+✔ images: rebuilding exports edited pixels, dimensions and timing without modifying old files (441.0429ms)
+✔ atlas: rebuilding exports edited pixels, dimensions and timing without modifying old files (487.9344ms)
+✔ PNG findings carry correct frame and bounded image coordinates without altering alpha (6.8754ms)
+✔ presets validate and built-ins are protected (7.352ms)
+✔ planStages follows the capability map (0.873ms)
+✔ runConveyor runs stages in order and reports progress (0.8431ms)
+✔ runConveyor skips packing for one image and stops on unsupported input (0.3907ms)
+✔ runConveyor reports the failed stage (0.2572ms)
+✔ processorOptions maps presets onto existing processor keys (0.1043ms)
+✔ queue persists, survives restart, pauses, cancels and summarises (14.1214ms)
+✔ queue re-runs an item that was running when the app closed (4.27ms)
+✔ watch folder waits for stable files and ignores the output folder (4.8563ms)
+✔ real stages: frames folder through cut, clean, pack, check and export (337.3967ms)
+✔ animated WebP and a mislabelled GIF are split into frames by content (118.2655ms)
+✔ background off preserves opaque PNG pixels through the real conveyor (pixel art: false) (91.827ms)
+✔ background off preserves opaque PNG pixels through the real conveyor (pixel art: true) (91.3633ms)
+✔ gif: real conveyor preserves opaque frames, order, timing and loop count (250.6853ms)
+✔ apng: real conveyor preserves opaque frames, order, timing and loop count (253.5645ms)
+✔ atlas conveyor retains named clips, per-clip speeds, pivots and original canvas after trimming (196.4101ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1553.9
