@@ -14,6 +14,7 @@ import { backgroundKeyMode } from "./background-analysis.mjs";
 import { buildSeriesPalette } from "./series-palette.mjs";
 import { hasColorAdjust } from "./color-adjust.mjs";
 import { withSeriesPixelGrid } from "./pixel-grid.mjs";
+import { compareCleanupPixels, boundedContourRetry } from './cleanup-feedback.mjs';
 
 const solidBackgroundModes = new Set(["white", "black", "green", "magenta", "blue"]);
 const backgroundNames = { white: "белый", black: "чёрный", green: "зелёный", magenta: "маджента", blue: "синий", auto: "подбор цвета" };
@@ -26,13 +27,7 @@ function detectedSolidMode(measurements) {
 async function compareImagePixels(beforePath, afterPath) {
   const [before, after] = await Promise.all([beforePath, afterPath].map(file => sharp(file).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true })));
   if (before.info.width !== after.info.width || before.info.height !== after.info.height) return { changed: null, resized: true };
-  let changed = 0;
-  for (let offset = 0; offset < before.data.length; offset += 4) {
-    if (before.data[offset + 3] !== after.data[offset + 3]
-      || (after.data[offset + 3] && (before.data[offset] !== after.data[offset]
-        || before.data[offset + 1] !== after.data[offset + 1] || before.data[offset + 2] !== after.data[offset + 2]))) changed += 1;
-  }
-  return { changed, resized: false };
+  return { ...compareCleanupPixels(before.data, after.data), resized: false };
 }
 
 export async function inspectCleanupQuality(preview, measurements, lightDecision, changeReport) {
@@ -198,16 +193,22 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
             const solidMode = keyStep?.tool === "key" ? detectedSolidMode(measurements) : null;
             settings = { ...settings, keyMode: matting ? "ai" : keyStep?.tool === "alpha" ? "alpha" : solidMode || "auto",
               keyScope: solidMode ? "exterior" : settings.keyScope,
-              aiModel: matting?.modelId || settings.aiModel, aiQuality: plan.settings.quality, aiForceModel: Boolean(matting) };
+              aiModel: matting?.modelId || settings.aiModel, aiQuality: plan.settings.quality, aiForceModel: Boolean(matting), aiResidueOnly: Boolean(plan.settings.residueOnly) };
           }
           if (settings.keyMode === "black") settings.blackOutline = options.batchBlackContour === "remove" ? 0 : (Number(settings.blackOutline) || 3);
           if (solidBackgroundModes.has(settings.keyMode) && settings.keyMode !== "black") settings.edgeDecontaminate = true;
           // An already transparent sprite can still contain pale holes and a
           // light fringe. The planner's fringe stage must actually run.
-          if (!healing && measurements.hasTransparency && plan.steps.some(step => step.stage === "fringe")
+          if (!healing && (measurements.hasTransparency || settings.keyMode === 'ai') && plan.steps.some(step => step.stage === "fringe")
             && (!settings.edgeRefine || settings.edgeRefine.mode === "none")) {
-            settings.edgeRefine = { mode: "recolor", width: 2, depth: Number(options.edgeRefine?.depth) || 5, whiteOnly: true,
-              whiteThreshold: 175, neutralTolerance: 45, autoPaleCleanup: true };
+            settings.edgeRefine = { mode: "recolor", width: 1, depth: Number(options.edgeRefine?.depth) || 3, whiteOnly: true,
+              whiteThreshold: 120, neutralTolerance: 55, preserveLightArtwork: true };
+          }
+          if (options.aiGrid && !healing && !forcedBackground && !requestedModel && options.aiGrid.columns * options.aiGrid.rows > 1) {
+            if (!installed.includes('toonout')) throw new Error('Для покадровой очистки листа нужен ToonOut из комплекта.');
+            settings = { ...settings, keyMode: 'ai', aiModel: 'toonout', aiForceModel: true,
+              aiResidueOnly: hasPreparedAlpha(measurements), aiGrid: options.aiGrid };
+            plan = { ...plan, summary: 'Каждая ячейка заданной сетки очищается отдельно и возвращается в исходные координаты.' };
           }
           if (!requestedModel && lightDecision.policy !== "none" && plan.steps.some(step => step.stage === "checker")) settings.aiEdits = [...(settings.aiEdits || []), { type: "checker", frameIndex: sourceIndex }];
         }
@@ -229,12 +230,22 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
           }
         }
         signal?.throwIfAborted();
-        const { result: preview, fallback } = await previewWithModelFallback({ inputPath, options: settings, appRoot, automatic, installed, signal, preview: previewFrame });
+        const firstPass = await previewWithModelFallback({ inputPath, options: settings, appRoot, automatic, installed, signal, preview: previewFrame });
+        const fallback = firstPass.fallback;
+        const retry = await boundedContourRetry(firstPass.result, { enabled: automatic && options.autoContourRetry !== false
+          && !settings.pixelate && !hasColorAdjust(settings.colorAdjust || {}) && !settings.toning && !settings.imageGeometry
+          && plan?.steps?.some(step => step.stage === 'fringe'), depth: Number(settings.edgeRefine?.depth) || 5,
+          protect: lightDecision.policy !== 'none', signal });
+        const preview = retry.preview;
         signal?.throwIfAborted();
         if (!preview.bounds?.width || !preview.bounds?.height) throw new Error("После очистки не осталось объекта. Попробуйте другой профиль или защитите детали маской.");
         const changeReport = await compareImagePixels(file, preview.afterPath);
         const qualityIssues=await inspectCleanupQuality(preview,measurements,lightDecision,changeReport);
         const qualityWarnings=qualityIssues.map(issue=>issue.message);
+        if (retry.report.attempted) qualityWarnings.push(retry.report.reason);
+        if (preview.residueReport) qualityWarnings.push('Модель проверила подозрительные светлые области. Сравните белые детали и тонкие ветки перед применением.');
+        else if (preview.aiMetrics) qualityWarnings.push('Маска предложена моделью: проверьте белые детали, просветы и тонкие ветки на контрастной подложке. Для листа кадров укажите его сетку.');
+        if (preview.aiMetrics?.qualityNote) qualityWarnings.push(preview.aiMetrics.qualityNote);
         if (preview.geometryReport?.cropped) qualityWarnings.push("Заполнение кадра обрезало края по выбранному формату. Проверьте объект.");
         if (preview.geometryReport?.stretched) qualityWarnings.push("Растяжение изменило пропорции по выбранному формату.");
         const suggestNoLightArtwork = lightRequest === "auto" && qualityIssues.some(issue => issue.code === "unchanged-pale-regions");
@@ -249,6 +260,8 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
           catch (error) { if (error.code !== "EEXIST") throw error; imagePath = path.join(outputDir, `${name}-${version++}.png`); }
         }
         let healingPath = null;
+        let firstPassPath = null;
+        if (retry.firstPath) { firstPassPath = imagePath + '.first-pass.png'; await fs.copyFile(retry.firstPath, firstPassPath, 1); }
         if (healing) {
           healingPath = path.join(outputDir, `${name}-healed.png`);
           let healingVersion = 2;
@@ -260,6 +273,7 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
         const route = [
           ...colors.map(edit => `Удаление цвета #${edit.color.map(value => value.toString(16).padStart(2, "0")).join("")}`),
           ...(healing ? ["Восстановление"] : []),
+          ...(preview.aiMetrics ? [`${preview.aiMetrics.modelName || 'ToonOut'} · ${preview.aiMetrics.strategy === 'known-grid' ? `${preview.aiMetrics.regions.length} ячеек` : 'целый объект'} · проходы: ${preview.aiMetrics.passes} · ${preview.aiMetrics.quality}`] : []),
           settings.keyMode === "ai" ? `Выделение · ${settings.aiModel}` : settings.keyMode === "alpha" ? "Сохранена прозрачность" : settings.keyMode === "black" ? `Чёрный фон · ${settings.blackOutline ? "контур сохранён" : "без сохранения контура"}` : `Очистка фона · ${backgroundNames[settings.keyMode] || settings.keyMode}`,
           ...((settings.aiEdits || []).some(edit => edit.type === "checker" && edit.frameIndex === sourceIndex) ? ["Удаление шахматки"] : []),
           ...(preview.edgeRefineReport?.removed || preview.edgeRefineReport?.recolored ? [settings.edgeRefine?.noLightArtwork ? "Очистка светлых остатков и края" : "Очистка края"] : []),
@@ -270,7 +284,11 @@ export async function processImageBatch({ paths, outputDir, options = {}, splitO
         ];
         let colorBasePath = null;
         if (preview.colorBasePath) { colorBasePath = imagePath + '.color-base.png'; await fs.copyFile(preview.colorBasePath, colorBasePath); }
-        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, route, fallback, qualityIssues, qualityWarnings, matteReview, healingPath, healingReport: healing?.report || null, cleanupReport: preview.edgeRefineReport || null, geometryReport: preview.geometryReport || null, lightDecision, changeReport, suggestNoLightArtwork, colorRemoval: colors, colorBasePath });
+        results.push({ input: file, name, outputDir, imagePath, sheetPath: imagePath, frameCount: 1, bounds: preview.bounds, plan, route, fallback, qualityIssues, qualityWarnings, matteReview, healingPath, healingReport: healing?.report || null, cleanupReport: preview.edgeRefineReport || null, geometryReport: preview.geometryReport || null, lightDecision, changeReport, suggestNoLightArtwork, colorRemoval: colors, colorBasePath,
+          firstPassPath, autoRetry: retry.report,
+          firstPassChangeReport: retry.firstPath ? await compareImagePixels(file, retry.firstPath) : null,
+          firstPassMatteReview: retry.firstPath ? await reviewMatteFile(retry.firstPath) : null,
+          aiMetrics: preview.aiMetrics || null, residueReport: preview.residueReport || null, reviewRequired: Boolean(preview.aiMetrics || qualityIssues.length || retry.report.accepted) });
         onProgress?.({ stage: "batch", value: (index + 1) / inputs.length, message: `Сохранено ${index + 1}/${inputs.length} · ${name}.png` });
         continue;
       }

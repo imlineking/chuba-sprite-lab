@@ -1100,7 +1100,8 @@ body[data-intent="images"] .filmstrip-actions { grid-template-columns: repeat(au
 .batch-matte-review label { display: inline-flex; align-items: center; gap: 7px; }
 .batch-matte-review select { max-width: 200px; min-height: 34px; padding: 6px 8px; border: 1px solid var(--line-bright); border-radius: 8px; background: var(--shell-field); color: var(--text); font: inherit; }
 .batch-matte-review [role="status"] { flex-basis: 100%; color: var(--muted); line-height: 1.45; }
-.batch-preview-body { min-height: 200px; flex: 1; display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1.5fr); gap: 16px; }
+.batch-preview-body { min-height: 220px; flex: 1; display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1.5fr); gap: 16px; }
+#imageBatchUseFirstPass { flex:none; min-height:32px; padding:6px 9px; font-size:11px; }
 .batch-preview-list { overflow-y: auto; padding: 4px; }
 .batch-preview-row { display: grid; grid-template-columns: 20px minmax(0,1fr); gap: 10px; padding: 12px; border-bottom: 1px solid var(--border, #647084); }
 .batch-preview-row input { width: 18px; height: 18px; align-self: center; accent-color: var(--orange); }

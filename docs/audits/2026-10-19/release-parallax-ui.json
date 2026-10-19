@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "version": "1.10.0",
+  "executable": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\portable\\Chuba Sprite Lab.exe",
+  "rendererUrl": "file:///C:/Users/User/AppData/Local/ChubaSpriteLab/offline/c4b68d6bf584def537a05f12/resources/app/src/index.html",
+  "checks": [
+    "Version and parallax entry in packaged pipeline; PNG import via packaged IPC",
+    "Editable scene, undo/redo, animated camera and RAF stop in actual EXE"
+  ],
+  "sourceUnchanged": true,
+  "exceptions": [],
+  "exportDialogsCoveredBy": "verify-parallax-ui.mjs"
+}

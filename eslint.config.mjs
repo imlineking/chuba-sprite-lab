@@ -2,6 +2,7 @@ import globals from "globals";
 import { collectRendererGlobals, rendererFiles } from "./scripts/renderer-globals.mjs";
 
 export default [
+  { files: ['src/parallax-main.mjs'], languageOptions: { globals: { ...globals.browser } } },
   { files: ["src/companion.js"], languageOptions: { ecmaVersion: 2024, sourceType: "module", globals: { ...globals.browser, setLocale:"readonly", t:"readonly" } }, rules: { "no-undef": "error" } },
   { ignores: ["dist/**", "node_modules/**", "release/**", "vendor/**", "models/**", ".build/**", ".build-archive/**", "portable/**", ".diagnostics/**"] },
   {

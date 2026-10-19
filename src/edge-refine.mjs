@@ -1,3 +1,5 @@
+import { analyseAlphaResidue } from './alpha-residue.mjs';
+
 // Conservative pixel-level cleanup. Everything works on a copy so the same options
 // can be previewed, undone and applied to every frame without touching source files.
 function removeNeutralWithoutLightArtwork(output, width, height) {
@@ -262,7 +264,7 @@ function removeSmallPalePockets(output, width, height) {
   return found;
 }
 
-export function refineEdgeRgba(input, info, options = {}) {
+function refineEdge(input, info, options = {}) {
   const { width, height, channels } = info;
   if (channels !== 4) throw new Error("Очистка кромки требует RGBA-кадр.");
   const output = Buffer.from(input);
@@ -351,6 +353,17 @@ export function refineEdgeRgba(input, info, options = {}) {
 
   for (let index = 0; index < count; index += 1) {
     if (distance[index] >= 1 && distance[index] <= widthPx) output[index * 4 + 3] = 0;
+  }
+  return output;
+}
+
+export function refineEdgeRgba(input, info, options = {}) {
+  const output = refineEdge(input, info, options);
+  if (options.preserveLightArtwork && options.mode === 'recolor') {
+    const { protectedLight } = analyseAlphaResidue(input, info, { masks: true });
+    for (let at = 0; at < protectedLight.length; at++) if (protectedLight[at]) {
+      const p = at * 4; output[p] = input[p]; output[p + 1] = input[p + 1]; output[p + 2] = input[p + 2];
+    }
   }
   return output;
 }

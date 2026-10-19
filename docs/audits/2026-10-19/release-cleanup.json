@@ -1,0 +1,71 @@
+{
+  "timestamp": "2026-10-19T20:06:59.4465335+03:00",
+  "removedCount": 129,
+  "removedBytes": 14902835319,
+  "categories": [
+    {
+      "category": "build intermediates",
+      "count": 1,
+      "bytes": 3399680320
+    },
+    {
+      "category": "old EXE 1.8.2",
+      "count": 2,
+      "bytes": 2692973016
+    },
+    {
+      "category": "old extraction cache 1.8.2",
+      "count": 2,
+      "bytes": 4107903788
+    },
+    {
+      "category": "old extraction cache 1.9.0",
+      "count": 1,
+      "bytes": 2054670965
+    },
+    {
+      "category": "previous EXE archive",
+      "count": 1,
+      "bytes": 1346630206
+    },
+    {
+      "category": "test browser profile/cache",
+      "count": 122,
+      "bytes": 1300977024
+    }
+  ],
+  "remainingTargets": [
+    {
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\2b3766facfef3bef35e7488a",
+      "category": "old extraction cache 1.8.2",
+      "plannedBytes": 6023862077,
+      "remainingBytes": 6023862077
+    },
+    {
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\55ac67ca1e78fde071120aba",
+      "category": "old extraction cache 1.8.2",
+      "plannedBytes": 2053932907,
+      "remainingBytes": 2053932907
+    },
+    {
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\e13e130b629f2127c01e403b",
+      "category": "old extraction cache 1.8.2",
+      "plannedBytes": 6018169460,
+      "remainingBytes": 6018169460
+    }
+  ],
+  "cleanupLimitation": "Post-check found three old AppData extraction directories still present. A retry was rejected by automatic tool policy without a more specific reason. No bypass attempted. Only confirmed absent targets count as removed.",
+  "preserved": [
+    "source",
+    "Git history",
+    "models",
+    "vendor runtime",
+    "node_modules",
+    "assets",
+    "presets",
+    "user projects",
+    "test evidence and reports"
+  ],
+  "keptExe": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\portable\\Chuba Sprite Lab.exe",
+  "keptCache": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\c4b68d6bf584def537a05f12"
+}

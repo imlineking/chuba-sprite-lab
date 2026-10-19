@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "files": 154,
+  "mismatches": [],
+  "appRoot": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\c4b68d6bf584def537a05f12\\resources\\app",
+  "version": "1.10.0",
+  "packageMetadata": "version, main and dependencies match; electron-builder strips development metadata"
+}

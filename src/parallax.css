@@ -1,0 +1,36 @@
+.parallax-dialog { width: min(1420px,96vw); max-width: none; max-height: 94vh; padding: 0; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 20px; }
+.parallax-dialog::backdrop { background: #11182799; backdrop-filter: blur(5px); }
+.parallax-dialog[open] {display:flex;flex-direction:column;height:min(900px,94vh);overflow:hidden;}
+.parallax-heading { display:flex; align-items: center; justify-content:space-between; padding: 20px 24px; border-bottom:1px solid var(--line); gap:16px; }
+.parallax-heading h2 { font-size:24px; margin:0 0 5px; }
+.parallax-heading p { margin:0; font-size:12px; color:var(--muted); }
+.parallax-body { display:grid; grid-template-columns: 260px minmax(0,1fr) 250px; min-height:0; flex:1; overflow:hidden; }
+.parallax-heading,.parallax-footer{flex:none;}
+.parallax-sidebar { padding:16px; overflow:auto; border-right:1px solid var(--line); }
+.parallax-sidebar,.parallax-stage{min-height:0;}
+.parallax-stage{overflow:auto;}
+.parallax-properties { border-right:0; border-left:1px solid var(--line); }
+.parallax-sidebar h3 { font-size:12px; text-transform:uppercase; letter-spacing:1px; margin: 12px 0; }
+.parallax-sidebar p { font-size:11px; color:var(--muted); line-height:1.5; }
+.parallax-sidebar .button { width:100%; margin-bottom:6px; }
+.parallax-layers { display:grid; gap:6px; margin:12px 0; }
+.parallax-layer { text-align:left; padding:10px; background:var(--panel-2); color:var(--text); border:1px solid var(--line); border-radius:9px; min-width:0; overflow-wrap:anywhere; }
+.parallax-layer[aria-pressed=true] { outline:2px solid var(--text); outline-offset:-2px; }
+.parallax-layer strong,.parallax-layer small {display:block;} .parallax-layer small{color:var(--muted);font-size:11px;margin-top:5px;}
+.parallax-stage { background:var(--ink); display:flex; flex-direction:column; justify-content:center; min-width:0; padding:18px; gap:14px; }
+.parallax-stage canvas { width:100%; max-height:58vh; object-fit:contain; cursor:grab; touch-action:none; border-radius:8px; background:#19212a; }
+.parallax-stage canvas:active {cursor:grabbing;}
+.parallax-stage-toolbar {display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;font-size:11px;color:var(--muted);}
+.parallax-stage-toolbar button {padding:8px 12px;}
+.parallax-dialog button:not(.button):not(.parallax-layer) { border:1px solid var(--line-bright); border-radius:7px; color:var(--text); background:var(--panel-2); padding:8px 10px; font-size:12px; cursor:pointer; }
+.parallax-dialog button:disabled {opacity:.45; cursor:default;}
+.parallax-dialog button:focus-visible,.parallax-dialog input:focus-visible,.parallax-dialog select:focus-visible {outline:2px solid var(--text);outline-offset:2px;}
+.parallax-fields {display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.parallax-fields label{display:grid;gap:5px;font-size:11px;min-width:0;color:var(--muted);}
+.parallax-fields input,.parallax-fields select{width:100%;min-width:0;box-sizing:border-box;padding:7px;color:var(--text);background:var(--panel-2);border:1px solid var(--line);border-radius:6px;}
+.parallax-check {display:flex;align-items:center;gap:8px;font-size:12px;margin:12px 0;}
+.parallax-footer{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 24px;border-top:1px solid var(--line);}
+.parallax-footer output{font-size:12px;color:var(--muted);overflow-wrap:anywhere;max-width:70%;}
+.parallax-footer>div{display:flex;gap:8px;}
+@media(max-width:1100px){.parallax-body{grid-template-columns:200px minmax(0,1fr) 210px;}.parallax-sidebar{padding:12px;}.parallax-heading{padding:14px 18px;}}
+@media(max-width:800px){.parallax-body{grid-template-columns:170px minmax(0,1fr);overflow:auto;}.parallax-properties{grid-column:1/-1;max-height:220px;}.parallax-footer{flex-wrap:wrap;}.parallax-footer output{max-width:100%;}}

@@ -1,0 +1,77 @@
+{
+  "ok": true,
+  "startedAt": "2026-10-19T16:59:19.754Z",
+  "appRoot": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\c4b68d6bf584def537a05f12\\resources\\app",
+  "checks": [
+    {
+      "name": "sharp",
+      "ok": true
+    },
+    {
+      "name": "ffmpeg",
+      "ok": true,
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\c4b68d6bf584def537a05f12\\resources\\vendor\\ffmpeg.exe"
+    },
+    {
+      "name": "model",
+      "ok": true,
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\c4b68d6bf584def537a05f12\\resources\\models\\toonout.onnx"
+    },
+    {
+      "name": "inference",
+      "ok": true,
+      "provider": "dml",
+      "model": "toonout",
+      "inputSize": 1024
+    },
+    {
+      "name": "lama",
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\c4b68d6bf584def537a05f12\\resources\\models\\lama_fp32.onnx",
+      "bundled": true,
+      "ok": true,
+      "inputSize": 512,
+      "inputName": "image + mask",
+      "output": "output",
+      "outputLength": 786432,
+      "ms": 1359
+    },
+    {
+      "name": "rife",
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\c4b68d6bf584def537a05f12\\resources\\models\\RIFE_fp32_timestep.onnx",
+      "bundled": true,
+      "ok": true,
+      "inputSize": 32,
+      "inputName": "input + timestep",
+      "output": "output",
+      "outputLength": 3072,
+      "ms": 7
+    },
+    {
+      "name": "real-esrgan",
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\c4b68d6bf584def537a05f12\\resources\\models\\realesrgan-x4plus.onnx",
+      "bundled": true,
+      "ok": true,
+      "inputSize": 32,
+      "inputName": "input",
+      "output": "output",
+      "outputLength": 49152,
+      "ms": 23
+    },
+    {
+      "name": "depth-anything-v2",
+      "path": "C:\\Users\\User\\AppData\\Local\\ChubaSpriteLab\\offline\\c4b68d6bf584def537a05f12\\resources\\models\\depth-anything-v2-small.onnx",
+      "bundled": true,
+      "ok": true,
+      "inputSize": 518,
+      "inputName": "pixel_values",
+      "output": "predicted_depth",
+      "outputLength": 268324,
+      "ms": 230
+    }
+  ],
+  "provider": "dml",
+  "model": "toonout",
+  "modelInput": 1024,
+  "userData": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\.diagnostics\\release-1.10.0\\self-test-profile",
+  "finishedAt": "2026-10-19T16:59:39.458Z"
+}

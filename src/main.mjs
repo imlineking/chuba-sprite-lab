@@ -35,6 +35,7 @@ import { sharedRuntime, stopSharedRuntime } from "./critic/llm-runtime.mjs";
 app.on("before-quit", () => stopSharedRuntime());
 import { readProfile } from "./build-profile.mjs";
 import { createConveyorStages, registerConveyorIpc } from "./conveyor-main.mjs";
+import { registerParallaxIpc } from './parallax-main.mjs';
 import { registerVideoFrameIpc } from "./video-frames-main.mjs";
 import { keyFrame as keyVideoFrame } from "./processor.mjs";
 import { formatFeedbackDraft } from "./feedback.mjs";
@@ -1295,6 +1296,7 @@ ipcMain.handle("critic:accept-anyway", async (_event, { output, review } = {}) =
 });
 
 // "Конвейер": one window, type-aware tools, "Сделать всё", queue and watch folder.
+registerParallaxIpc({ ipcMain, dialog, mainWindow: () => mainWindow });
 const conveyor = registerConveyorIpc({
   ipcMain, userData: app.getPath("userData"), getWindow: () => mainWindow, isBusy: () => Boolean(activeJob),
   chooseDirectory: async (title) => { const r = await interfaceDialog("showOpenDialog", mainWindow, { title, properties: ["openDirectory", "createDirectory"] }); return r.canceled || !r.filePaths.length ? null : r.filePaths[0]; },

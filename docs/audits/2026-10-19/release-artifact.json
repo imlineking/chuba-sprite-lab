@@ -1,0 +1,25 @@
+{
+  "version": "0.0.0.0",
+  "bytes": 1346648644,
+  "sha256": "D02B3665DF0FFF861E86DFF2622BC56A823FEE9D10BA4AE2F3D46F7F97D9C0F8",
+  "shortcuts": [
+    {
+      "path": "C:\\Users\\User\\Desktop\\Sprite Lab.lnk",
+      "target": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\portable\\Chuba Sprite Lab.exe",
+      "arguments": ""
+    },
+    {
+      "path": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\Sprite Lab.lnk",
+      "target": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\portable\\Chuba Sprite Lab.exe",
+      "arguments": ""
+    }
+  ],
+  "remainingOfflineCaches": [
+    "2b3766facfef3bef35e7488a",
+    "55ac67ca1e78fde071120aba",
+    "c4b68d6bf584def537a05f12",
+    "e13e130b629f2127c01e403b"
+  ],
+  "appVersion": "1.10.0",
+  "versionResourceNote": "Outer self-extractor Windows file version is 0.0.0.0; embedded app manifest and visible application labels are 1.10.0."
+}

@@ -37,6 +37,14 @@ function profile(overrides = {}) {
   };
 }
 
+test('residue-only mask and protected RGB edge survive saved recipes with strict types', () => {
+  const options={keyMode:'ai',aiResidueOnly:true,edgeRefine:{mode:'recolor',width:1,depth:3,whiteOnly:true,preserveLightArtwork:true}};
+  const parsed=readProfile(profile({options}),{baseDir});
+  assert.equal(parsed.animations[0].options.aiResidueOnly,true);
+  assert.equal(parsed.animations[0].options.edgeRefine.preserveLightArtwork,true);
+  assert.throws(()=>readProfile(profile({options:{...options,aiResidueOnly:'true'}}),{baseDir}),/aiResidueOnly/);
+});
+
 test("a valid profile resolves relative paths against the profile folder", () => {
   const parsed = readProfile(profile({ outputDir: "out" }), { baseDir });
   assert.equal(parsed.name, "chuba-run");

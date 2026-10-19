@@ -14,6 +14,7 @@ import { aiModelCatalog, modelById, modelTotalBytes } from "./ai-models.mjs";
 import { checkerMask } from "./region-color.mjs";
 import { analyseBorderBackground, backgroundKeyMode } from "./background-analysis.mjs";
 import { measureLightArtworkRgba } from "./light-artwork-policy.mjs";
+import { analyseAlphaResidue } from './alpha-residue.mjs';
 
 export const SOFT_ALPHA_LOW = 6;
 export const SOFT_ALPHA_HIGH = 249;
@@ -205,6 +206,9 @@ export async function measureSource(paths, { limit = 3, sampleSize = 192 } = {})
         analyses.at(-1).lightLargestShare = light.largestShare;
         analyses.at(-1).lightPaleShare = light.paleShare;
         analyses.at(-1).lightFragments = light.fragments;
+        const residue = analyseAlphaResidue(raw.data, raw.info);
+        Object.assign(analyses.at(-1), { neutralEdgePixels: residue.neutralEdgePixels, neutralEdgeShare: residue.neutralEdgeShare,
+          paperSuspectPixels: residue.paperPixels, paperSuspectRegions: residue.paperRegions });
         const native = analyseFrame(raw.data, raw.info);
         // Edge decisions use native pixels. Thumbnail resampling creates artificial soft/detail edges.
         for (const metric of ["thinStructure", "outlineComplexity", "softShare", "detailDensity", "fringeScore", "borderSolidRatio", "borderNoise", "borderColour", "solidBackground"]) analyses.at(-1)[metric] = native[metric];
@@ -332,6 +336,8 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
 
   /* 1. Preserve an existing alpha channel before considering background removal. */
   const alreadyTransparent = hasPreparedAlpha(measurements, source);
+  const residueSuspect = alreadyTransparent && !source.maskPrepared && measurements.edgeMeasurement === 'native'
+    && measurements.paperSuspectPixels >= 48 && measurements.neutralEdgePixels >= 32 && measurements.neutralEdgeShare >= .06;
   const independent = target.intent === "images" || (source.kind === "images" && !target.cellWidth);
   // A few false-positive checker pixels can occur around damaged needles and
   // leaf edges. A prepared alpha needs a substantial repeated field before
@@ -346,12 +352,14 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
   const checker = checkerCandidate && !solid && !source.maskPrepared;
   // One segmentation engine: repeated grids and white backgrounds are model
   // tasks; known chroma/black backgrounds retain the explicit colour tools.
-  const complexArt = measurements.edgeMeasurement === "native" && measurements.width * measurements.height > 400000 && measurements.detailDensity >= .085;
-  const toonout = !source.maskPrepared && (checker || (!alreadyTransparent && complexArt && (flatKeyMode === "white" || (solid && !flatKeyMode && measurements.colourCount >= 512))));
+  const complexArt = measurements.edgeMeasurement === "native" && measurements.width * measurements.height > 400000
+    && (measurements.detailDensity >= .085 || (measurements.colourCount >= 512 && measurements.detailDensity >= .025));
+  const toonout = !source.maskPrepared && (residueSuspect || checker || (!alreadyTransparent && complexArt && (flatKeyMode === "white" || (solid && !flatKeyMode && measurements.colourCount >= 512))));
   if (toonout) {
     see(modelById("toonout"), "Для вырезки нужна модель ToonOut из комплекта", "required");
     steps.push(modelStep(modelById("toonout"), { installed, confidence: "medium",
-      why: checker ? "Сложные детали и остатки запечённой клетки: ToonOut лучше сохранил такие просветы на проверенных ветках. Проверим результат на контрастной подложке."
+      why: residueSuspect ? 'Прозрачность уже есть, но найдены нейтральные светлые области у контура или в просветах. ToonOut предложит маску только для подозрительных областей; остальные пиксели сохранятся. Нужна проверка белых деталей.'
+        : checker ? "Сложные детали и остатки запечённой клетки: ToonOut лучше сохранил такие просветы на проверенных ветках. Проверим результат на контрастной подложке."
         : "Однотонный фон, но рисунок содержит много тонких цветных границ. На сложной комиксной графике ToonOut лучше сохранил светлые детали, чем простой контур. Проверим маску перед сохранением." }));
   } else if (alreadyTransparent) {
     steps.push({
@@ -396,13 +404,13 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
   if (alreadyTransparent) notes.push("Наличие альфа-канала не гарантирует чистый фон: проверьте внутренние просветы на чёрной и зелёной подложке.");
 
   /* 2. The edge that the model leaves behind. */
-  if (measurements.fringeScore > FRINGE_SHARE) {
+  if (measurements.fringeScore > FRINGE_SHARE || (measurements.neutralEdgePixels >= 16 && measurements.neutralEdgeShare >= .03)) {
     steps.push({
       stage: "fringe",
       kind: "builtin",
       tool: "edge-decontaminate",
-      title: "Снять ореол фона с мягкого края",
-      why: `${Math.round(measurements.fringeScore * 100)}% полупрозрачных пикселей светлые — это остаток фона на кромке. Цвет снимается разложением C = a·F + (1−a)·B.`,
+      title: "Проверить и перекрасить светлую кромку",
+      why: `Светлые пиксели: ${Math.round(measurements.fringeScore * 100)}% мягкого края; проверяем также непрозрачную нейтральную кромку. Узкая RGB-очистка сохраняет альфа-канал и связные светлые детали; белые цветы и кора требуют проверки.`,
       confidence: "high",
       status: "ready",
     });
@@ -526,7 +534,7 @@ export function planAutoPilot({ measurements, target = {}, source = {}, installe
     steps,
     needed,
     notes,
-    settings: { provider: "auto", quality, modelId: mattingStep?.modelId || "toonout" },
+    settings: { provider: "auto", quality, modelId: mattingStep?.modelId || "toonout", residueOnly: residueSuspect },
     summary: toonout ? "Выбран ToonOut для сложной графики. Проверьте светлые детали и просветы перед сохранением." : checker && (target.cleanupRequested || independent)
       ? "Найдена запечённая клетка: удалим подтверждённый узор, затем проверьте просветы и светлые детали."
       : alreadyTransparent

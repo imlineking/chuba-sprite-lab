@@ -23,7 +23,7 @@ export const profileOptionKeys = new Set([
   "blackOutline", "blackFeather", "trimStart", "trimEnd", "keyMode", "anchor",
   "autoSize", "autoColumns", "pixelPerfect", "removeDuplicates", "outputBackground",
   "excludedFrames", "exports", "aiCutoff", "aiSoftness", "aiEdits", "previewFrameIndex",
-  "fringeCleanup", "fringeStrength", "edgeDecontaminate", "keyColor", "aiProvider", "aiQuality", "aiForceModel", "pixelate", "frameParallelism", "attachments", "attachmentPlacements",
+  "fringeCleanup", "fringeStrength", "edgeDecontaminate", "keyColor", "aiProvider", "aiQuality", "aiForceModel", "aiResidueOnly", "pixelate", "frameParallelism", "attachments", "attachmentPlacements",
   "frameOverrides", "frameTransforms", "preparedCleanup", "fitEachFrame", "timeline", "loopMode",
   "loopRange", "packing", "exportFormat", "atlasMaxSize", "atlasOverflow", "atlasPowerOfTwo",
   "atlasDeduplicate", "gpuFormat", "nineSlice",
@@ -86,7 +86,7 @@ function normalizeOptions(value, problem, label, baseDir) {
   if (options.pixelScale !== undefined && ![1, 2, 4].includes(options.pixelScale)) problem(`${label}.pixelScale: ожидалось 1, 2 или 4.`);
   if (options.atlasBackgroundColor !== undefined && !/^#[0-9a-f]{6}$/i.test(options.atlasBackgroundColor)) problem(`${label}.atlasBackgroundColor: ожидался #RRGGBB.`);
   for (const [key, max] of [["atlasGap", 64], ["atlasExtrude", 2]]) if (options[key] !== undefined && boundedInteger(options[key], 0, max) === null) problem(`${label}.${key}: ожидалось целое 0…${max}.`);
-  for (const key of ["atlasRotate", "atlasDeduplicate", "preserveFrameCanvas", "seriesReview"]) if (options[key] !== undefined && typeof options[key] !== "boolean") problem(`${label}.${key}: ожидалось true или false.`);
+  for (const key of ["atlasRotate", "atlasDeduplicate", "preserveFrameCanvas", "seriesReview", "aiResidueOnly"]) if (options[key] !== undefined && typeof options[key] !== "boolean") problem(`${label}.${key}: ожидалось true или false.`);
   if (options.atlasRotate && !["chuba", "phaser3", "texturepacker"].includes(options.exportFormat || "chuba")) problem(`${label}.atlasRotate: профиль не поддерживает поворот.`);
   if (options.packing === "grid" && (options.atlasExtrude || options.atlasRotate)) problem(`${label}.packing: extrude и поворот требуют плотного атласа.`);
   if (options.atlasPowerOfTwo !== undefined && typeof options.atlasPowerOfTwo !== "boolean") {
@@ -114,12 +114,13 @@ function normalizeOptions(value, problem, label, baseDir) {
     if (!isPlainObject(options.edgeRefine)) problem(`${label}.edgeRefine: ожидался объект.`);
     else {
       for (const key of Object.keys(options.edgeRefine)) {
-        if (!["mode", "width", "depth", "whiteOnly", "whiteThreshold", "neutralTolerance", "noLightArtwork", "lightArtworkPolicy", "contourWidth"].includes(key)) problem(`${label}.edgeRefine.${key}: неизвестная настройка.`);
+        if (!["mode", "width", "depth", "whiteOnly", "whiteThreshold", "neutralTolerance", "noLightArtwork", "lightArtworkPolicy", "contourWidth", "preserveLightArtwork"].includes(key)) problem(`${label}.edgeRefine.${key}: неизвестная настройка.`);
       }
       if (!["none", "trim", "recolor"].includes(options.edgeRefine.mode)) problem(`${label}.edgeRefine.mode: ожидается none, trim или recolor.`);
       if (boundedInteger(options.edgeRefine.width, 1, 3) === null) problem(`${label}.edgeRefine.width: ожидалось целое 1…3.`);
       if (boundedInteger(options.edgeRefine.depth, 1, 32) === null) problem(`${label}.edgeRefine.depth: ожидалось целое 1…32.`);
       if (typeof options.edgeRefine.whiteOnly !== "boolean") problem(`${label}.edgeRefine.whiteOnly: ожидалось true или false.`);
+      if (options.edgeRefine.preserveLightArtwork !== undefined && typeof options.edgeRefine.preserveLightArtwork !== 'boolean') problem(`${label}.edgeRefine.preserveLightArtwork: ожидалось true или false.`);
       if (options.edgeRefine.noLightArtwork !== undefined && typeof options.edgeRefine.noLightArtwork !== "boolean") problem(`${label}.edgeRefine.noLightArtwork: ожидалось true или false.`);
       if (options.edgeRefine.lightArtworkPolicy !== undefined && !["auto", "protect", "none"].includes(options.edgeRefine.lightArtworkPolicy)) problem(`${label}.edgeRefine.lightArtworkPolicy: ожидалось auto, protect или none.`);
       if (options.edgeRefine.contourWidth !== undefined && ![2, 4].includes(options.edgeRefine.contourWidth)) problem(`${label}.edgeRefine.contourWidth: ожидалось 2 или 4.`);

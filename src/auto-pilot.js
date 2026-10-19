@@ -12,8 +12,8 @@ const autoPilotState = {
 };
 
 const autoPilotStatusLabels = {
-  ready: "готово",
-  staged: "этап позже",
+  ready: "доступен",
+  staged: "при обработке",
   blocked: "нужна модель",
 };
 
@@ -21,6 +21,7 @@ function autoPilotBadge(status) {
   const badge = document.createElement("span");
   badge.className = `auto-step-status ${status}`;
   badge.textContent = autoPilotStatusLabels[status] || status;
+  if (status === 'ready') badge.title = 'Инструмент доступен. Это ещё не результат обработки.';
   return badge;
 }
 
@@ -187,6 +188,7 @@ function autoPilotApply() {
   let committed = false;
   try {
   const applied = [];
+  $('#aiResidueOnly').checked = Boolean(plan.settings?.residueOnly);
   for (const id of ["auxRife", "auxEsrgan", "auxDepth"]) $("#" + id).checked = false;
   for (const step of plan.steps || []) {
     if (step.stage === "key") {
@@ -203,9 +205,9 @@ function autoPilotApply() {
       state.maskEdits.push({ type: "checker", frameIndex: state.selectedFrameIndex, applyAll: false, strokeId: ++state.maskStrokeId });
       applied.push("удаление запечённых шахмат");
     } else if (step.stage === "fringe") {
-      $("#edgeDecontaminate").checked = true;
-      $("#edgeDecontaminate").dispatchEvent(new Event("change"));
-      applied.push("снятие ореола с края");
+      $('#edgeRefineMode').value = 'recolor'; $('#edgeRefineWidth').value = '1'; $('#edgeRefineDepth').value = '5'; $('#edgeRefineWhiteOnly').checked = true;
+      $('#edgeRefineMode').dispatchEvent(new Event('change'));
+      applied.push('узкая RGB-очистка кромки с защитой светлых деталей');
     } else if (step.stage === "pixelate" && step.settings) {
       $("#pixelateEnabled").checked = true;
       $("#pixelateSize").value = String(step.settings.size);

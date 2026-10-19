@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="./shell-theme.css" />
     <link rel="stylesheet" href="./review-panel.css" />
     <link rel="stylesheet" href="./conveyor.css" />
+    <link rel="stylesheet" href="./parallax.css" />
     <script src="./theme.js"></script>
   </head>
   <body data-view="advanced">
@@ -19,7 +20,7 @@
       <div class="brand">
         <img class="brand-logo brand-logo-compact brand-orange" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASGSURBVFhH7ZZ/TJVVGMe/773cuwsUgZXQrEg3KxGM6SC2ILjyI0FvrrZrc7ioVq4BtTBLsMGFruXFiC2WhYZlmbPQfid/uPVPrVqtbOuH5ixTUdCk/rHVH8L9tuc958jLOzQqhv/4bN+dc97LPd/P8zzn3BfgYkxSzJiLYSwB3c+nLGq2gf78CwhQvwtMyrlQABYYqAFRjg/dH01F3HHnpiso/c/t9hAlU1kFCzTmSMWJ+rk4gzxwXrZdjckHYQQeApatYiScNU/TZrNw7aKeFCIdRCYIOZTB/wnCMLxDFdj7aym+5bugrQ9A7h7N/ssm8OY0sDOccWZ2M3h5OxTEjSBusChV+U8gdVnp0X25IN8A2QvyTZCf+Mko6CvyMLx5ur0xnwf5HFiQDKa3goHmBE5r1ZXJEnkUxEQjEoHnaCH+sI3fArlrNGtuA9mjshdZXpAxkFvA09VgUex6Tl/jY04smbndl6pWyJnItojSCUD09vZ6+9LxF18DuV1nfixKbgb55+fkTpBtIJvBY49APX9Jj4/ZBgy/Oos5Gy7jgk4f0eYjMi0FIVUoR5fbc0z0LUJKfAvidqaS+UAHeXwD2f+0AhKAt7WhrAX0ZVUBdoOHQqDlAdPWeXnN+kvoaQ0QMT9xnQBY578dcsoHF4J8RZt8nUoOxMjBLrX+Io/sX6vmJutNWrLuAdkO7qtQEAIwQ8zbQERBzNNVOFfEl+FHO/OtuudS/j0a6OSz6jyIPtLmRmJuAJ5U7embryBmPnMl0QBilb6aAiDtcIfc7XgIp20zKec7+vQfDKlWmCsoz7s1pMneKKL1FDhcDe7JB4Ne0KpNI+pSiRYPsdCjKuGO3jC8h+RKSRbS0/e0mYzmNsh8h/5cIEwLZC6S6/iErkIt+HE+2HG1w6wJRKNuhTu+WgDfgUIN4IQQmX6LiQDI/EW9dgLIs0bVAtaBPwfB/SXg0kSsO2skEPPHAZCwy7pRA4iJtMJ50IyRUwZExhd0C9aAXAmOLAdPVoIhH9aPMQrixJi1CdtQ7riYCoTJXEYBMFU4lyT71er3QFrwQxE4chdY5kej22vcsEsnAJKNM3MjJ4CzBTIX4Ec1gIz3gvtvBVkNVnoRdXuNG/Yh7NAbyCgldZs5AYxa9HdWKY0sA78rBPtLwd358j6D1+01bpyqwuqj5SDrQT4MsgFkpz4XImMoIFItOe1No8Ym8+HlqvyS/VI/KO8Wt9e4EQE8O7PVFym/82bjh/RaIB7XYAIokueylrEOHKoCfyoGf3EAuH3OG2uTcNX2ORpipdrU3twAmbmYGtWCXAEeLgMPloDfi/kKZZ4JBNwe/xRWVRIy5ArFBeJuVdaRe/Rcsr4f5H2q1HxA/d2RUvBAicqeDyrzmpuQ6t58wtGQgmmv60r8FgKHbgdPLVYarAQHblM6XgEeDoJHysDfF4Pvz1HmiUCee89/HWHA35KCdgER7cgCP8sHP80Dv7kF3FugJC+erpnKWJc9w/6XdbJCDmcBkFgMBMqBZJkvAZJEsi4GErIAPzDB034xHPE3ItEVHfq9GOgAAAAASUVORK5CYII=" alt="" aria-hidden="true" />
         <span class="brand-name">CHUBA SPRITE LAB</span>
-        <span id="versionBadge" class="version">1.9.0</span>
+        <span id="versionBadge" class="version">1.10.0</span>
       </div>
       <div class="workspace-actions" aria-label="Проект">
         <button id="newProject" type="button">Новый</button>
@@ -55,6 +56,7 @@
             <button type="button" class="button secondary" data-image-task="combine">Атлас объектов · PNG + JSON</button>
             <button type="button" class="button secondary" data-image-task="animation">Сделать анимацию</button>
           </article>
+          <button class="button secondary" type="button" data-open-parallax>Собрать параллакс-сцену · слои + JSON</button>
           <section id="taskWelcome" class="task-welcome">
             <div><span class="ai-chip">ПОМОЩНИК</span><strong id="taskWelcomeTitle">Что хотите сделать?</strong><small id="taskWelcomeHint">Выберите задачу — покажем только нужные шаги.</small></div>
             <div class="task-welcome-actions"><button id="resumeTask" class="button primary hidden" type="button">Продолжить</button><button id="openTaskPicker" class="button secondary" type="button">Выбрать задачу</button></div>
@@ -304,11 +306,12 @@
               </label>
               <label class="field"><span>Качество маски</span>
                 <select id="aiQuality">
-                  <option value="balanced">Сбалансированно — тайлы для крупных кадров</option>
-                  <option value="fast">Быстро — один проход</option>
-                  <option value="max">Максимум — тайлы и зеркальная проверка</option>
+                  <option value="fast">Целый объект — один проход</option>
+                  <option value="max">Целый объект + зеркальная проверка — два прохода</option>
+                  <option value="balanced">Совместимость — целый объект без тайлов</option>
                 </select>
               </label>
+              <label class="check"><input id="aiResidueOnly" type="checkbox" />Только светлые остатки внутри готовой прозрачности — остальную маску сохранить</label>
               <label class="field"><span>Ускоритель</span>
                 <select id="aiProvider">
                   <option value="auto">Авто — GPU, если доступен</option>
@@ -792,6 +795,7 @@
             <small>ВИДЕО · GIF · PNG · ЛИСТ · КАДРЫ · ASEPRITE · JSON</small>
           </div>
           <div class="button-grid"><button id="cvPickFile" class="button secondary" type="button">Выбрать файлы</button><button id="cvPickFolder" class="button secondary" type="button">Выбрать папку</button></div>
+          <button class="button secondary" type="button" data-open-parallax>Собрать параллакс-сцену · слои + JSON</button>
           <div id="cvRecovery" class="cv-card hidden" aria-live="polite"><strong>Есть незавершённая задача</strong><span id="cvRecoveryName" class="cv-path"></span><div class="cv-result-actions"><button id="cvRecover" class="button primary" type="button">Продолжить</button><button id="cvRecoverFolder" class="button secondary" type="button">В другую папку</button><button id="cvForgetRecovery" class="button ghost" type="button">Убрать</button></div></div>
           <div id="cvTypeCard" class="cv-card cv-type hidden" aria-live="polite">
             <div class="cv-type-head"><span class="ai-chip">ТИП</span><strong id="cvTypeLabel">-</strong><span id="cvTypeFormat" class="cv-chip-muted"></span></div>
@@ -901,7 +905,7 @@
         </div>
         <p class="eyebrow">О ПРОГРАММЕ</p>
         <h2 id="aboutTitle">Chuba Sprite Lab</h2>
-        <p class="about-version">Версия <strong id="aboutVersion">1.9.0</strong></p>
+        <p class="about-version">Версия <strong id="aboutVersion">1.10.0</strong></p>
         <label class="about-locale"><span>Язык интерфейса</span>
           <select id="locale" aria-label="Язык интерфейса">
             <option value="ru">Русский</option>
@@ -1398,6 +1402,7 @@
         <article data-task="background"><strong>Удалить фон</strong><small>Прозрачность и чистый край</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
         <article data-task="healing"><strong>Восстановить повреждённый объект</strong><small>Подорожник: восстановить детали → удалить псевдопрозрачность → передать в очистку фона и края</small><div><button data-approach="auto" type="button">Начать</button></div></article>
         <article data-task="animation"><strong>Собрать анимацию</strong><small>Видео или кадры → атлас</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
+        <article data-task="parallax"><strong>Собрать параллакс-сцену</strong><small>Готовые PNG → слои, камера, движение; JSON + автономный HTML, без очистки</small><div><button data-approach="auto" type="button">Открыть сцену</button></div></article>
         <article data-task="readySheet"><strong>Собрать спрайт-лист</strong><small>Готовые PNG → одинаковые ячейки + JSON, фон на выбор; без очистки</small><div><button data-approach="auto" type="button">Собрать</button><button data-approach="manual" type="button">Настроить</button></div></article>
         <article data-task="readyAtlas"><strong>Собрать атлас</strong><small>Готовые PNG → MaxRects + JSON, без восстановления и удаления фона</small><div><button data-approach="auto" type="button">Собрать</button><button data-approach="manual" type="button">Настроить</button></div></article>
         <article data-task="combine"><strong>Собрать общий атлас объектов</strong><small>Несколько PNG/JPG/WebP → один лист + JSON координат</small><div><button data-approach="auto" type="button">Авто</button><button data-approach="manual" type="button">Вручную</button></div></article>
@@ -1447,6 +1452,7 @@
         <label class="batch-model-choice"><strong>Чёрная обводка</strong><select id="imageBatchBlackContour"><option value="preserve">Сохранить контур</option><option value="remove">Удалить без защиты контура</option></select><small>Применяется только к файлам с чёрным фоном. Сравните оба варианта на цветной подложке.</small></label>
         <label class="batch-model-choice"><strong>Чем вырезать фон</strong><select id="imageBatchModel"><option value="">Автоматически подобрать способ</option></select><small id="imageBatchModelHint">Автоматически: подходящий цветовой способ или ToonOut. ToonOut: вырезка сложного фона. Сравните результат и сохраните PNG.</small></label>
         <label class="batch-model-choice"><strong>Светлые детали рисунка</strong><select id="imageBatchLightArtwork"><option value="auto">Определять отдельно для каждого файла</option><option value="protect">Сохранить белое и серое</option><option value="none">Белого нет — убрать светлые остатки</option></select><small>Если результат неоднозначен, автоматический режим сохранит светлые детали. Для веток без белого можно явно выбрать удаление.</small></label>
+        <fieldset class="batch-model-choice"><legend>Очистка листа по известной сетке</legend><label>Столбцы <input id="imageBatchCleanupColumns" type="number" min="1" max="16" value="1" /></label><label>Строки <input id="imageBatchCleanupRows" type="number" min="1" max="16" value="1" /></label><small>1×1 — отдельное изображение. Для листа укажите его настоящую сетку: ячейки обрабатываются отдельно, размеры и координаты сохраняются. Сетка не угадывается. Применяется ко всем файлам выбранной области.</small></fieldset>
         <label id="imageBatchContourChoice" class="batch-model-choice hidden"><strong>Полоса перекраски контура</strong><select id="imageBatchContourWidth"><option value="2">2 пикселя</option><option value="4">4 пикселя</option></select><small>Для файлов без белых деталей: каждый пиксель получает свой цвет с глубины 5 px, на тонкой линии — 2 px. Форма сохраняется.</small></label>
         <div class="batch-color-adjust" aria-label="Свет и цвет для выбранных изображений"><strong>Цвет результата</strong><label class="color-style-field">Стиль <select id="imageBatchStyle"><option value="none">Без стиля</option><option value="warm">Тёплый</option><option value="cool">Холодный</option><option value="warm-to-cool">Красный / жёлтый → зелёный / синий</option><option value="cool-to-warm">Зелёный / синий → красный / жёлтый</option><option value="muted">Приглушённый</option></select></label><label>Сила <input id="imageBatchStyleStrength" type="range" min="0" max="100" value="100" /><output id="imageBatchStyleValue">100%</output></label><label>Яркость <input id="imageBatchBrightness" type="range" min="-100" max="100" value="0" /><output id="imageBatchBrightnessValue">0</output></label><label>Контраст <input id="imageBatchContrast" type="range" min="-100" max="100" value="0" /><output id="imageBatchContrastValue">0</output></label><label>Тепло <input id="imageBatchWarmth" type="range" min="-100" max="100" value="0" /><output id="imageBatchWarmthValue">0</output></label><button id="imageBatchResetColor" type="button">Сбросить цвет</button></div>
         <details class="batch-color-removal" id="imageBatchAssembly"><summary>Формат результата и фон листа</summary><div class="batch-color-removal-controls"><label>Результат <select id="imageBatchOutput"><option value="png">Отдельные PNG</option><option value="sheet">Один спрайт-лист + JSON</option><option value="atlas">Один атлас MaxRects + JSON</option></select></label><label>Масштаб <select id="imageBatchScale"><option value="1">1×</option><option value="2">2× без сглаживания</option><option value="4">4× без сглаживания</option></select></label><label>Фон сохраняемого листа <select id="imageBatchAtlasBackground"><option value="transparent">Прозрачный</option><option value="white">Белый</option><option value="black">Чёрный</option><option value="custom">Свой цвет</option></select></label><label>Цвет фона <input id="imageBatchAtlasColor" type="color" value="#ff00ff" /></label><label>Просмотр страниц <select id="imageBatchPage"><option value="0">Страница 1</option></select></label></div><p>Сначала «Подготовить просмотр», затем сохранить. Фон просмотра не меняет PNG; фон листа записывается в PNG.</p></details>
@@ -1473,6 +1479,15 @@
     </div>
     <script src="./image-workspace.js"></script>
     <dialog id="imageBatchCleanupConfirm" class="batch-cleanup-confirm" aria-labelledby="imageBatchCleanupConfirmTitle"><h2 id="imageBatchCleanupConfirmTitle">Вы уверены?</h2><p id="imageBatchCleanupConfirmMessage"></p><ul id="imageBatchCleanupConfirmFiles"></ul><form method="dialog"><button id="imageBatchCleanupConfirmCancel" value="cancel" type="submit">Отмена</button><button id="imageBatchCleanupConfirmAccept" value="accept" type="submit">Да, подготовить просмотр</button></form></dialog>
+    <dialog id="parallaxModal" class="parallax-dialog" aria-labelledby="parallaxTitle">
+      <header class="parallax-heading"><div><h2 id="parallaxTitle">Параллакс-сцена</h2><p>Готовые изображения → слои и движение камеры. Исходники и проект студии не меняются.</p></div><button id="parallaxClose" type="button" class="button ghost" aria-label="Закрыть сцену">×</button></header>
+      <div class="parallax-body">
+        <aside class="parallax-sidebar"><button id="parallaxAdd" class="button primary" type="button">Добавить слои</button><button id="parallaxUseSource" class="button secondary" type="button">Из текущих PNG студии</button><button id="parallaxOpen" class="button secondary" type="button">Открыть сцену JSON</button><button id="parallaxNew" class="button ghost" type="button">Новая сцена</button><h3>Слои · сзади → вперёд</h3><p id="parallaxEmpty">Добавьте PNG с прозрачностью. Каждый файл станет отдельным слоем без обработки.</p><div id="parallaxLayers" class="parallax-layers"></div><div class="parallax-fields"><button id="parallaxBack" type="button">Назад</button><button id="parallaxFront" type="button">Вперёд</button><button id="parallaxDuplicate" type="button">Копия</button><button id="parallaxDelete" type="button">Удалить</button></div><h3>Холст</h3><div class="parallax-fields"><label>Ширина, px<input id="parallaxWidth" type="number" min="32" max="4096" value="960"></label><label>Высота, px<input id="parallaxHeight" type="number" min="32" max="4096" value="540"></label><label>Фон сцены<input id="parallaxBackground" type="color" value="#19212a"></label></div><label class="parallax-check"><input id="parallaxPixelated" type="checkbox" checked>Чёткие пиксели</label></aside>
+        <section class="parallax-stage"><canvas id="parallaxCanvas" aria-label="Предпросмотр сцены: перетаскивание перемещает камеру"></canvas><div class="parallax-stage-toolbar"><button id="parallaxPlay" type="button">Воспроизвести</button><button id="parallaxResetCamera" type="button">Сброс камеры</button><span id="parallaxCamera"></span></div><p class="hint">Коэффициент 0 — слой неподвижен, 1 — движется вместе с миром; отрицательный — в обратную сторону. Это композиция готовых 2D-слоёв, не автоматическая нарезка по глубине.</p></section>
+        <aside class="parallax-sidebar parallax-properties"><h3>Выбранный слой</h3><label class="field"><span>Название</span><input data-layer="name" type="text" maxlength="120"></label><label class="parallax-check"><input data-layer="visible" type="checkbox">Виден</label><div class="parallax-fields"><label>X, px<input data-layer="x" type="number" min="-16384" max="16384"></label><label>Y, px<input data-layer="y" type="number" min="-16384" max="16384"></label><label>Якорь X<select data-layer="anchorX"><option value="0">Слева</option><option value="0.5">Центр</option><option value="1">Справа</option></select></label><label>Якорь Y<select data-layer="anchorY"><option value="0">Сверху</option><option value="0.5">Центр</option><option value="1">Снизу</option></select></label><label>Масштаб, ×<input data-layer="scale" type="number" min="0.01" max="16" step="0.05"></label><label>Поворот, °<input data-layer="rotation" type="number" min="-180" max="180"></label><label>Параллакс X<input data-layer="parallaxX" type="number" min="-2" max="2" step="0.05"></label><label>Параллакс Y<input data-layer="parallaxY" type="number" min="-2" max="2" step="0.05"></label><label>Непрозрачность<input data-layer="opacity" type="number" min="0" max="1" step="0.05"></label><label>Колебание, px<input data-layer="float" type="number" min="0" max="128"></label></div><label class="parallax-check"><input data-layer="repeatX" type="checkbox">Повторять по X</label><p>Повторение рассчитано на бесшовный слой. Поворот и прозрачность — свойства слоя, исходный PNG не переписывается.</p><button id="parallaxResetLayer" class="button secondary" type="button">Сброс параметров слоя</button><div class="parallax-fields"><button id="parallaxUndo" type="button">Отменить</button><button id="parallaxRedo" type="button">Повторить</button></div></aside>
+      </div><footer class="parallax-footer"><output id="parallaxStatus" role="status">Добавьте слои или откройте сохранённую сцену.</output><div><button id="parallaxDone" class="button secondary" type="button">Вернуться в студию</button><button id="parallaxExport" class="button primary" type="button">Сохранить сцену…</button></div></footer>
+    </dialog>
+    <script src="./parallax-ui.js"></script>
     <script src="./batch-cleanup-ui.js"></script>
     <script src="./task-mode.js"></script>
     <script src="./feedback.js"></script>

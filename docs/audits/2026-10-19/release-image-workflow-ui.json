@@ -1,0 +1,129 @@
+{
+  "executable": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\portable\\Chuba Sprite Lab.exe",
+  "originalHash": "6b867c0eb5fafa7f071c7636b2891ed03edfbf0bdde93ccfe680651753bfe1a7",
+  "initial": {
+    "modal": true,
+    "report": {
+      "removed": 0,
+      "recolored": 2297
+    },
+    "changed": 14467,
+    "healingButton": true,
+    "text": "1 · flowers_white_daisy_01.png\nПредпросмотр · нужна проверка · ToonOut · целый объект · проходы: 1 · fast → Выделение · toonout → Очистка края → Проверка результата · защита светлых деталей включена · модель изменила альфу 12170 пикс. в светлых областях · удалено 0 пикс. остатков · перекрашено 2297 пикс. кромки · всего изменено 14467 пикс. · Пробный проход не улучшил измерение кромки. Оставлен первый результат. Модель проверила подозрительные светлые области. Сравните белые детали и тонкие ветки перед применением."
+  },
+  "layoutChecks": [
+    {
+      "width": 1360,
+      "height": 900,
+      "theme": "light",
+      "arts": [
+        185.11363220214844,
+        164.2045440673828
+      ],
+      "footerBottom": 827.1022148132324,
+      "viewport": 900
+    },
+    {
+      "width": 1360,
+      "height": 900,
+      "theme": "dark",
+      "arts": [
+        185.11363220214844,
+        164.2045440673828
+      ],
+      "footerBottom": 827.1022148132324,
+      "viewport": 900
+    },
+    {
+      "width": 1280,
+      "height": 720,
+      "theme": "light",
+      "arts": [
+        185.11363220214844,
+        164.2045440673828
+      ],
+      "footerBottom": 695.0851860046387,
+      "viewport": 720
+    },
+    {
+      "width": 1280,
+      "height": 720,
+      "theme": "dark",
+      "arts": [
+        185.11363220214844,
+        164.2045440673828
+      ],
+      "footerBottom": 695.0851860046387,
+      "viewport": 720
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "light",
+      "arts": [
+        185.11363220214844,
+        164.2045440673828
+      ],
+      "footerBottom": 733.2812309265137,
+      "viewport": 768
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "dark",
+      "arts": [
+        185.11363220214844,
+        164.2045440673828
+      ],
+      "footerBottom": 733.2812309265137,
+      "viewport": 768
+    }
+  ],
+  "manual": {
+    "open": true,
+    "min": "1",
+    "shape": "square",
+    "warmth": true
+  },
+  "cleanupDecisions": null,
+  "engines": [
+    "toonout",
+    "lama",
+    "rife",
+    "real-esrgan",
+    "depth-anything-v2"
+  ],
+  "pixelOptions": {
+    "gridMode": "adaptive",
+    "softAlpha": false,
+    "size": 3,
+    "colors": 16,
+    "palette": "auto",
+    "paletteScope": "series",
+    "mode": "clean",
+    "dither": "bayer4",
+    "shadingSteps": 4,
+    "detail": 0
+  },
+  "pixelationChanged": true,
+  "batchPixelation": null,
+  "batchGeometry": null,
+  "readyAssembly": [
+    {
+      "kind": "sheet",
+      "whiteBackground": true,
+      "noCleanup": true,
+      "savedMatchesPreview": true
+    },
+    {
+      "kind": "atlas",
+      "whiteBackground": true,
+      "noCleanup": true,
+      "savedMatchesPreview": true
+    }
+  ],
+  "saved": "C:\\Users\\User\\Documents\\ChatGPT\\lab\\chuba-sprite-lab\\.diagnostics\\release-1.10.0\\image-workflow-exe-final\\saved-png\\flowers_white_daisy_01.png",
+  "savedPixelsMatch": true,
+  "originalUnchanged": true,
+  "exceptions": []
+}

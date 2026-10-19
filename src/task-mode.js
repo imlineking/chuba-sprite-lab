@@ -84,6 +84,7 @@
   }
 
   function taskSet(name, nextApproach = "auto") {
+    if (name === 'parallax') { void window.openParallaxSceneUI(); return; }
     if (!taskNames[name]) return;
     selected = name;
     state.intent = ["edit", "healing"].includes(name) ? "images" : name === "combine" ? "combine" : name === "animation" ? "animation" : ""; document.body.dataset.intent = state.intent;

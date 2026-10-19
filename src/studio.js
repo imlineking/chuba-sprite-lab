@@ -803,6 +803,7 @@ function optionsFromDocument(doc, base = {}) {
     aiCutoff: checks.aiAutoCutoff !== false ? "auto" : number("aiCutoff", 50),
     aiSoftness: number("aiSoftness", 0),
     aiQuality: values.aiQuality || "balanced",
+    aiResidueOnly: Boolean(checks.aiResidueOnly),
     pixelScale: checks.pixelateEnabled ? number("pixelExportScale", 1) : 1,
     pixelate: checks.pixelateEnabled ? {
       gridMode: values.pixelateGridMode || "adaptive",
@@ -823,7 +824,7 @@ function optionsFromDocument(doc, base = {}) {
     fringeCleanup: Boolean(checks.fringeCleanup), fringeStrength: number("fringeStrength", 55),
     edgeDecontaminate: Boolean(checks.edgeDecontaminate),
     contourAlpha:{enabled:Boolean(checks.contourAlphaEnabled),width:number("contourAlphaWidth",24),curve:number("contourAlphaCurve",1),thinRadius:number("contourAlphaThin",6),protectCore:checks.contourAlphaCore!==false},
-    edgeRefine: { mode: values.edgeRefineMode || "none", width: number("edgeRefineWidth", 1), depth: number("edgeRefineDepth", 5), whiteOnly: checks.edgeRefineWhiteOnly !== false },
+    edgeRefine: { mode: values.edgeRefineMode || "none", width: number("edgeRefineWidth", 1), depth: number("edgeRefineDepth", 5), whiteOnly: checks.edgeRefineWhiteOnly !== false, preserveLightArtwork: checks.edgeRefineWhiteOnly !== false },
     aiProvider: values.aiProvider || "auto",
     keyColor: /^#[0-9a-f]{6}$/i.test(String(controls.solidKeyMode || "")) ? hexToRgb(controls.solidKeyMode) : undefined,
     attachments: (doc.attachments || []).filter((attachment) => attachment.enabled !== false), attachmentPlacements: null,

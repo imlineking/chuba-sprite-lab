@@ -6,6 +6,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import sharp from "sharp";
 import { currentAIProvider, segmentSubject } from "./ai-segmentation.mjs";
+import { applyResidueMask } from './alpha-residue.mjs';
 import { applyMaskEdits } from "./mask-edits.mjs";
 import { cleanMagentaFringe } from "./edge-cleanup.mjs";
 import { pixelate } from "./pixelate.mjs";
@@ -465,6 +466,8 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
     mode === "ai" ? context.aiCutoff : null,
     mode === "ai" ? context.aiSoftness : null,
     mode === "ai" ? context.aiForceModel : null,
+    mode === 'ai' ? context.aiResidueOnly : null,
+    mode === 'ai' ? context.aiGrid : null,
     // The mask depends on which model ran, so the model belongs in the cache key too.
     mode === "ai" ? context.aiModel || "toonout" : null,
     context.aiEdits?.length ? context.frameIndex : null,
@@ -490,12 +493,20 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
       quality: context.aiQuality,
       model: context.aiModel,
       modelDirs: context.aiModelDirs || [],
+      grid: context.aiGrid,
     });
+    let residueReport = null;
+    if (context.aiResidueOnly) {
+      const original = await sharp(inputPath).toColourspace('srgb').ensureAlpha().raw().toBuffer();
+      const restricted = applyResidueMask(original, segmented.data, segmented.info);
+      segmented.data = restricted.data; residueReport = restricted.report;
+    }
     const result = await applyCorrectionsToResult({
       buffer: await sharp(segmented.data, { raw: segmented.info }).png().toBuffer(),
       info: segmented.info,
       bounds: alphaBounds(segmented.data, segmented.info),
       keyColor: null,
+      residueReport,
       // What the model actually did belongs in the report: it explains a mask that looks wrong.
       aiMetrics: {
         provider: segmented.provider,
@@ -503,6 +514,11 @@ export async function keyFrame(inputPath, mode, tolerance, blackOutline = 3, bla
         modelName: segmented.modelName,
         inputSize: segmented.inputSize,
         quality: segmented.quality,
+        requestedQuality: segmented.requestedQuality,
+        qualityNote: segmented.qualityNote,
+        strategy: segmented.strategy,
+        regions: segmented.regions,
+        passes: segmented.passes,
         tiles: segmented.tiles,
         tta: segmented.tta,
         autoThreshold: segmented.autoThreshold,
@@ -1196,7 +1212,9 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
   let nextToSchedule = 0;
   const prepareFrame = async (index) => {
     const frameOptions = resolvePreparedCleanup(options, index, inputFrames[index]);
+    // A residue-only proposal is a different mask, including in the prepared-stage cache.
     const stageOptions = Object.fromEntries(["keyMode", "tolerance", "blackOutline", "blackFeather", "keyScope", "keyColor", "fringeCleanup", "fringeStrength", "edgeDecontaminate", "edgeRefine", "contourAlpha", "imageGeometry", "pixelate", "toning", "colorAdjust", "auxAI", "aiModel", "aiProvider", "aiQuality", "aiForceModel", "aiCutoff", "aiSoftness", "aiModelDirs"].map(k => [k, frameOptions[k]]));
+    stageOptions.aiResidueOnly = frameOptions.aiResidueOnly;
     const stageKey = stableStringify({ file: await fileSignature(inputFrames[index]), options: stageOptions, edits: (frameOptions.aiEdits || []).filter(e => e.applyAll || Number(e.frameIndex) === index), assets: await Promise.all([auxiliary.inpaintMaskPath, ...(attachmentPlacements[index] || []).map(p => p.path || p.imagePath)].filter(Boolean).map(fileSignature)), autoKeyColor, placement: attachmentPlacements[index], maskPrepared: source.maskPrepared });
     const cachedStage = preparedStageCache.get(stageKey);
     if (cachedStage) return cachedStage;
@@ -1213,6 +1231,7 @@ async function buildAnimation({ source, options = {}, appRoot, onProgress, signa
       aiEdits: frameOptions.aiEdits, keyScope: frameOptions.keyScope, fringeCleanup: frameOptions.fringeCleanup, fringeStrength: frameOptions.fringeStrength,
       edgeDecontaminate: frameOptions.edgeDecontaminate, keyColor: frameOptions.keyColor, aiProvider: options.aiProvider,
       aiForceModel: options.aiForceModel, aiQuality: options.aiQuality, aiModel: options.aiModel, aiModelDirs: options.aiModelDirs,
+      aiResidueOnly: options.aiResidueOnly,
     });
     if (frameOptions.edgeRefine) keyed = await applyEdgeRefine(keyed, frameOptions.edgeRefine);
     if (frameOptions.contourAlpha?.enabled) keyed = await applyContourAlpha(keyed, frameOptions.contourAlpha);
@@ -2424,6 +2443,8 @@ export async function processFramePreview({ inputPath, options = {}, appRoot, gr
     aiQuality: options.aiQuality,
     aiModel: options.aiModel,
     aiModelDirs: options.aiModelDirs,
+    aiGrid: options.aiGrid,
+    aiResidueOnly: options.aiResidueOnly,
   });
   let whiteRemainders = { count: 0, regions: [] };
   if (options.keyScope !== "all" && options.keyMode !== "alpha" && keyed.keyColor?.every((value) => value >= 230)) {
@@ -2473,6 +2494,8 @@ export async function processFramePreview({ inputPath, options = {}, appRoot, gr
     edgeRefineReport: keyed.edgeRefineReport || null,
     contourAlphaReport: keyed.contourAlphaReport || null,
     geometryReport: keyed.geometryReport || null,
+    aiMetrics: keyed.aiMetrics || null,
+    residueReport: keyed.residueReport || null,
   };
 }
 

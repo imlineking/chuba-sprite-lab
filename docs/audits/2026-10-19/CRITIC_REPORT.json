@@ -1,0 +1,130 @@
+{
+  "ticket": "sprite-lab-functional-review-2026-10-19",
+  "reviewer": "independent-agent:/root/ux_critic",
+  "status": "accepted_with_limits",
+  "userAcceptance": false,
+  "scope": "Новый маршрут ручной 2D-параллакс-сцены и ограниченная автоматическая RGB-доводка края; не приёмка всех функций Sprite Lab или portable EXE.",
+  "referenceObservation": "Направление v0allax получено из реально просмотренного автором browser-референса. Web-tool не открыл URL. Критик самостоятельно просмотрел актуальные снимки приложения, прочёл исходники и выполнил 7 целевых тестов; UI runtime-свидетельства предоставлены автором, собственные UI-клики критик не заявляет.",
+  "checks": [
+    {
+      "criterion": "Фарфор/Призма, понятный путь и доступные действия",
+      "passed": true,
+      "evidence": "Самостоятельно просмотрены актуальные parallax-release-check/scene-1360-light.png и scene-1024-dark.png при1360×900/1024×768. Footer с сохранением и возвратом доступен; панели слоёв/параметров прокручиваются независимо; длинные имена переносятся. Тот же договор Фарфор/Призма сохранён. Вход доступен с sourcePanel и conveyorView через data-open-parallax."
+    },
+    {
+      "criterion": "Готовые PNG не очищаются и проект студии не заменяется",
+      "passed": true,
+      "evidence": "parallax-ui.js хранит отдельный draft и импортирует изображения без processor. В runtime report.json автор проверил идентичность state.source и исходных байтов. На снимке у исходной ветки видна запечённая сетка — это демонстрация неизменности входа, не готового качества игрового слоя."
+    },
+    {
+      "criterion": "Слои и общая формула preview/runtime",
+      "passed": true,
+      "evidence": "Прочитаны normalizeParallaxScene/parallaxPose/drawParallaxScene: порядок, visible, anchor, offset, scale, rotation, opacity, XYparallax, float и repeatX. Экспорт включает то же ядро. Самостоятельный прогон 7/7 тестов проверяет формулу, порядок, скрытие, лимиты и round-trip."
+    },
+    {
+      "criterion": "Undo, удаление ресурсов и совокупный бюджет",
+      "passed": true,
+      "evidence": "Два major найдены критиком и исправлены: assertParallaxPixelBudget(existing,incoming) вызывается ДО decode/remember; render удаляет неиспользуемые assets/images. Самостоятельно проверен unit128Мп/128Мп+8000 отказ; авторский parallax-release-check runtime проверяет delete→liveImages уменьшается→undo возвращает id/count. Фактическая аллокация128Мп не выполнялась."
+    },
+    {
+      "criterion": "Lifecycle камеры/проигрывания",
+      "passed": true,
+      "evidence": "По коду один RAF, stop отменяет его при close/hidden/pointerdown. Авторский runtime: реальный pointer drag, timed playback и шесть close/open циклов с raf=0. Смена сцен не добавляет listeners; изображения предыдущего draft заменяются/освобождаются."
+    },
+    {
+      "criterion": "Переносимый экспорт и безопасность данных",
+      "passed": true,
+      "evidence": "Самостоятельный round-trip тест сохраняет исходные bytes, не перезаписывает прошлый каталог, отвергает URL/traversal/дубли id. Имена выводятся textContent; JSON в HTML экранирует '<'; realpath ограничивает локальные ресурсы папкой сцены. Авторский runtime открывает экспортированный file:// HTML без сервера и включает playback."
+    },
+    {
+      "criterion": "Честный результат очистки и обратимый один RGB retry",
+      "passed": true,
+      "evidence": "compareCleanupPixels отдельно считает RGB/alpha и не считает невидимый RGB. proposeContourRetry ограничен1px внешней кромки и одним проходом, проверяет неизменность alpha и улучшение измерения, защищает coherent light artwork. Самостоятельные тесты подтверждают immutable input, alpha и белую деталь. Авторский runtime выбирает first/refined/first, применяет и сравнивает экспортированный RGBA с выбранным кандидатом; оба пути сохраняются."
+    },
+    {
+      "criterion": "Локализация проверенного интерфейсного пути",
+      "passed": true,
+      "evidence": "Актуальный i18n-release-check/report.json: missing=[], reversible/userTextUnchanged/sourceUnchanged=true, обе темы1360/≈1024, assistantEnglish и возврат. Это авторское runtime evidence, не самостоятельный обход всех меню критиком."
+    },
+    {
+      "criterion": "Пакетный просмотр и основные существующие маршруты после CSS-исправления",
+      "passed": true,
+      "evidence": "Самостоятельно просмотрены image-workflow-complete/cleanup-1280-720-light.png и cleanup-1024-768-dark.png: оба спрайта видимы, действия не выходят за окно. Прочитаны hidden+class.hidden и CSS min-height220/flex:none. Авторский image-workflow-complete/report.json подтверждает6компоновок обеих тем, actualPNG/Подорожник/цвет/пипетку/selected-all/undo, кисти1pxsquare, pixelation и geometry32×24 с равенством savedRGBA, readyлист/атлас без очистки; exceptions=[]. Это функциональные доказательства маршрутов, не художественная приёмка любой маски белых лепестков."
+    }
+  ],
+  "resolvedIssues": [
+    {
+      "severity": "major",
+      "message": "Новый импорт раньше считал128Мп отдельно от открытой сцены, позволяя создать сцену, которую экспорт затем отвергал.",
+      "resolution": "Совокупный бюджет вынесен в core и проверяется до изменения draft и decode; boundary unit прошёл."
+    },
+    {
+      "severity": "major",
+      "message": "Удалённые слои сохраняли сильные ссылки на Image/assets и могли накапливать память.",
+      "resolution": "Pruning по referenced asset в render; runtime delete/undo проверяет освобождение/reload."
+    },
+    {
+      "severity": "minor",
+      "message": "Первый кандидат после переключения не был явно назван в строке результата.",
+      "resolution": "Добавлен текст «выбран первый проход без автоматической доводки»; changed count и matte report переключаются вместе с imagePath."
+    },
+    {
+      "severity": "major",
+      "message": "Атрибут hidden кнопки первого прохода перекрывался CSS display.button и мог сжимать предпросмотр.",
+      "resolution": "Видимость теперь также задаёт class.hidden с display:none!important; кнопка flex:none,min-height32 и область preview min-height220. Актуальные снимки малого окна и runtime экспорт-кандидатов проверены."
+    }
+  ],
+  "issues": [],
+  "limitations": [
+    "Только ручная композиция готовых2Dслоёв; нет автоматического depth split, React/Gyro/clip/blend и полного клона v0allax.",
+    "Положение слоя задаётся полями; перетаскивание сцены двигает камеру. Это не ошибочный drag объекта.",
+    "RGB retry не восстанавливает отсутствующие элементы и не гарантирует художественное качество любой каймы. Уменьшение neutralEdgePixels — измеримый сигнал, окончательный кандидат требует просмотра.",
+    "Для крайне мелких повторяемых тайлов renderer ограничен513draws на слой; нагрузка больших сцен/другой GPU не измерялась.",
+    "При ошибке файлового экспорта после создания каталога может остаться неполная новая папка; исходники и открытый черновик не перезаписываются.",
+    "Художественная/UX-проверка относится к исходникам и указанным снимкам. Последующая явно разрешённая сборка1.10.0 и её технические UI/модельные smoke-проверки выполняются автором отдельно; они не являются новой художественной или пользовательской приёмкой EXE."
+  ],
+  "authorVerification": {
+    "report": ".diagnostics/functional-review-2026-10-19/verify-final.log",
+    "tests": 523,
+    "passed": 522,
+    "failed": 0,
+    "skipped": 1,
+    "provenance": "Последний полный авторский прогон после всех source-изменений:523теста522pass0fail1skip; критик прочёл финальный итог журнала. Самостоятельный целевой прогон критика7/7."
+  },
+  "evidenceRoot": ".diagnostics/functional-review-2026-10-19",
+  "hashes": {
+    "src/parallax-core.mjs": "CD031B6E4BC9B30F84FAB277B8E93844FAE9C6A92165383939B29D7D5DE609FC",
+    "src/parallax-main.mjs": "AB37F76670A059345B17663A4D2229F8AA0AE156776B1387106C6D1F44CA2EE8",
+    "src/parallax-ui.js": "9EFB3807827D86B414F844AEB1164D69D28C60A3E5DDD1AD41D2C572FFDBE4CC",
+    "src/parallax.css": "989AD2FD85E65E5BDFD7489919B6065498EBA0AE2D5C3D2AA5B631FEA9BF744B",
+    "src/cleanup-feedback.mjs": "94D5FA077EFCCDF56DD207A583DA6C2C6CC5D1D6F852A3B03E4001055269EFA3",
+    "src/image-batch.mjs": "0CE65BF9DCFFACFA4DB474EE9F1D4385780AD73864347F3EB252B53140B2D803",
+    "src/image-workspace.js": "BBABFDEB2CA91B040CF4D5DF9F7225C09F4C18F10D7508FE9DA4354D9842C3D6",
+    "src/index.html": "EB0744F5ED307E67722B7D992E6E77FCEE366265B5CAA39293169B4F40656BE2",
+    "src/styles.css": "0C998CB904DECD1AB49955F101AF3468D6D3A0EAFFAF063FE1D5F51F753CD5E4",
+    "src/auto-pilot.js": "C99C83F15D88F57B8207D2D3955677BDAF6006D9931727B93E9E652D954E4951",
+    "src/i18n-catalog.js": "8F9FB829092653FA882AF91A09246B14722E78362B6E74B4C13D4EF6830C2FB7"
+  },
+  "latestRuntimeEvidence": [
+    ".diagnostics/functional-review-2026-10-19/parallax-release-check/report.json",
+    ".diagnostics/functional-review-2026-10-19/image-workflow-complete/report.json",
+    ".diagnostics/functional-review-2026-10-19/i18n-release-check/report.json"
+  ],
+  "finalVerificationGate": {
+    "report": ".diagnostics/functional-review-2026-10-19/verify-final.log",
+    "status": "passed_with_one_skip",
+    "note": "Последний полный прогон завершён после всех source-изменений:523теста522pass0fail1skip; duration98048ms. Это техническая проверка исходников, не новогоEXE."
+  },
+  "releaseAppendix": {
+    "version": "1.10.0",
+    "purpose": "Version-only release maintenance; not artistic acceptance of the EXE",
+    "review": "Независимо проверено: обратная замена ровно двух versionBadge/aboutVersion1.10.0→1.9.0 возвращает точный ранее принятый SHA256index.html. Остальные10творческих/UXисходников отчёта совпадают с принятыми хешами.",
+    "previousIndexSha256": "F734920B027178C31256547EBF84B91AD5C4096CF605C4B49BB6CE00516C43D4",
+    "currentIndexSha256": "EB0744F5ED307E67722B7D992E6E77FCEE366265B5CAA39293169B4F40656BE2",
+    "versionLabels": 2,
+    "otherSourceHashMismatches": [],
+    "runtimeMaintenance": "Прочитан prepare-healing-runtime.mjs: существующий исправный встроенныйPython переиспользуется, внешнийWindowsalias не обязателен, пересоздание из собственной папки запрещено. Самостоятельный node--test test/healing-runtime-build.test.mjs:1pass0fail0skip; байтыpython.exe сохранились.",
+    "technicalBuildAcceptance": "Автор отдельно выполняет упаковку1.10.0, smoke интерфейса/встроенных моделей, полныйverifyпослесборки,commit/push и разрешённую пользователем очистку. Этот appendix не утверждает их завершение.",
+    "userAcceptance": false
+  }
+}

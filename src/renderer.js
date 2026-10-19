@@ -38,6 +38,7 @@ const preferenceCheckIds = ["autoSize", "autoColumns", "pixelPerfect", "removeDu
 
 preferenceValueIds.push("pixelateGridMode", "pixelateTargetWidth", "pixelateTargetHeight", "pixelExportScale");
 preferenceCheckIds.push("pixelateSoftAlpha");
+preferenceCheckIds.push('aiResidueOnly');
 
 function sourceDescriptor(source = state.source) {
   if (!source) return null;
@@ -996,11 +997,12 @@ function collectOptions() {
     frameMetadata: structuredClone(state.frameMetadata), anchorReference: state.anchorReference,
     aiCutoff: $("#aiAutoCutoff").checked ? "auto" : Number($("#aiCutoff").value), aiSoftness: Number($("#aiSoftness").value),
     aiQuality: $("#aiQuality").value,
+    aiResidueOnly: $('#aiResidueOnly').checked,
     aiEdits: state.maskEdits, previewFrameIndex: state.selectedFrameIndex,
     fringeCleanup: $("#fringeCleanup").checked, fringeStrength: Number($("#fringeStrength").value),
     edgeDecontaminate: $("#edgeDecontaminate").checked,
     contourAlpha: {enabled: $("#contourAlphaEnabled").checked, width:Number($("#contourAlphaWidth").value), curve:Number($("#contourAlphaCurve").value), thinRadius:Number($("#contourAlphaThin").value), protectCore:$("#contourAlphaCore").checked},
-    edgeRefine: { mode: $("#edgeRefineMode").value, width: Number($("#edgeRefineWidth").value), depth: Number($("#edgeRefineDepth").value), whiteOnly: $("#edgeRefineWhiteOnly").checked },
+    edgeRefine: { mode: $("#edgeRefineMode").value, width: Number($("#edgeRefineWidth").value), depth: Number($("#edgeRefineDepth").value), whiteOnly: $("#edgeRefineWhiteOnly").checked, preserveLightArtwork: $("#edgeRefineWhiteOnly").checked },
     aiProvider: $("#aiProvider").value, aiModel: $("#aiModel").value, aiForceModel: $("#aiModel").value === "toonout",
     auxAI: {
       interpolate: $("#auxRife").checked,
@@ -2458,6 +2460,9 @@ $("#aiAutoCutoff").addEventListener("change", () => {
 });
 $("#aiQuality").addEventListener("change", () => {
   savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory("Качество ИИ изменено");
+});
+$('#aiResidueOnly').addEventListener('change', () => {
+  savePreferences(); markPreviewDirty(); scheduleFramePreview(0); scheduleHistory('Область модельной очистки изменена');
 });
 $("#pixelateEnabled").addEventListener("change", () => {
   savePreferences(); markPreviewDirty(); scheduleFramePreview(0); pushHistory($("#pixelateEnabled").checked ? "Пиксель-арт включён" : "Пиксель-арт выключен");

@@ -225,7 +225,31 @@ async function predictRegion(session, inputPath, rect, fullSize, useTta, size, m
   return toRegionSize(bytes, rect, size);
 }
 
-export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness = 0, provider = "auto", quality = "balanced", model = null, modelDirs = [] } = {}) {
+export function knownGridRegions(width, height, grid) {
+  if (!grid) return null;
+  const { columns, rows } = grid;
+  if (!Number.isInteger(columns) || !Number.isInteger(rows) || columns < 1 || rows < 1
+    || columns > 16 || rows > 16 || columns * rows > 128 || columns > width || rows > height) {
+    throw new Error('Сетка очистки: от 1 до 16 столбцов/строк, не больше 128 кадров.');
+  }
+  const regions = [];
+  for (let y = 0; y < rows; y++) for (let x = 0; x < columns; x++) {
+    const left = Math.floor(x * width / columns), top = Math.floor(y * height / rows);
+    regions.push({ left, top, width: Math.floor((x + 1) * width / columns) - left, height: Math.floor((y + 1) * height / rows) - top });
+  }
+  return regions;
+}
+
+export function segmentationPlan(width, height, quality, wholeImage, grid) {
+  const requestedQuality = aiQualityModes.includes(quality) ? quality : 'balanced';
+  const plan = tilePlan(width, height, wholeImage ? 'fast' : requestedQuality);
+  if (wholeImage && requestedQuality === 'max') plan.quality = 'max';
+  const regions = knownGridRegions(width, height, grid);
+  return { ...plan, requestedQuality, regions, strategy: regions ? 'known-grid' : wholeImage ? 'whole-image' : 'tiles',
+    qualityNote: wholeImage && requestedQuality === 'balanced' ? 'ToonOut: целый объект, без тайлов; фактически один проход.' : null };
+}
+
+export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness = 0, provider = "auto", quality = "balanced", model = null, modelDirs = [], grid = null } = {}) {
   if (!appRoot) throw new Error("Не указан путь к локальной ИИ-модели.");
   const requested = modelById(resolveMattingModelId(model));
   const loader = await getSession(appRoot, provider, {
@@ -238,11 +262,11 @@ export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness
   const usedModel = requested && path.basename(loader.modelPath).toLowerCase() === requested.file.toLowerCase() ? requested : modelById("toonout");
   const { data: source, info } = await sharp(inputPath).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const fullSize = { width: info.width, height: info.height };
-  const plan = tilePlan(info.width, info.height, usedModel?.wholeImage ? "fast" : quality);
+  const plan = segmentationPlan(info.width, info.height, quality, usedModel?.wholeImage, grid);
   const useTta = plan.quality === "max";
   // Even one mirrored pass goes through the accumulator, which needs explicit
   // zero offsets. A bare width/height rectangle produced NaN indexes and an empty mask.
-  const rects = tileRects(info.width, info.height, plan);
+  const rects = plan.regions || tileRects(info.width, info.height, plan);
 
   let mask;
   if (rects.length === 1 && !useTta) {
@@ -312,6 +336,11 @@ export async function segmentSubject(inputPath, { appRoot, cutoff = 50, softness
     modelName: usedModel?.name || "ToonOut",
     inputSize,
     quality: plan.quality,
+    requestedQuality: plan.requestedQuality,
+    qualityNote: plan.qualityNote,
+    strategy: plan.strategy,
+    regions: plan.regions,
+    passes: rects.length * (useTta ? 2 : 1),
     tiles: rects.length,
     tta: useTta,
     autoThreshold,

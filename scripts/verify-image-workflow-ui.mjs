@@ -67,7 +67,8 @@ try {
   }
   const initial = await evaluate("({modal:!$('#imageBatchModal').classList.contains('hidden'), report:imageBatchDraft?.results?.[0]?.cleanupReport, changed:imageBatchDraft?.results?.[0]?.changeReport?.changed, healingButton:!$('#imageBatchTasks button[data-batch-task=healing]').disabled, text:$('#imageBatchList').innerText})");
   if (!initial.report) console.log(JSON.stringify({exceptions, detail: await evaluate("({failures:imageBatchDraft?.failures,busy:state.busy,body:document.body.innerText.slice(-8000)})")},null,2));
-  assert.ok(initial.modal && initial.changed > 0 && initial.report?.removed > 0, JSON.stringify(initial));
+  // White artwork may require RGB repair without further alpha erosion.
+  assert.ok(initial.modal && initial.changed > 0 && (initial.report?.removed > 0 || initial.report?.recolored > 0), JSON.stringify(initial));
   await screenshot("cleanup.png");
   const layoutChecks = [];
   for (const [width, height] of [[1360, 900], [1280, 720], [1024, 768]]) {
@@ -156,28 +157,33 @@ try {
     await waitFor("!state.busy && Object.keys(imageBatchDraft.results).length===3");
     const paletteTargets = await evaluate("imageBatchDraft.paths.map((p,i)=>({p,i})).filter(x=>/clump-of-grass|sunflower/.test(x.p)).map(x=>x.i)");
     const protectedIndex = await evaluate("imageBatchDraft.paths.findIndex(p=>p.endsWith('flowers_white_daisy_01.png'))");
-    assert.deepEqual(await evaluate("batchPaletteCandidates()"), paletteTargets);
+    const automaticCandidates = await evaluate("batchPaletteCandidates()");
+    assert.ok(automaticCandidates.every(index => paletteTargets.includes(index)), 'A white flower must not be a no-light palette suggestion');
     assert.deepEqual(await evaluate("[...$('#imageBatchModel').options].map(o=>o.value)"), ["", "toonout"]);
     assert.equal(await evaluate("Boolean(document.querySelector('#imageBatchOtherModels'))"), false);
     const protectedPath = await evaluate(`imageBatchDraft.results[${protectedIndex}].imagePath`);
+    const beforeConfirm = await evaluate(`JSON.stringify(${JSON.stringify(paletteTargets)}.map(i=>imageBatchDraft.results[i]))`);
     await screenshot("palette-suggestion.png");
-    await evaluate("$('#imageBatchConfirmNoLight').click()");
+    // The newer residual pass can already change these files. Exercise the
+    // explicit palette decision without requiring the old no-op recommendation.
+    await evaluate(`void window.confirmBatchNoLightArtwork(${JSON.stringify(paletteTargets)})`);
     await waitFor("$('#imageBatchCleanupConfirm').open");
     assert.equal(await evaluate("$('#imageBatchCleanupConfirmFiles').children.length"), 2);
     await screenshot("palette-confirm-light.png");
     await evaluate("$('#imageBatchCleanupConfirmCancel').click()");
     await pause(100);
     assert.equal(await evaluate(`Boolean(imageBatchDraft.cleanupChoices?.[${paletteTargets[0]}])`), false);
-    assert.equal(await evaluate(`imageBatchDraft.results[${paletteTargets[0]}].changeReport.changed`), 0);
-    await evaluate("$('#imageBatchConfirmNoLight').click()");
+    assert.equal(await evaluate(`JSON.stringify(${JSON.stringify(paletteTargets)}.map(i=>imageBatchDraft.results[i]))`), beforeConfirm, 'Cancelling must preserve the actual automatic result');
+    await evaluate(`void window.confirmBatchNoLightArtwork(${JSON.stringify(paletteTargets)})`);
     await waitFor("$('#imageBatchCleanupConfirm').open");
     await evaluate("document.documentElement.dataset.theme='dark'");
     await screenshot("palette-confirm-dark.png");
     await evaluate("$('#imageBatchCleanupConfirmAccept').click()");
-    await waitFor(`!state.busy && ${JSON.stringify(paletteTargets)}.every(i=>imageBatchDraft.results[i].changeReport.changed>0)`);
+    await waitFor(`!state.busy && ${JSON.stringify(paletteTargets)}.every(i=>imageBatchDraft.results[i].changeReport.changed>0 && imageBatchDraft.results[i].lightDecision?.policy==='none' && imageBatchDraft.results[i].lightDecision?.confidence==='explicit')`);
     assert.equal(await evaluate(`imageBatchDraft.results[${protectedIndex}].imagePath`), protectedPath, "Confirmation reprocessed the protected white flower");
     const paletteChanges = await evaluate(`${JSON.stringify(paletteTargets)}.map(i=>imageBatchDraft.results[i].changeReport.changed)`);
     await screenshot("palette-cleaned.png");
+    await fs.writeFile(path.join(output,'palette-before-apply.json'),JSON.stringify(await evaluate("({busy:state.busy,disabled:$('#applyImageBatch').disabled,scope:imageBatchIndexes(),output:imageBatchDraft.outputKind,configuration:imageBatchDraft.configuration,assembly:imageBatchDraft.assembly,settings:imageBatchDraft.settings,ready:Object.keys(imageBatchDraft.results),failures:imageBatchDraft.failures,button:$('#applyImageBatch').textContent})"),null,2));
     await evaluate("$('#applyImageBatch').click()");
     await waitFor("$('#imageBatchModal').classList.contains('hidden')");
     assert.equal(await evaluate("Object.keys(state.frameOverrides).length"), 3);
@@ -336,7 +342,18 @@ try {
     batchGeometry = { all: true, size: [32, 24], combinedWithPixelation: true, savedPixelsMatch: true, originalUnchanged: true, undo: true };
   }
   const readyAssembly = [];
-  await evaluate("$('#atlasMaxSize').add(new Option('80','80'));$('#atlasMaxSize').value='80';$('#atlasOverflow').value='split'");
+  // Give this check its own inputs: packaged runs skip the earlier source-only
+  // geometry section and otherwise still contain a single large flower PNG.
+  const readyInputs = [];
+  for (let index = 0; index < 2; index++) {
+    const file = path.join(output, `ready-input-${index}.png`);
+    await sharp({ create: { width: 64, height: 48, channels: 4, background: { r: 30 + index * 15, g: 100, b: 45, alpha: .8 } } }).png().toFile(file);
+    readyInputs.push(file);
+  }
+  await evaluate(`(async()=>{setSource(await spriteLab.restoreProject({source:{kind:'frames',paths:${JSON.stringify(readyInputs)}}}));window.startImageEditing();initializeHistory('Ready assembly');})()`);
+  // Pagination needs distinct physical entries; this fixture deliberately has
+  // identical RGBA, so disable the atlas deduplicator for the page-count check.
+  await evaluate("$('#atlasMaxSize').add(new Option('80','80'));$('#atlasMaxSize').value='80';$('#atlasOverflow').value='split';$('#atlasDeduplicate').checked=false");
   await evaluate("window.taskChoose('readyAtlas','auto')");
   assert.equal(await evaluate("document.querySelector('.copilot-tasks article[data-task=readyAtlas] strong').textContent"), "Собрать атлас");
   for (const kind of ["sheet", "atlas"]) {

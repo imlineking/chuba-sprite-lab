@@ -1,6 +1,11 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("spriteLab", {
+  parallax: {
+    images: paths => ipcRenderer.invoke('parallax:images', paths),
+    open: () => ipcRenderer.invoke('parallax:open'),
+    export: request => ipcRenderer.invoke('parallax:export', request),
+  },
   setLocale:(locale)=>ipcRenderer.invoke("interface:locale",locale),
   getUserProfile:()=>ipcRenderer.invoke("user:profile"),
   saveUserProfile:(name)=>ipcRenderer.invoke("user:save-profile",name),

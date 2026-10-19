@@ -127,7 +127,7 @@ let imageBatchReviewIndex = 0;
 let imageBatchColorPreviewToken = 0;
 const imageBatchUrl = file => "file:///" + file.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/");
 function persistImageBatchDraft() {
-  const references = [imageBatchDraft?.directory, ...Object.values(imageBatchDraft?.colorBases || {}), ...(state.source?.paths || []), ...state.history.flatMap(h => h.source?.paths || []), ...state.animations.flatMap(a => a.source?.paths || []), ...Object.values(imageBatchDraft?.results || {}).map(r => r.imagePath), ...Object.values(state.frameOverrides || {}), ...state.history.flatMap(h => Object.values(h.frameOverrides || {}))].filter(Boolean);
+  const references = [imageBatchDraft?.directory, ...Object.values(imageBatchDraft?.colorBases || {}), ...(state.source?.paths || []), ...state.history.flatMap(h => h.source?.paths || []), ...state.animations.flatMap(a => a.source?.paths || []), ...Object.values(imageBatchDraft?.results || {}).flatMap(r => [r.imagePath, r.firstPassPath]), ...Object.values(state.frameOverrides || {}), ...state.history.flatMap(h => Object.values(h.frameOverrides || {}))].filter(Boolean);
   window.spriteLab.retainPreviews?.(references).catch(() => {});
   try { localStorage.setItem("spriteLab.pendingImageBatch", JSON.stringify(imageBatchDraft)); } catch { /* UI still keeps the preview. */ }
 }
@@ -141,6 +141,23 @@ function showImageBatchPair(index) {
   imageBatchReviewIndex = index;
   $("#imageBatchBefore").src = imageBatchUrl(imageBatchDraft.paths[index]);
   const item = imageBatchDraft.results[index];
+  let candidateButton = $('#imageBatchUseFirstPass');
+  if (!candidateButton) {
+    candidateButton = document.createElement('button'); candidateButton.id = 'imageBatchUseFirstPass'; candidateButton.type = 'button'; candidateButton.className = 'button secondary';
+    $('#imageBatchAfter').closest('figure').append(candidateButton);
+  }
+  candidateButton.hidden = !item?.firstPassPath;
+  candidateButton.classList.toggle('hidden', !item?.firstPassPath);
+  candidateButton.disabled = state.busy;
+  candidateButton.textContent = item?.usingFirstPass ? 'Вернуть автоматическую доводку края' : 'Оставить первый проход без доводки';
+  candidateButton.onclick = () => {
+    if (state.busy || !item?.firstPassPath) return;
+    [item.imagePath, item.firstPassPath] = [item.firstPassPath, item.imagePath];
+    [item.changeReport, item.firstPassChangeReport] = [item.firstPassChangeReport, item.changeReport];
+    [item.matteReview, item.firstPassMatteReview] = [item.firstPassMatteReview, item.matteReview];
+    item.usingFirstPass = !item.usingFirstPass; imageBatchDraft.assembly = null;
+    persistImageBatchDraft(); renderImageBatchDraft(); showImageBatchPair(index);
+  };
   if (item) $("#imageBatchAfter").src = imageBatchUrl(item.imagePath);
   else $("#imageBatchAfter").removeAttribute("src");
   if (item?.healingPath) $("#imageBatchHealing").src = imageBatchUrl(item.healingPath);
@@ -221,12 +238,13 @@ function renderImageBatchDraft() {
     const detail = document.createElement("small"), item = imageBatchDraft.results[index];
     const model = item?.fallback?.model || item?.plan?.steps?.find(step => step.stage === "matting")?.modelId;
     const cleanup = item?.cleanupReport;
-    const cleanupText = cleanup ? cleanup.removed || cleanup.recolored
+    const modelCleanupText = item?.residueReport ? ` · модель изменила альфу ${item.residueReport.alphaChanged} пикс. в светлых областях` : '';
+    const cleanupText = modelCleanupText + (cleanup ? cleanup.removed || cleanup.recolored
       ? ` · удалено ${cleanup.removed} пикс. остатков · перекрашено ${cleanup.recolored} пикс. кромки`
-      : " · светлая кромка не изменилась" : "";
-    const changeText = item?.changeReport?.changed === 0 ? " · пиксели не изменились" : item?.changeReport?.changed != null ? ` · всего изменено ${item.changeReport.changed} пикс.` : "";
-    const lightText = item?.colorRemoval?.length ? " · удаляется только выбранный цвет" : item?.lightDecision?.policy === "none" ? " · светлые остатки убраны" : item?.lightDecision?.confidence === "uncertain" ? " · светлые детали сохранены: решение неуверенное" : item?.lightDecision ? " · светлые детали сохранены" : "";
-    detail.textContent = imageBatchDraft.exportFailures?.[index] ? `Ошибка сохранения: ${imageBatchDraft.exportFailures[index]}` : imageBatchDraft.failures[index] ? `Ошибка: ${imageBatchDraft.failures[index]}` : imageBatchDraft.exported?.[index] ? "Сохранено · PNG + JSON" : item ? `${item.changeReport?.changed === 0 ? "Без изменений" : "Готово"} · ${item.route?.join(" → ") || model || "локальная очистка"}${lightText}${cleanupText}${changeText}${item.fallback ? " · CPU fallback" : ""}${item.qualityWarnings?.length ? " · " + item.qualityWarnings.join(" ") : ""}` : "Ещё не обработано";
+      : " · светлая кромка не изменилась" : "");
+    const changeText = (item?.usingFirstPass ? ' · выбран первый проход без автоматической доводки' : '') + (item?.changeReport?.changed === 0 ? " · пиксели не изменились" : item?.changeReport?.changed != null ? ` · всего изменено ${item.changeReport.changed} пикс.` : "");
+    const lightText = item?.colorRemoval?.length ? " · удаляется только выбранный цвет" : item?.lightDecision?.policy === "none" ? " · выбран режим без светлых деталей" : item?.lightDecision?.confidence === "uncertain" ? " · защита светлых деталей: решение неуверенное" : item?.lightDecision ? " · защита светлых деталей включена" : "";
+    detail.textContent = imageBatchDraft.exportFailures?.[index] ? `Ошибка сохранения: ${imageBatchDraft.exportFailures[index]}` : imageBatchDraft.failures[index] ? `Ошибка: ${imageBatchDraft.failures[index]}` : imageBatchDraft.exported?.[index] ? "Сохранено · PNG + JSON" : item ? `${item.reviewRequired ? 'Предпросмотр · нужна проверка' : item.changeReport?.changed === 0 ? "Без изменений" : "Готово"} · ${item.route?.join(" → ") || model || "локальная очистка"}${lightText}${cleanupText}${changeText}${item.fallback ? " · CPU fallback" : ""}${item.qualityWarnings?.length ? " · " + item.qualityWarnings.join(" ") : ""}` : "Ещё не обработано";
     if (item?.lightDecision?.reason) button.title = item.lightDecision.reason;
     button.append(title, detail); button.addEventListener("click", () => showImageBatchPair(index)); row.append(checkbox, button); list.append(row);
   });
@@ -247,6 +265,8 @@ function renderImageBatchDraft() {
   $("#imageBatchBlackContour").disabled = state.busy;
   $("#imageBatchLightArtwork").disabled = state.busy;
   $("#imageBatchContourWidth").disabled = state.busy;
+  $('#imageBatchCleanupColumns').disabled = state.busy;
+  $('#imageBatchCleanupRows').disabled = state.busy;
   window.renderBatchCleanupSuggestion?.();
   $$("#imageBatchTasks button").forEach(control => { control.disabled = state.busy; });
   $$(".batch-color-adjust input, .batch-color-adjust select, #imageBatchResetColor").forEach(control => { control.disabled = state.busy || imageBatchDraft.configuration?.readyOnly; });
@@ -282,7 +302,7 @@ window.openImageBatchPreview = function (configuration = {}) {
   imageBatchReturnFocus = document.activeElement;
   const paths = configuration.paths || state.source.paths;
   const exportAtlases = Boolean(configuration.exportAtlases);
-  const configurationKey = JSON.stringify({version:15, readyOnly:configuration.readyOnly, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
+  const configurationKey = JSON.stringify({version:16, cleanupGrid:configuration.cleanupGrid, readyOnly:configuration.readyOnly, exportAtlases, options:configuration.options, splitObjects:configuration.splitObjects, automatic:configuration.automatic, healFirst:configuration.healFirst, modelOverride:configuration.modelOverride, backgroundMode:configuration.backgroundMode, blackContour:configuration.blackContour, lightArtworkPolicy:configuration.lightArtworkPolicy, contourWidth:configuration.contourWidth});
   let saved; try { saved = JSON.parse(localStorage.getItem("spriteLab.pendingImageBatch")); } catch { /* No prior job. */ }
   if (!imageBatchDraft || JSON.stringify(imageBatchDraft.paths) !== JSON.stringify(paths) || imageBatchDraft.configurationKey !== configurationKey) {
     const adjustments = JSON.stringify(imageBatchDraft?.paths) === JSON.stringify(paths)
@@ -344,12 +364,14 @@ window.openImageBatchPreview = function (configuration = {}) {
   $("#imageBatchBlackContour").value = configuration.blackContour;
   $("#imageBatchLightArtwork").value = configuration.lightArtworkPolicy;
   $("#imageBatchContourWidth").value = String(configuration.contourWidth);
+  $('#imageBatchCleanupColumns').value = String(configuration.cleanupGrid?.columns || 1);
+  $('#imageBatchCleanupRows').value = String(configuration.cleanupGrid?.rows || 1);
   $("#imageBatchContourChoice").classList.toggle("hidden", configuration.lightArtworkPolicy === "protect");
   $("#imageBatchModelHint").textContent = configuration.healFirst
     ? "После восстановления сохраняем его контур и запускаем обычную очистку."
     : configuration.modelOverride
       ? "Выбранная модель запустится для каждого файла, даже если у PNG уже есть прозрачность. Сравните белые детали и край перед применением."
-      : "Автовыбор может сохранить уже имеющуюся прозрачность без запуска модели. Если фон остался, выберите ToonOut и сравните результат.";
+      : "Автовыбор проверяет также непрозрачные светлые остатки внутри PNG с прозрачностью. Для подозрительных областей ToonOut предложит ограниченную маску; сравните белые детали перед применением.";
   $('#imageBatchTitle').textContent = configuration.readyOnly ? "Сборка готовых изображений" : configuration.healFirst ? 'Восстановление объекта · Подорожник' : exportAtlases ? 'Пакетная подготовка PNG + JSON' : 'Автоочистка изображений';
   $('.batch-preview-header p').textContent = configuration.readyOnly ? "Файлы используются как есть. Выберите лист или атлас и фон сохраняемого PNG. Исходники сохраняются." : configuration.healFirst ? 'Сравните исходник, восстановленный объект и результат обычной очистки. Применение можно отменить Ctrl+Z; исходные файлы остаются на месте.' : exportAtlases ? 'Проверьте очистку каждого исходника. После просмотра сохраняются отдельные PNG + JSON. Исходные файлы остаются на месте.' : 'Сравните исходник и результат. Применение можно отменить Ctrl+Z; PNG сохраняются отдельной кнопкой.';
   $('#imageBatchHealingFigure').classList.toggle('hidden', !configuration.healFirst);
@@ -371,6 +393,7 @@ async function prepareImageBatch(mode = "all", requestedIndexes = null) {
   const configuration = imageBatchDraft.configuration || {};
   const baseline = configuration.options || collectOptions();
   const settings = { ...baseline, pixelScale: imageBatchDraft.pixelScale || 1, batchModelOverride: configuration.modelOverride, batchBackgroundMode: configuration.backgroundMode, batchBlackContour: configuration.blackContour, edgeRefine: { mode: "none", width: 1, depth: 2, whiteOnly: true, ...baseline.edgeRefine, noLightArtwork: configuration.lightArtworkPolicy === "none", lightArtworkPolicy: configuration.lightArtworkPolicy, contourWidth: configuration.contourWidth }, pixelate: imageBatchDraft.pixelate || (configuration.exportAtlases ? baseline.pixelate : null), toning: configuration.exportAtlases ? baseline.toning : null, imageGeometry: imageBatchDraft.imageGeometry || (configuration.exportAtlases ? baseline.imageGeometry : null), colorAdjust: { ...imageBatchDraft.adjustments }, frameTransforms: {}, attachments: [], attachmentPlacements: null };
+  settings.aiGrid = configuration.cleanupGrid?.columns * configuration.cleanupGrid?.rows > 1 ? configuration.cleanupGrid : null;
   // A combined export scales the accepted base frames during assembly, once.
   if (imageBatchDraft.outputKind && imageBatchDraft.outputKind !== "png") settings.pixelScale = 1;
   if (settings.pixelate && settings.imageGeometry && ["contain", "cover", "stretch"].includes(settings.imageGeometry.mode)) settings.pixelate = {
@@ -400,6 +423,14 @@ async function prepareImageBatch(mode = "all", requestedIndexes = null) {
 }
 $("#closeImageBatch").addEventListener("click", window.closeImageBatchPreview);
 $("#imageBatchScope").addEventListener("change", renderImageBatchDraft);
+for (const id of ['imageBatchCleanupColumns', 'imageBatchCleanupRows']) $("#" + id).addEventListener('change', () => {
+  if (state.busy || !imageBatchDraft) return;
+  const columns = Number($('#imageBatchCleanupColumns').value), rows = Number($('#imageBatchCleanupRows').value);
+  if (!Number.isInteger(columns) || !Number.isInteger(rows) || columns < 1 || rows < 1 || columns > 16 || rows > 16 || columns * rows > 128) {
+    showError('Укажите сетку от 1 до 16, не больше 128 ячеек.'); return;
+  }
+  window.openImageBatchPreview({ ...imageBatchDraft.configuration, cleanupGrid: { columns, rows } });
+});
 $("#imageBatchModel").addEventListener("change", event => {
   if (state.busy || !imageBatchDraft) return;
   window.openImageBatchPreview({ ...imageBatchDraft.configuration, modelOverride: event.target.value, backgroundMode: "auto" });

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function pythonInfo(command) {
-  const probe = spawnSync(command, ["-c", "import json, pathlib, sys, sysconfig, numpy, PIL; print(json.dumps({'executable':sys.executable,'stdlib':sysconfig.get_path('stdlib'),'numpy':str(pathlib.Path(numpy.__file__).parent),'pillow':str(pathlib.Path(PIL.__file__).parent),'version':sys.version_info[:2]}))"], { encoding: "utf8", windowsHide: true, timeout: 30000 });
+  const probe = spawnSync(command, ["-B", "-c", "import json, pathlib, sys, sysconfig, numpy, PIL; print(json.dumps({'executable':sys.executable,'stdlib':sysconfig.get_path('stdlib'),'numpy':str(pathlib.Path(numpy.__file__).parent),'pillow':str(pathlib.Path(PIL.__file__).parent),'version':sys.version_info[:2],'packages':numpy.__version__+' '+PIL.__version__}))"], { encoding: "utf8", windowsHide: true, timeout: 30000 });
   if (probe.status !== 0) throw new Error(probe.error?.message || probe.stderr?.trim() || "Python, NumPy и Pillow не найдены.");
   return JSON.parse(probe.stdout.trim());
 }
@@ -21,9 +21,18 @@ export async function prepareHealingRuntime(root = projectRoot) {
   if (!target.startsWith(path.resolve(root) + path.sep)) throw new Error("Папка runtime вне проекта.");
   const resolvedTarget = await fs.realpath(target).catch(() => target);
   if (!resolvedTarget.startsWith(path.resolve(root) + path.sep)) throw new Error("Папка runtime ведёт за пределы проекта.");
+  const existingRuntime = path.join(target, 'python.exe');
+  if (!process.env.HEALING_PYTHON || path.resolve(process.env.HEALING_PYTHON).toLowerCase() === existingRuntime.toLowerCase()) {
+    try {
+      await fs.access(existingRuntime);
+      const existing = pythonInfo(existingRuntime);
+      if (existing.version[0] === 3 && existing.version[1] >= 10) return { path: target, python: existing.version.join('.'), packages: existing.packages, reused: true };
+    } catch { /* A missing or broken runtime can be rebuilt from an explicit/system Python. */ }
+  }
   const command = process.env.HEALING_PYTHON || "python";
   const info = pythonInfo(command);
   const sourceRoot = path.dirname(info.executable);
+  if (sourceRoot.toLowerCase() === target.toLowerCase()) throw new Error('Нельзя пересоздать runtime из его собственной папки. Укажите внешний HEALING_PYTHON.');
   const [major, minor] = info.version;
   if (major !== 3 || minor < 10) throw new Error("Подорожнику нужен Python 3.10 или новее.");
   const site = path.join(info.stdlib, "site-packages");
