@@ -1,6 +1,0 @@
-{
-  "version": 1,
-  "codes": ["leftover_background", "halo", "cut_object", "merged_objects", "wrong_grid", "bleeding", "pivot_jitter", "frame_order", "stray_pixels", "empty_frame", "atlas_overflow", "padding_small", "near_duplicate", "text_ocr", "other"],
-  "scale": { "accepted": "80–100: можно отдавать в игру", "needs_fix": "40–79: есть исправимые проблемы", "rejected": "0–39: сборка непригодна" },
-  "severity": { "error": "ломает игру или видно сразу", "warning": "заметно при внимательном просмотре", "info": "косметика" }
-}

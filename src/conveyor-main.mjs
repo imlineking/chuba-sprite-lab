@@ -13,7 +13,7 @@ import { ConveyorQueue, PresetStore, createFolderWatcher, quickOutputDir, runCon
 import { applyFixToPreset } from "./copilot-conveyor.mjs";
 import { videoFormats } from "./input-types.mjs";
 
-export function createConveyorStages({ appRoot, sharp, describePaths, describeSpriteSheet, executeProcessing, buildAtlas, reviewAtlas, runtime, modelsDirectory, onProgress = () => {} }) {
+export function createConveyorStages({ appRoot, sharp, describePaths, describeSpriteSheet, executeProcessing, buildAtlas, reviewAtlas, modelsDirectory, onProgress = () => {}, onReview = () => {} }) {
   const stages = {
     detect: (paths) => detectInput(paths, { sharp }),
     async preview(paths) {
@@ -64,10 +64,7 @@ export function createConveyorStages({ appRoot, sharp, describePaths, describeSp
     checkImages: reviewPngs,
     pack: (config) => buildAtlas(config, { write: true }),
     async check(built, preset, cleaned) {
-      const rt = runtime?.();
-      const usable = Boolean(preset.useModel && rt?.status().available);
-      const review = await reviewAtlas(built, { runtime: usable ? rt : null, skillsDir: rt?.paths?.skills, useModel: usable });
-      if (preset.useModel && !usable) review.fallbackReason = "Встроенная модель недоступна, только алгоритмы";
+      const review = await reviewAtlas(built);
       if (cleaned) {
         const png = await reviewPngs(cleaned, preset);
         review.issues.push(...png.issues); review.metrics = png.metrics; review.score = Math.min(review.score, png.score);
@@ -76,6 +73,7 @@ export function createConveyorStages({ appRoot, sharp, describePaths, describeSp
       }
       review.verdictLabel = { accepted: "Принято", needs_fix: "Нужны правки", rejected: "Отклонено" }[review.verdict] || review.verdict;
       await fs.writeFile(path.join(built.config.output, "review.json"), `${JSON.stringify({ generatedAt: new Date().toISOString(), atlas: built.config.name, ...review }, null, 2)}\n`);
+      onReview(review, built.config.output);
       return review;
     },
     async exportResult({ detection, source, cleaned, built, review, preset, quick, intent, outputDir }) {

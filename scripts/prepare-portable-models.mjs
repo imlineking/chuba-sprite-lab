@@ -56,12 +56,6 @@ export async function preparePortableModels(appRoot) {
     for await (const chunk of createReadStream(path.join(directory, model.file))) hash.update(chunk);
     entries.push({ id: model.id, file: model.file, sizeBytes: model.sizeBytes, sha256: hash.digest("hex"), source: model.source || model.url, licence: model.licence.name });
   }
-  // Keep entries the catalog does not manage (embedded Qwen critic weights) when the file is rebuilt.
-  const known = new Set(entries.map((entry) => entry.id));
-  try {
-    const previous = JSON.parse(await fs.readFile(path.join(directory, "bundled-models.json"), "utf8"));
-    for (const entry of previous.models || []) if (entry?.id && !known.has(entry.id)) entries.push(entry);
-  } catch { /* no previous manifest */ }
   await fs.writeFile(path.join(directory, "bundled-models.json"), `${JSON.stringify({ models: entries }, null, 2)}\n`);
   return entries;
 }

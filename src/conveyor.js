@@ -76,7 +76,7 @@
   function renderPresetInfo() {
     const p = currentPreset(); const box = q("#cvPresetInfo"); box.replaceChildren();
     if (!p) return;
-    const rows = [["Фон", { auto: "Автоматически", none: "Не трогать", ai: "ИИ-маска" }[p.background] || p.background], ["Края", p.edgeCleanup ? "Очищать" : "Как есть"], ["Пиксель-арт", p.pixelArt ? "Да" : "Нет"], ["Форматы", p.atlas.formats.join(", ")], ["Отступ / экструзия", `${p.atlas.padding} / ${p.atlas.extrude} px`], ["Макс. размер", `${p.atlas.maxSize} px${p.atlas.powerOfTwo ? ", степень двойки" : ""}`], ["Проверка", p.review ? (p.useModel ? "Алгоритмы и модель" : "Только алгоритмы") : "Выключена"]];
+    const rows = [["Фон", { auto: "Автоматически", none: "Не трогать", ai: "ИИ-маска" }[p.background] || p.background], ["Края", p.edgeCleanup ? "Очищать" : "Как есть"], ["Пиксель-арт", p.pixelArt ? "Да" : "Нет"], ["Форматы", p.atlas.formats.join(", ")], ["Отступ / экструзия", `${p.atlas.padding} / ${p.atlas.extrude} px`], ["Макс. размер", `${p.atlas.maxSize} px${p.atlas.powerOfTwo ? ", степень двойки" : ""}`], ["Проверка", p.review ? "Только алгоритмы" : "Выключена"]];
     const packs = ui.intent !== "images" && ui.caps?.stages.some(s => s.id === "pack" && s.applies);
     const png = ui.caps?.type === "image" || ui.intent === "images";
     for (const row of rows) if (row[0] === "Проверка" && png && p.review) row[1] = "PNG · размеры и прозрачность";

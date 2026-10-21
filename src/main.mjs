@@ -28,11 +28,9 @@ function executeProcessing(operation, { signal, onProgress, shouldStop: _stop, .
 app.on("before-quit", () => processingExecutor.close());
 import { finishSheetImport, makeTempWorkspace, pruneStaleTempWorkspaces } from "./temp-workspace.mjs";
 import { planSuggestions, planTaskScenarios } from "./copilot-rules.mjs";
-import { planWithCopilot, comparePlanners, plannerStatus } from "./copilot-planner.mjs";
 import { buildAtlas } from "./pipeline/build.mjs";
 import { reviewAtlas, applyFix, renderPreview, validateCriticConfig } from "./critic/critic.mjs";
-import { sharedRuntime, stopSharedRuntime } from "./critic/llm-runtime.mjs";
-app.on("before-quit", () => stopSharedRuntime());
+import { recordHumanLabel, registerReviewedReport, feedbackReview } from './critic/review-data.mjs';
 import { readProfile } from "./build-profile.mjs";
 import { createConveyorStages, registerConveyorIpc } from "./conveyor-main.mjs";
 import { registerParallaxIpc } from './parallax-main.mjs';
@@ -280,7 +278,7 @@ function createWindow() {
       preload: path.join(here, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       backgroundThrottling: !(uiRegressionMode || screenshotPath),
       offscreen: Boolean(screenshotPath),
     },
@@ -1251,24 +1249,22 @@ ipcMain.handle("feedback:copy", (_event, request) => {
 // testable module instead of a second copy inside the classic renderer scripts.
 ipcMain.handle("copilot:suggest", (_event, snapshot = {}) => planSuggestions(snapshot));
 ipcMain.handle("copilot:scenarios", (_event, snapshot = {}) => planTaskScenarios(snapshot));
-ipcMain.handle("copilot:plan", (_event, request = {}) => planWithCopilot(request));
-ipcMain.handle("copilot:compare", (_event, request = {}) => comparePlanners(request));
-ipcMain.handle("copilot:status", () => plannerStatus());
 
-// Acceptance critic ("Приёмка"): algorithms first, then the embedded vision model reported by
-// runtime.status() (llama.cpp in vendor/llm, weights in models/<model>). The server is shared
-// with the CLI through the lock file. No Ollama; falls back to algorithms only.
-const criticRuntime = () => sharedRuntime({ appRoot });
+// Algorithmic acceptance and explicit local human assessments.
+const criticDatabase = () => path.join(app.getPath('userData'), 'review.sqlite');
 const reviewedOutputs = new Set(); // output folders produced by runCriticReview in this session
-async function runCriticReview(config, { useModel = true } = {}) {
+const reviewedReports = new Map(); // trusted review data, never a model verdict supplied by the renderer
+ipcMain.handle("critic:feedback", async (_event, { output, token, verdict, reason, category } = {}) => {
+  const review = feedbackReview(reviewedReports, output, token);
+  return recordHumanLabel(criticDatabase(), { review, verdict, reason, category });
+});
+async function runCriticReview(config) {
   let built = null, buildError = null;
   try { built = await buildAtlas(config, { write: true }); } catch (error) { buildError = error.message; }
-  const runtime = criticRuntime();
-  const usable = useModel && runtime.status().available;
-  const review = await reviewAtlas(built || { atlas: null, pages: [] }, { runtime: usable ? runtime : null, skillsDir: runtime.paths.skills, buildError, useModel: usable });
-  if (useModel && !usable) review.fallbackReason = `Встроенная модель недоступна (${runtime.status().missing.join(", ")}), только алгоритмы`;
+  const review = await reviewAtlas(built || { atlas: null, pages: [] }, { buildError });
   const resolved = built?.config;
   if (resolved) reviewedOutputs.add(path.resolve(resolved.output));
+  if (resolved) registerReviewedReport(reviewedReports, resolved.output, review);
   if (resolved) await fs.writeFile(path.join(resolved.output, "review.json"), `${JSON.stringify({ generatedAt: new Date().toISOString(), atlas: resolved.name, ...review }, null, 2)}\n`);
   const preview = built ? await renderPreview(built, { maxSide: 640 }) : null;
   return { config, output: resolved?.output || null, review, preview: preview ? `data:image/png;base64,${preview.toString("base64")}` : null };
@@ -1284,7 +1280,7 @@ ipcMain.handle("critic:pick-folder", async () => {
   const result = await interfaceDialog("showOpenDialog", mainWindow, { title: "Папка с кадрами для приёмки", properties: ["openDirectory"] });
   return result.canceled || !result.filePaths.length ? null : result.filePaths[0];
 });
-ipcMain.handle("critic:review", (_event, request = {}) => runCriticReview(criticConfig(request), { useModel: request.useModel !== false }));
+ipcMain.handle("critic:review", (_event, request = {}) => runCriticReview(criticConfig(request)));
 ipcMain.handle("critic:apply-fix", (_event, { config, fix } = {}) => runCriticReview(applyFix(criticConfig({ config }), fix)));
 ipcMain.handle("critic:accept-anyway", async (_event, { output, review } = {}) => {
   if (!output || typeof output !== "string" || !path.isAbsolute(output) || !review || typeof review !== "object") throw new Error("Нет результата приёмки.");
@@ -1301,7 +1297,8 @@ const conveyor = registerConveyorIpc({
   ipcMain, userData: app.getPath("userData"), getWindow: () => mainWindow, isBusy: () => Boolean(activeJob),
   chooseDirectory: async (title) => { const r = await interfaceDialog("showOpenDialog", mainWindow, { title, properties: ["openDirectory", "createDirectory"] }); return r.canceled || !r.filePaths.length ? null : r.filePaths[0]; },
   chooseFiles: async (title) => { const r = await interfaceDialog("showOpenDialog", mainWindow, { title, properties: ["openFile", "multiSelections"] }); return r.canceled ? [] : r.filePaths; },
-  stages: createConveyorStages({ appRoot, sharp, describePaths, describeSpriteSheet, executeProcessing, buildAtlas, reviewAtlas, runtime: criticRuntime, modelsDirectory, onProgress: (progress) => mainWindow?.webContents.send("sprites:progress", progress) }),
+  stages: createConveyorStages({ appRoot, sharp, describePaths, describeSpriteSheet, executeProcessing, buildAtlas, reviewAtlas, modelsDirectory,
+    onReview: (review, output) => { reviewedOutputs.add(path.resolve(output)); registerReviewedReport(reviewedReports, output, review); }, onProgress: (progress) => mainWindow?.webContents.send("sprites:progress", progress) }),
 });
 app.on("before-quit", () => conveyor.stopWatch());
 

@@ -1769,8 +1769,10 @@ async function openAttachmentEditor(existing = null) {
   $$("#attachmentPointMode button").forEach((button) => button.classList.toggle("selected", Number(button.dataset.points) === state.attachmentPointCount));
   $("#attachmentTitle").textContent = existing ? "Перенастройте привязку" : "Прикрепите элемент к движению";
   $("#saveAttachment").textContent = existing ? "Сохранить привязку" : "Добавить к анимации";
-  $("#attachmentAsset").innerHTML = `<img src="${asset.url}" alt=""><div><strong></strong><small>${asset.width}×${asset.height}${asset.hasAlpha ? " · прозрачность есть" : " · без прозрачности"}</small></div>`;
-  $("#attachmentAsset strong").textContent = asset.title;
+  const assetPreviewImage = document.createElement('img'); assetPreviewImage.src = asset.url; assetPreviewImage.alt = '';
+  const assetDetails = document.createElement('div'), assetName = document.createElement('strong'), assetMeta = document.createElement('small');
+  assetName.textContent = asset.title; assetMeta.textContent = `${asset.width}×${asset.height}${asset.hasAlpha ? " · прозрачность есть" : " · без прозрачности"}`;
+  assetDetails.append(assetName, assetMeta); $("#attachmentAsset").replaceChildren(assetPreviewImage, assetDetails);
   const scale = Math.min(1, 1600 / Math.max(sourceImage.naturalWidth, sourceImage.naturalHeight));
   const canvas = $("#attachmentCanvas");
   canvas.width = Math.max(1, Math.round(sourceImage.naturalWidth * scale));

@@ -50,24 +50,12 @@ import { companionActionAllowed } from "./conveyor-tools.mjs";
       settings.addEventListener('toggle', () => { settingsOpen = settings.open; });
       const heading = document.createElement('summary'); heading.textContent = 'Инструменты и локальные настройки'; settings.append(heading); choices.append(settings);
       choiceTarget = settings;
-      const models = document.createElement('label'); models.className = 'planner-control'; models.textContent = 'Планировщик · эксперимент';
-      const select = document.createElement('select'); select.setAttribute('aria-label', 'Планировщик копилота');
-      const qwenLabel = state.plannerStatus?.models?.find(model => model.id === 'qwen')?.label || 'Qwen · встроенная';
-      for (const [id, title] of [['rules', 'Лёгкий · без модели'], ['qwen', qwenLabel]]) {
-        const option = document.createElement('option'); option.value = id; option.textContent = title;
-        if (id !== 'rules' && state.plannerStatus && !state.plannerStatus.models?.find(model => model.id === id)?.installed) { option.textContent += ' · не установлена'; option.disabled = true; }
-        select.append(option);
-      }
-      select.value = state.planner || 'rules'; select.disabled = Boolean(state.busy); select.onchange = () => command('planner', select.value);
-      const info = document.createElement('small'); info.textContent = `${state.plannerInfo || ''} · Qwen встроена в программу (llama.cpp, локально); Ollama и интернет не нужны.`;
-      models.append(select, info); settings.append(models);
-      button('Сравнить два плана', 'Текущие файлы · без применения правок', () => command('compare-planners', 'compare'));
       [['clipping','Исправить обрезание'],['cutout','Вырезать объект'],['atlas','Собрать атлас']].forEach(([id,title])=>button(title,'Перейти к нужному сценарию',()=>command('quick',id)));
       const guideIds = new Set((state.guide?.chips || []).map(chip => chip.id));
       if (!guideIds.has('cv:run') && !guideIds.has('run')) button('Конвейер · Сделать всё', 'Нарезка, фон, атлас, Приёмка и экспорт за один запуск', () => command('conveyor', 'view:conveyor'));
       if (!guideIds.has('view:quick')) button('Быстрый режим', 'Один файл, результат рядом с ним', () => command('conveyor', 'view:quick'));
       if (!guideIds.has('view:queue')) button('Очередь и наблюдение', 'Много файлов или папка, которая пополняется', () => command('conveyor', 'view:queue'));
-      if (!guideIds.has('review')) button('Приёмка атласа', 'Алгоритмы + встроенная Qwen · вердикт и правки', () => command('review', 'open'));
+      if (!guideIds.has('review')) button('Приёмка атласа', 'Алгоритмическая проверка кадров и атласа', () => command('review', 'open'));
       for (const task of state.tasks || []) {
         const row=document.createElement('div'); row.className='group'; const title=document.createElement('span'); title.textContent=task.title; row.append(title);
         for (const approach of ['auto','manual']) { const control=document.createElement('button'); control.textContent=approach==='auto'?'Авто':'Вручную'; control.disabled=Boolean(state.busy); control.onclick=()=>command('task',task.id,approach); row.append(control); }

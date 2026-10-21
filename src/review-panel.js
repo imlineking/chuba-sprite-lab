@@ -1,5 +1,5 @@
 // «Приёмка»: verdict badge, issues with one-click fixes, and an explicit override.
-// Algorithms decide hard failures; the embedded Qwen only adds visual remarks.
+// Algorithmic checks and an explicit human assessment.
 (() => {
   const labels = { accepted: 'Принято', needs_fix: 'Нужны правки', rejected: 'Отклонено' };
   const severityLabels = { error: 'Ошибка', warning: 'Внимание', info: 'Заметка' };
@@ -24,11 +24,13 @@
     const head = el('div', 'review-head');
     const badge = el('span', `review-badge review-${review.verdict}`, review.kind === 'png' ? review.verdictLabel : labels[review.verdict] || review.verdict);
     const score = el('strong', 'review-score', review.kind === 'png' ? `Файлов: ${review.metrics.length}` : `${review.score}/100`);
-    const mode = el('span', 'review-mode', review.mode === 'qwen' ? `Алгоритмы + Qwen (встроенная) · ${review.elapsedMs} мс` : `Только алгоритмы · ${review.elapsedMs} мс`);
+    const mode = el('span', 'review-mode');
+    mode.append(el('span', null, t('Только алгоритмы')), document.createTextNode(` · ${review.elapsedMs} `), el('span', null, t('мс')));
     head.append(badge, score, mode);
     body.append(head);
+    if (review.kind !== 'png') body.append(el('p', 'review-note', t('Результат проверки не заменяет просмотр изображения перед использованием в игре.')));
     if (review.summary) body.append(el('p', 'review-note', review.summary));
-    for (const m of review.metrics || []) body.append(el('p', 'review-muted', `${m.file.split(/[\\/]/).pop()} · ${m.width}×${m.height} · прозрачных: ${m.clear} · полупрозрачных: ${m.partial}`));
+    for (const m of Array.isArray(review.metrics) ? review.metrics : []) body.append(el('p', 'review-muted', `${m.file.split(/[\\/]/).pop()} · ${m.width}×${m.height} · прозрачных: ${m.clear} · полупрозрачных: ${m.partial}`));
     if (review.fallbackReason) body.append(el('p', 'review-note', review.fallbackReason));
     if (review.overriddenBy) body.append(el('p', 'review-note', `Принято вручную (было: ${labels[review.overriddenFrom]}).`));
     const grid = el('div', 'review-grid');
@@ -38,7 +40,7 @@
     for (const issue of review.issues) {
       const item = el('li', `review-issue review-${issue.severity}`);
       const top = el('div', 'review-issue-top');
-      top.append(el('span', 'review-sev', severityLabels[issue.severity] || issue.severity), el('span', 'review-target', targetText(issue.target)), el('span', 'review-source', issue.source === 'qwen' ? 'Qwen' : 'алгоритм'));
+      top.append(el('span', 'review-sev', severityLabels[issue.severity] || issue.severity), el('span', 'review-target', targetText(issue.target)), el('span', 'review-source', 'алгоритм'));
       item.append(top, el('p', 'review-reason', issue.reason));
       if (Number.isInteger(issue.target?.frameIndex) && state.result.onInspect) {
         const inspect = el('button', 'review-secondary', 'Показать кадр и участки'); inspect.type = 'button';
@@ -55,6 +57,25 @@
     }
     grid.append(list);
     body.append(grid);
+    if (review.kind !== 'png' && review.artifactId && output) {
+      const feedback = el('details', 'review-feedback'); feedback.append(el('summary', null, t('Добавить свою оценку в проверочный набор')));
+      feedback.append(el('p', 'review-muted', t('Сохраняются только оценка, причина и отпечаток результата. Изображения не копируются и не отправляются в интернет.')));
+      const verdictLabel = el('label', null, t('Ваша оценка')), verdict = el('select'); verdict.setAttribute('aria-label', t('Ваша оценка'));
+      for (const [value, text] of [['', 'Выберите оценку'], ['accepted', 'Пригодно для игры'], ['rejected', 'Нужны правки']]) { const option = el('option', null, t(text)); option.value = value; verdict.append(option); }
+      verdictLabel.append(verdict);
+      const categoryLabel = el('label', null, t('Категория замечания')), category = el('select');
+      for (const [value, text] of [['other', 'Другое'], ['background', 'Фон'], ['halo', 'Кайма'], ['grid', 'Сетка'], ['missing_detail', 'Потерянные детали'], ['shape', 'Форма']]) { const option = el('option', null, t(text)); option.value = value; category.append(option); }
+      categoryLabel.append(category);
+      const reasonLabel = el('label', null, t('Почему вы так оценили')), reason = el('textarea'); reason.maxLength = 400; reason.rows = 2; reasonLabel.append(reason);
+      const save = el('button', 'review-secondary', t('Сохранить мою оценку')); save.type = 'button'; const notice = el('p', 'review-muted'); notice.setAttribute('role', 'status');
+      save.onclick = async () => {
+        save.disabled = true;
+        try { await window.spriteLab.criticFeedback({ output, token: review.feedbackToken, verdict: verdict.value, reason: reason.value, category: category.value }); notice.textContent = t('Оценка сохранена в проверочный набор.'); }
+        catch (error) { notice.textContent = error.message; }
+        finally { save.disabled = false; }
+      };
+      feedback.append(verdictLabel, categoryLabel, reasonLabel, save, notice); body.append(feedback);
+    }
     const footer = dialog.querySelector('.review-actions');
     footer.replaceChildren();
     const again = el('button', 'review-secondary', 'Проверить снова'); again.type = 'button';
@@ -93,6 +114,6 @@
     dialog.onclose = () => dialog.remove();
     document.body.append(dialog); dialog.showModal();
     current = { result: null };
-    await run(dialog, () => window.spriteLab.criticReview({ input: folder }), 'Собираю атлас и проверяю: сначала алгоритмы, затем Qwen…');
+    await run(dialog, () => window.spriteLab.criticReview({ input: folder }), 'Собираю атлас и проверяю…');
   };
 })();

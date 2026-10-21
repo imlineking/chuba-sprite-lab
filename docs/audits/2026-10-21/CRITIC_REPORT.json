@@ -1,0 +1,104 @@
+{
+  "ticket": "sprite-lab-remove-qwen-2026-10-21",
+  "reviewer": "independent-agent:/root/ux_critic",
+  "status": "source_accepted_with_limits",
+  "systemRemoval": "blocked_not_complete",
+  "userAcceptance": false,
+  "supersedes": "Предыдущая приёмка модели/ресурсного выбора/статуса Qwen21.10 недействительна после смены пользовательского задания.",
+  "scope": "Исходники Sprite Lab без Qwen/VLM runtime и модельного планировщика; сохранение алгоритмической приёмки, rules-помощника и добровольного проверочного набора. Полное физическое удаление с ПК и обновление EXE не подтверждены.",
+  "checks": [
+    {
+      "criterion": "Нет исполняемых путей Qwen/VLM в актуальных исходниках",
+      "passed": true,
+      "evidence": "Прочитаны critic.mjs/main/preload/conveyor/planner; поиск по src/scripts/package/test не обнаружил действующего llama/Qwen/Ollama runtime, model IPC или статуса. Остались только тестовые legacyстроки для миграции старых настроек. llm-runtime.mjs/resource-policy.mjs/critic-status.js/compare-copilots.mjs отсутствуют."
+    },
+    {
+      "criterion": "Алгоритмы и правила сохраняют пользу",
+      "passed": true,
+      "evidence": "reviewAtlas всегда пересчитывает runChecks из фактического атласа, не использует кэш VLM. Самостоятельные golden/fix и rules/planner тесты прошли; legacyqwen/gemma/unknown настройки переходят в rules и не читают пути/модель."
+    },
+    {
+      "criterion": "ToonOut не заменён и не сломан удалением критика",
+      "passed": true,
+      "evidence": "Самостоятельно выполнен test/ai-segmentation.test.mjs: реальный whole-image контекст и mirroredwhole-object inference прошли. Это техническая проверка конкретных входов, не художественная приёмка любой маски."
+    },
+    {
+      "criterion": "Явная человеческая оценка безопасно привязана",
+      "passed": true,
+      "evidence": "Пустой выбор до действия и обязательная причина сохранены. trusted snapshot+UUID token отклоняет устаревшую/поддельную форму. SQLite пишет model=algorithms; registry ограничен100выходами. Самостоятельные unit и авторский реальный sandboxIPC подтверждают отсутствие автоматических humanlabels."
+    },
+    {
+      "criterion": "Проверочный набор и метрики без псевдообучения",
+      "passed": true,
+      "evidence": "Artifact fingerprint включает RGBA/метаданные, ревизия — хеши checks/critic. PrecisionReject/RecallReject/Kappa неопределённые→null, дубли запрещены. Экспорт/evaluate не создаёт псевдометки и не перезаписывает файл. Веса не обучаются, данные не отправляются."
+    },
+    {
+      "criterion": "Актуальный интерфейс и sandbox",
+      "passed": true,
+      "evidence": "Самостоятельно просмотрены algorithm-ui/human-assessment-ru.png,ru-bottom.png,en.png,en-bottom.png: источник«Только алгоритмы»/Algorithms only, предупреждение о самостоятельном просмотре, причина/сохранение/закрытие доступны прокруткой, RU/ENпереведены, светлаянейтральнаяпалитра сохранена. Код Призмы не заменён; её отдельный свежий полный обход этим пакетом критик не выполнял. Авторский report:sandbox=true,JSexceptions=[],sourceUnchanged=true,model/plannerendpoints отсутствуют."
+    },
+    {
+      "criterion": "Правдивая граница фактического удаления",
+      "passed": true,
+      "evidence": "Самостоятельные Test-Path подтвердили, что models/qwen3.5-9b,models/qwen3-vl-4b,vendor/llm остаются. REPORT.md прямо объясняет automaticpolicyблокировку,ручные3пути и отличие исходников от старого EXE. Критик не удалял файлы и не обходил блокировку."
+    },
+    {
+      "criterion": "Независимые проверки текущей версии",
+      "passed": true,
+      "evidence": "Критик самостоятельно запустил node--test critic.test.mjs,critic-data.test.mjs,copilot-planner.test.mjs,copilot-rules.test.mjs,ai-segmentation.test.mjs:30passed0failed0skipped,65.5с. Авторский verify.log прочитан:508total507pass0fail1skip; затем автор сообщилlint+26targettests иповторныйalgorithmUI после удаления неиспользуемых plannerfields."
+    }
+  ],
+  "issues": [],
+  "remainingBlockers": [
+    {
+      "kind": "external_policy",
+      "message": "Полное удаление Qwen из системы не завершено:3папки весов/runtime остались9,641,216,410байт по авторскому отчёту. Automaticpolicyотклонила удаление; обход не предпринимался."
+    },
+    {
+      "kind": "release_boundary",
+      "message": "EXE1.10.0 и extractioncache не обновлялись; прежнийJSмодуль остаётся внутри старой сборки. Исходниковая приёмка не означает удаление этого кода из EXE."
+    }
+  ],
+  "limitations": [
+    "Проверяется source-версия; новый EXE не собирался. Явная пользовательская приёмка не заявлена.",
+    "Синтетическая QAметка в изолированном профиле не является пользовательским goldenнабором и не доказывает точность алгоритмов на произвольных спрайтах.",
+    "Сохранены специализированные ToonOut/LaMa/RIFE/Real-ESRGAN/Depth; это не языковые критики. Другие проекты и их серверы/веса не трогались.",
+    "Авторские UIсценарии и самопроверки обозначены как авторские; критик отдельно прочёл код, просмотрел текущие изображения и выполнил30тестов. Физические клики критика не заявлены."
+  ],
+  "evidence": [
+    ".diagnostics/audit-2026-10-21/algorithm-ui/report.json",
+    ".diagnostics/audit-2026-10-21/algorithm-ui/human-assessment-ru.png",
+    ".diagnostics/audit-2026-10-21/algorithm-ui/human-assessment-ru-bottom.png",
+    ".diagnostics/audit-2026-10-21/algorithm-ui/human-assessment-en.png",
+    ".diagnostics/audit-2026-10-21/algorithm-ui/human-assessment-en-bottom.png",
+    ".diagnostics/audit-2026-10-21/verify.log",
+    "docs/audits/2026-10-21/REPORT.md"
+  ],
+  "authorVerification": {
+    "tests": 508,
+    "passed": 507,
+    "failed": 0,
+    "skipped": 1,
+    "durationMs": 88731,
+    "subsequentChanges": "Удалены только остаточные plannerstatefields; авторскийlint+26targettests иповторныйalgorithm-ui passed."
+  },
+  "hashes": {
+    "src/critic/critic.mjs": "54AFA344B4B35F6554156C04509FC7B0A120973AF01E7860D0C385B504F6E2D7",
+    "src/critic/checks.mjs": "B68553F5A1ACD69F842047CF5FE6097C622BFFCB948CEEEAA07BAA5E2C42E90C",
+    "src/critic/review-data.mjs": "0FCCB838714F4919769882B65B393F88F885C3BD2E97E467F2BE23C84E27B645",
+    "src/copilot-planner.mjs": "A0DEC2D761A3ADBB296EF588F258112AA82A7C3E04608D9EDD43F6C88DC7DDA9",
+    "src/copilot-rules.mjs": "7A1BE91133403D19395C8ABEA458A4692B3A1193222061DEC89D2B1D8735D3AC",
+    "src/copilot.js": "9B0F797EDFA45B300B918F045E886E48D9F6A4423A212E5A62FC50C3BD50B678",
+    "src/review-panel.js": "45F04C4F52F09971D675D182270BEA96EBB701BF8DC7DAD2DE1C9F948AB02F90",
+    "src/main.mjs": "4BA7B7457F18D3E58135FAE1822A858D04DF09CBD2EDF9ABF4ED0DD98EE73597",
+    "src/preload.cjs": "3EE8EF2F70DC5069D8AAE921CE0BC86CDD4B4E04C5468C341C2DABE4718BB8C2",
+    "src/conveyor-main.mjs": "5B043B69B44E1061DBE0732233DD489744C0D542011ED26475D93D494D1D8FBD",
+    "src/conveyor.mjs": "955686C37EDB2BF445D0EB6C470D075767FB4B375C69F8E88AC71E4440D3DEF2",
+    "src/styles.css": "695FBA7ED4D634C7BA0D3CA10E8548D61E481F7D2AB16EF747409D7E4E5F7617",
+    "src/index.html": "47402539F4458907E686E642E4E14D1123357081B5DF0DCEC57FFB3042012BE8",
+    "src/i18n-catalog.js": "7D5960F139885B112ADC977CD9284536FD64029A4E9A429B001E6433642B535C",
+    "src/renderer.js": "791D3B4F6C5AC386266A66770642C40BB8E38C915C1F7229D790A70F9662B57D",
+    "scripts/critic-benchmark.mjs": "15F2E4A675894A7158BB081422ED7787BBAA082E0C2B90E6CB32052F53D629AB",
+    "scripts/prepare-portable-models.mjs": "E26861C45E40DB5692975DF1ECB67351656CBAAA0135A6F2AC8495369F684B60"
+  }
+}

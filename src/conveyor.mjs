@@ -6,11 +6,11 @@ import path from "node:path";
 import { capabilitiesFor } from "./capabilities.mjs";
 
 export const builtinPresets = Object.freeze([
-  { id: "phaser", label: "Phaser", builtin: true, background: "auto", ai: false, edgeCleanup: true, pixelArt: false, atlas: { formats: ["phaser-hash", "texturepacker-hash"], padding: 2, extrude: 1, maxSize: 2048, powerOfTwo: true }, review: true, useModel: true },
-  { id: "godot", label: "Godot", builtin: true, background: "auto", ai: false, edgeCleanup: true, pixelArt: false, atlas: { formats: ["godot-spriteframes", "godot-atlastexture"], padding: 2, extrude: 1, maxSize: 2048, powerOfTwo: false }, review: true, useModel: true },
-  { id: "unity", label: "Unity", builtin: true, background: "auto", ai: false, edgeCleanup: true, pixelArt: false, atlas: { formats: ["unity-meta", "unity-json"], padding: 2, extrude: 1, maxSize: 2048, powerOfTwo: true }, review: true, useModel: true },
-  { id: "pixel-art", label: "Пиксель-арт", builtin: true, background: "auto", ai: false, edgeCleanup: false, pixelArt: true, atlas: { formats: ["texturepacker-hash", "phaser-hash"], padding: 1, extrude: 0, maxSize: 2048, powerOfTwo: true }, review: true, useModel: false },
-  { id: "quick", label: "Быстрый", builtin: true, background: "auto", ai: false, edgeCleanup: true, pixelArt: false, atlas: { formats: ["texturepacker-hash"], padding: 2, extrude: 0, maxSize: 4096, powerOfTwo: false }, review: false, useModel: false },
+  { id: "phaser", label: "Phaser", builtin: true, background: "auto", ai: false, edgeCleanup: true, pixelArt: false, atlas: { formats: ["phaser-hash", "texturepacker-hash"], padding: 2, extrude: 1, maxSize: 2048, powerOfTwo: true }, review: true },
+  { id: "godot", label: "Godot", builtin: true, background: "auto", ai: false, edgeCleanup: true, pixelArt: false, atlas: { formats: ["godot-spriteframes", "godot-atlastexture"], padding: 2, extrude: 1, maxSize: 2048, powerOfTwo: false }, review: true },
+  { id: "unity", label: "Unity", builtin: true, background: "auto", ai: false, edgeCleanup: true, pixelArt: false, atlas: { formats: ["unity-meta", "unity-json"], padding: 2, extrude: 1, maxSize: 2048, powerOfTwo: true }, review: true },
+  { id: "pixel-art", label: "Пиксель-арт", builtin: true, background: "auto", ai: false, edgeCleanup: false, pixelArt: true, atlas: { formats: ["texturepacker-hash", "phaser-hash"], padding: 1, extrude: 0, maxSize: 2048, powerOfTwo: true }, review: true },
+  { id: "quick", label: "Быстрый", builtin: true, background: "auto", ai: false, edgeCleanup: true, pixelArt: false, atlas: { formats: ["texturepacker-hash"], padding: 2, extrude: 0, maxSize: 4096, powerOfTwo: false }, review: false },
 ]);
 
 const presetKeys = new Set(["id", "label", "background", "ai", "edgeCleanup", "pixelArt", "atlas", "review", "useModel"]);
@@ -24,7 +24,7 @@ export function validatePreset(preset) {
   const atlas = { ...builtinPresets[0].atlas, ...(preset.atlas || {}) };
   if (!Array.isArray(atlas.formats) || !atlas.formats.length) throw new Error("Выберите хотя бы один формат экспорта.");
   for (const k of ["padding", "extrude", "maxSize"]) if (!Number.isFinite(atlas[k]) || atlas[k] < 0 || atlas[k] > 16384) throw new Error(`${k}: недопустимое значение.`);
-  return { id: preset.id, label: preset.label.trim(), background: preset.background ?? "auto", ai: Boolean(preset.ai), edgeCleanup: preset.edgeCleanup !== false, pixelArt: Boolean(preset.pixelArt), atlas, review: preset.review !== false, useModel: preset.useModel !== false };
+  return { id: preset.id, label: preset.label.trim(), background: preset.background ?? "auto", ai: Boolean(preset.ai), edgeCleanup: preset.edgeCleanup !== false, pixelArt: Boolean(preset.pixelArt), atlas, review: preset.review !== false };
 }
 
 // Presets live in one JSON file; built-ins are always present and cannot be overwritten.

@@ -1,4 +1,7 @@
 import { readFileSync } from "node:fs";
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 
 // The renderer is a group of classic scripts that share one global scope, so ESLint
 // cannot resolve their cross-file names from imports. Their top-level declarations are
@@ -15,7 +18,7 @@ export const rendererFiles = [...rendererMarkup.matchAll(/<script src="\.\/([^"]
 export function collectRendererDeclarations(files = rendererFiles) {
   const owners = new Map();
   for (const file of files) {
-    const source = readFileSync(file, "utf8");
+    const source = readFileSync(path.resolve(projectRoot, file), "utf8");
     for (const match of source.matchAll(DECLARATION)) {
       const name = match[1] || match[2];
       const list = owners.get(name) || [];

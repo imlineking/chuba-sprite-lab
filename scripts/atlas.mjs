@@ -1,14 +1,12 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { buildAtlas, defaults, listImages, resolveConfig } from "../src/pipeline/build.mjs";
 import { formats } from "../src/pipeline/exporters.mjs";
 import { fingerprint } from "../src/watch.mjs";
 import { reviewAtlas, verdictLabel } from "../src/critic/critic.mjs";
-import { EmbeddedRuntime, defaultLockFile, readLock, pidAlive, stopLockedServer } from "../src/critic/llm-runtime.mjs";
 
-const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 // Simple atlas builder: a folder of PNG/JPEG/BMP/GIF/WebP in, a packed atlas plus
 // engine files out. Works with no preset at all (sensible defaults), with one preset,
@@ -20,7 +18,6 @@ const usage = `Chuba Sprite Lab — атлас из папки картинок
   node scripts/atlas.mjs review [пресет.json ...] [опции]  приёмка: review.json рядом с экспортом
   node scripts/atlas.mjs init [пресет.json]       создать пресет с настройками по умолчанию
   node scripts/atlas.mjs formats                   список форматов экспорта
-  node scripts/atlas.mjs model status|stop         общий сервер модели (GUI и CLI)
 
 Опции build (переопределяют пресет):
   --input <папка|файл>   источник (можно несколько раз)
@@ -37,15 +34,12 @@ const usage = `Chuba Sprite Lab — атлас из папки картинок
   --fps <n>
   --watch                пересобирать при изменениях (Ctrl+C — выход)
   --json                 машиночитаемый итог
-  --review               после сборки — приёмка (алгоритмы + встроенная Qwen), review.json
-  --no-model             приёмка только алгоритмами (лёгкий режим)
-  --keep-model           не выгружать модель после выхода (сервер общий с GUI,
-                         сам выгружает веса после 10 минут простоя; model stop — остановить)
+  --review               после сборки — приёмка (алгоритмическая проверка), review.json
   --quiet                только итоговые строки (без списка замечаний)
 `;
 
 function parseArgs(argv) {
-  const args = { command: argv[0] ?? "help", presets: [], overrides: {}, watch: false, json: false, review: argv[0] === "review", useModel: true, keepModel: false, quiet: false };
+  const args = { command: argv[0] ?? "help", presets: [], overrides: {}, watch: false, json: false, review: argv[0] === "review", quiet: false };
   const value = (i) => { const next = argv[i + 1]; if (next === undefined || next.startsWith("--")) throw Object.assign(new Error(`Опция ${argv[i]} требует значение`), { usage: true }); return next; };
   const int = (i) => { const n = Number(value(i)); if (!Number.isInteger(n) || n < 0) throw Object.assign(new Error(`${argv[i]}: нужно целое число`), { usage: true }); return n; };
   const o = args.overrides;
@@ -74,8 +68,7 @@ function parseArgs(argv) {
       case "--watch": args.watch = true; break;
       case "--json": args.json = true; break;
       case "--review": args.review = true; break;
-      case "--no-model": args.useModel = false; break;
-      case "--keep-model": args.keepModel = true; break;
+      case "--no-model": break; // Compatibility: always algorithmic.
       case "--quiet": args.quiet = true; break;
       case "--help": case "-h": args.command = "help"; break;
       default:
@@ -102,15 +95,8 @@ export async function loadPresets(files) {
   return result;
 }
 
-// One shared llama-server per machine (lock file): attach to the GUI's or a kept server,
-// otherwise start one. A server this process did not start is never stopped here.
-let runtime = null;
-let runtimeOptions = { keepAlive: false };
-async function review(preset, overrides, built, buildError, useModel) {
-  if (useModel && !runtime) runtime = new EmbeddedRuntime({ appRoot, shared: true, keepAlive: runtimeOptions.keepAlive });
-  const usable = useModel && runtime.status().available;
-  const report = await reviewAtlas(built || { atlas: null, pages: [] }, { runtime: usable ? runtime : null, skillsDir: runtime?.paths.skills, buildError, useModel: usable });
-  if (useModel && !usable) report.fallbackReason = `Встроенная модель недоступна (${runtime.status().missing.join(", ")}), только алгоритмы`;
+async function review(preset, overrides, built, buildError) {
+  const report = await reviewAtlas(built || { atlas: null, pages: [] }, { buildError });
   const config = built?.config || resolveConfig({ ...preset.raw, ...overrides }, preset.baseDir);
   await fs.mkdir(config.output, { recursive: true });
   const file = path.join(config.output, "review.json");
@@ -133,10 +119,10 @@ async function runOnce(presets, overrides, json, options = {}) {
       console.error(json ? JSON.stringify({ ok: false, preset: preset.source, error: error.message }) : `ОШИБКА ${preset.source}: ${error.message}`);
     }
     if (options.review) {
-      const { report, file } = await review(preset, overrides, built, buildError, options.useModel);
+      const { report, file } = await review(preset, overrides, built, buildError);
       if (report.verdict !== "accepted") failed += buildError ? 0 : 1;
       console.log(json ? JSON.stringify({ review: file, verdict: report.verdict, score: report.score, mode: report.mode, issues: report.issues.length, ms: report.elapsedMs })
-        : `ПРИЁМКА ${verdictLabel(report.verdict)} · ${report.score}/100 · ${report.mode === "qwen" ? "алгоритмы + Qwen" : "только алгоритмы"} · проблем ${report.issues.length} -> ${file}${report.fallbackReason ? ` (${report.fallbackReason})` : ""}`);
+        : `ПРИЁМКА ${verdictLabel(report.verdict)} · ${report.score}/100 · только алгоритмы · проблем ${report.issues.length} -> ${file}${report.fallbackReason ? ` (${report.fallbackReason})` : ""}`);
       for (const item of report.issues) if (!json && !options.quiet) console.log(`  [${item.severity}] ${item.reason}${item.fix ? ` → ${JSON.stringify(item.fix)}` : ""}`);
     }
   }
@@ -155,23 +141,12 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(`Создан пресет ${target}`);
     return 0;
   }
-  if (args.command === "model") {
-    const action = args.presets[0] ?? "status";
-    const file = defaultLockFile();
-    if (action === "stop") { const pid = await stopLockedServer(file); console.log(pid ? `Сервер модели остановлен (pid ${pid})` : "Сервер модели не запущен"); return 0; }
-    if (action !== "status") { console.error(`Неизвестное действие model ${action}`); return 1; }
-    const lock = readLock(file);
-    const live = lock && pidAlive(lock.pid);
-    console.log(args.json ? JSON.stringify({ running: Boolean(live), ...(lock || {}), lockFile: file }) : live ? `Сервер модели: ${lock.model}, pid ${lock.pid}, порт ${lock.port}, ${lock.backend}` : "Сервер модели не запущен");
-    return 0;
-  }
   if (args.command !== "build" && args.command !== "review") { console.error(`Неизвестная команда ${args.command}`); console.error(usage); return 1; }
   let presets;
   try { presets = await loadPresets(args.presets); } catch (error) { console.error(error.message); return 1; }
-  runtimeOptions = { keepAlive: args.keepModel };
-  const options = { review: args.review, useModel: args.useModel, write: args.command === "build", quiet: args.quiet };
+  const options = { review: args.review, write: args.command === "build", quiet: args.quiet };
   const failed = await runOnce(presets, args.overrides, args.json, options);
-  if (!args.watch) { runtime?.stop(); return failed ? 2 : 0; }
+  if (!args.watch) { return failed ? 2 : 0; }
   const controller = new AbortController();
   process.once("SIGINT", () => controller.abort());
   const sources = [], outputs = [];
@@ -192,7 +167,6 @@ export async function main(argv = process.argv.slice(2)) {
     previous = current;
     await runOnce(presets, args.overrides, args.json, options);
   }
-  runtime?.stop();
   return 0;
 }
 

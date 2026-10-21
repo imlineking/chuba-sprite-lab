@@ -16,7 +16,7 @@ document.querySelectorAll('#copilotRestore img, #copilotPet img, #copilotPanel i
 });
 $("#copilotRestore").title = "Открыть помощника на рабочем столе";
 
-const copilotState = { hidden: false, petPosition: null, panelPosition: null, scenarios: [], bubbleDismissed: true, bubbleSignature: "", bubbleTimer: null, suggestions: [], dismissed: new Set(), timer: null, planKey: null, aiPlan: null, error: null, errorOrigin: null, applying: false, lastAdvice: null, planner: "rules", semanticKey: null, semanticPlan: null, comparing: false, refreshing: false, plannerStatus: null, conveyor: null, guide: null };
+const copilotState = { hidden: false, petPosition: null, panelPosition: null, scenarios: [], bubbleDismissed: true, bubbleSignature: "", bubbleTimer: null, suggestions: [], dismissed: new Set(), timer: null, planKey: null, aiPlan: null, error: null, errorOrigin: null, applying: false, lastAdvice: null, refreshing: false, conveyor: null, guide: null };
 
 const copilotPreferenceKey = "spriteLab.copilot";
 
@@ -24,14 +24,13 @@ function loadCopilotPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem(copilotPreferenceKey) || "null");
     copilotState.hidden = saved?.hidden === true;
-    if (["rules", "qwen"].includes(saved?.planner)) copilotState.planner = saved.planner;
     if (Number.isFinite(saved?.petPosition?.x) && Number.isFinite(saved?.petPosition?.y)) copilotState.petPosition = saved.petPosition;
     if (Number.isFinite(saved?.panelPosition?.x) && Number.isFinite(saved?.panelPosition?.y)) copilotState.panelPosition = saved.panelPosition;
   } catch { /* preferences are optional */ }
 }
 
 function saveCopilotPreferences() {
-  try { localStorage.setItem(copilotPreferenceKey, JSON.stringify({ hidden: copilotState.hidden, petPosition: copilotState.petPosition, panelPosition: copilotState.panelPosition, planner: copilotState.planner })); } catch { /* optional */ }
+  try { localStorage.setItem(copilotPreferenceKey, JSON.stringify({ hidden: copilotState.hidden, petPosition: copilotState.petPosition, panelPosition: copilotState.panelPosition })); } catch { /* optional */ }
 }
 
 function buildCopilotSnapshot() {
@@ -131,8 +130,8 @@ function renderCopilot() {
   const tasks = [...document.querySelectorAll('.copilot-tasks article')].map(card => ({ id: card.dataset.task, title: card.querySelector('strong').textContent }));
   const undoAdvice = copilotState.lastAdvice && copilotState.lastAdvice.index === state.historyIndex && copilotState.lastAdvice.source === state.source ? copilotState.lastAdvice.title : null;
   const conveyorBusy = copilotState.conveyor?.mode !== 'advanced' && copilotState.conveyor?.busy;
-  const workLabel = conveyorBusy ? 'Обрабатываю материал' : copilotState.comparing ? 'Сравниваю планы' : copilotState.refreshing ? 'Подбираю сценарии' : copilotState.applying ? 'Применяю совет' : 'Выполняю задачу';
-  void window.spriteLab.updateCompanion({ busy: Boolean(conveyorBusy || state.busy || copilotState.applying || copilotState.comparing || copilotState.refreshing), workLabel, planner: copilotState.planner, plannerStatus: copilotState.plannerStatus, plannerInfo: copilotState.semanticPlan ? `${copilotState.semanticPlan.fallback ? 'Резерв: лёгкий' : copilotState.semanticPlan.model || 'Лёгкий'} · ${Math.round(copilotState.semanticPlan.elapsedMs)} мс` : 'Локальный анализ', error: copilotState.error, undoAdvice, sourceKey: copilotGuideKey() || state.source?.sheetPath || (state.source?.paths || []).join("|"), guide: copilotState.guide, theme: document.documentElement.dataset.theme || 'dark', scenarios: copilotState.scenarios, suggestions: visibleCopilotSuggestions(), tasks }).catch(error => { console.error('Помощник: связь с окном', error); });
+  const workLabel = conveyorBusy ? 'Обрабатываю материал' : copilotState.refreshing ? 'Подбираю сценарии' : copilotState.applying ? 'Применяю совет' : 'Выполняю задачу';
+  void window.spriteLab.updateCompanion({ busy: Boolean(conveyorBusy || state.busy || copilotState.applying || copilotState.refreshing), workLabel, error: copilotState.error, undoAdvice, sourceKey: copilotGuideKey() || state.source?.sheetPath || (state.source?.paths || []).join("|"), guide: copilotState.guide, theme: document.documentElement.dataset.theme || 'dark', scenarios: copilotState.scenarios, suggestions: visibleCopilotSuggestions(), tasks }).catch(error => { console.error('Помощник: связь с окном', error); });
 }
 
 // Conveyor, quick mode and queue/watch: the copilot explains what it sees, what to press,
@@ -162,7 +161,7 @@ document.addEventListener('spriteLab:conveyor', event => { void updateCopilotGui
 
 async function refreshCopilot() {
   if (copilotState.guideSource !== state.source) { copilotState.guideSource = state.source; void updateCopilotGuide(); }
-  if (copilotState.applying || copilotState.comparing || copilotState.refreshing) return;
+  if (copilotState.applying || copilotState.refreshing) return;
   copilotState.refreshing = true;
   const sourceAtStart = state.source;
   const controlsAtStart = JSON.stringify(collectOptions());
@@ -189,16 +188,6 @@ async function refreshCopilot() {
       window.spriteLab.suggest(snapshot),
     ]);
     if (copilotState.errorOrigin !== 'action') copilotState.error = null;
-    if (copilotState.planner !== 'rules' && state.source) {
-      const key = JSON.stringify({ planner: copilotState.planner, snapshot });
-      if (key !== copilotState.semanticKey) {
-        copilotState.semanticPlan = await window.spriteLab.planCopilot({ planner: copilotState.planner, snapshot, paths: autoPilotSourcePaths() });
-        copilotState.semanticKey = key;
-      }
-      taskScenarios = copilotState.semanticPlan.scenarios;
-      // Measured safety warnings always remain visible, even if a model overlooks them.
-      if (copilotState.semanticPlan.error) copilotState.error = `Модель не сработала: ${copilotState.semanticPlan.error} Используется лёгкий помощник.`;
-    } else copilotState.semanticPlan = null;
     if (sourceAtStart !== state.source || resultAtStart !== state.result || controlsAtStart !== JSON.stringify(collectOptions()) || goalAtStart !== window.taskCurrent?.()) { copilotState.scenarios = []; copilotState.suggestions = []; scheduleCopilot(50); return; }
     window.taskRenderSuggestions?.(taskScenarios);
     copilotState.scenarios = Array.isArray(taskScenarios) ? taskScenarios.map(item => ({ ...item, title: document.querySelector('.copilot-tasks article[data-task="' + item.task + '"] strong')?.textContent || item.task })) : [];
@@ -210,30 +199,6 @@ async function refreshCopilot() {
   } finally { copilotState.refreshing = false; renderCopilot(); }
   copilotState.suggestions = Array.isArray(suggestions) ? suggestions : [];
   renderCopilot();
-}
-
-async function compareCopilotPlanners() {
-  if (!state.source || state.busy || copilotState.comparing) return;
-  copilotState.comparing = true; renderCopilot();
-  const dialog = document.createElement('dialog'); dialog.className = 'planner-comparison';
-  const heading = document.createElement('h2'); heading.textContent = 'Сравнение копилотов на текущих файлах';
-  const detail = document.createElement('p'); detail.textContent = 'Один снимок задачи и файлов для обоих планировщиков. Планы не применяются; модели работают последовательно и локально.';
-  const close = document.createElement('button'); close.textContent = 'Закрыть'; close.onclick = () => dialog.close();
-  const results = document.createElement('div'); results.className = 'planner-results'; results.textContent = 'Сравниваю лёгкого помощника и Qwen…';
-  dialog.append(heading, detail, results, close); dialog.onclose = () => dialog.remove(); document.body.append(dialog); dialog.showModal();
-  try {
-    const plans = await window.spriteLab.compareCopilots({ snapshot: buildCopilotSnapshot(), paths: autoPilotSourcePaths() });
-    results.replaceChildren();
-    for (const plan of plans) {
-      const card = document.createElement('article'); const title = document.createElement('h3');
-      title.textContent = `${plan.model || (plan.requestedPlanner ? plan.requestedPlanner + ' → лёгкий' : 'Лёгкий помощник')} · ${Math.round(plan.elapsedMs)} мс`;
-      card.append(title);
-      if (plan.error) { const error = document.createElement('p'); error.textContent = plan.error; card.append(error); }
-      for (const item of plan.scenarios.slice(0, 3)) { const line = document.createElement('p'); line.textContent = `${document.querySelector('.copilot-tasks article[data-task="' + item.task + '"] strong')?.textContent || item.task}: ${item.why}`; card.append(line); }
-      results.append(card);
-    }
-  } catch (error) { results.textContent = error.message; copilotReportError(error); }
-  finally { copilotState.comparing = false; renderCopilot(); }
 }
 
 function copilotReportError(error, origin = 'action') {
@@ -305,7 +270,6 @@ async function applyCopilotSuggestion(suggestion) {
 function setCopilotPanel(open) {
   void window.spriteLab.showCompanion({ open }).catch(() => {});
   if (open) void refreshCopilot();
-  if (open) void window.spriteLab.copilotPlannerStatus().then(status => { copilotState.plannerStatus = status; renderCopilot(); }).catch(error => copilotReportError(error, 'analysis'));
 }
 window.spriteLab.onCompanionCommand(command => {
   if (state.busy && !['refresh', 'models', 'conveyor'].includes(command.kind)) return;
@@ -313,11 +277,9 @@ window.spriteLab.onCompanionCommand(command => {
   else if (command.kind === 'task') window.taskChoose?.(command.id, command.approach === 'auto' ? 'auto' : 'manual');
   else if (command.kind === 'quick') document.querySelector('[data-quick-task="' + command.id.replace(/[^a-z]/g, '') + '"]')?.click();
   else if (command.kind === 'models') void autoPilotOpenModels();
-  else if (command.kind === 'refresh') { copilotState.errorOrigin = null; copilotState.planKey = null; copilotState.semanticKey = null; void refreshCopilot(); void window.spriteLab.copilotPlannerStatus().then(status => { copilotState.plannerStatus = status; renderCopilot(); }).catch(error => copilotReportError(error, 'analysis')); }
-  else if (command.kind === 'compare-planners') void compareCopilotPlanners();
+  else if (command.kind === 'refresh') { copilotState.errorOrigin = null; copilotState.planKey = null; void refreshCopilot(); }
   else if (command.kind === 'review') window.openReviewPanel?.();
   else if (command.kind === 'conveyor') void (/^(vf|task|cv):/.test(command.id) ? window.videoFrameUI?.act(command.id) : window.conveyorUI?.act(command.id));
-  else if (command.kind === 'planner' && ['rules', 'qwen'].includes(command.id)) { copilotState.planner = command.id; copilotState.semanticKey = null; saveCopilotPreferences(); void refreshCopilot(); }
   else if (command.kind === 'undo-advice') {
     const advice = copilotState.lastAdvice;
     if (advice && advice.source === state.source && advice.index === state.historyIndex) {
