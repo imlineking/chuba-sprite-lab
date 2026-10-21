@@ -1,0 +1,81 @@
+{
+  "version": "1.10.1",
+  "date": "2026-10-21",
+  "artifact": "portable/Chuba Sprite Lab.exe",
+  "bytes": 1346640480,
+  "sha256": "9bb72dbf7053070e7c74f6aacdd86e1f558d3b1ee24717c21383735fdb7fc1ad",
+  "sourceFilesMatched": 154,
+  "packagedFiles": 2420,
+  "retiredFiles": [],
+  "extractedContentVerified": true,
+  "models": [
+    "toonout",
+    "lama",
+    "rife",
+    "real-esrgan",
+    "depth-anything-v2"
+  ],
+  "verify": {
+    "tests": 508,
+    "passed": 507,
+    "skipped": 1,
+    "failed": 0
+  },
+  "packagedSelfTest": {
+    "ok": true,
+    "checks": [
+      {
+        "name": "sharp",
+        "ok": true
+      },
+      {
+        "name": "ffmpeg",
+        "ok": true
+      },
+      {
+        "name": "model",
+        "ok": true
+      },
+      {
+        "name": "inference",
+        "ok": true
+      },
+      {
+        "name": "lama",
+        "ok": true
+      },
+      {
+        "name": "rife",
+        "ok": true
+      },
+      {
+        "name": "real-esrgan",
+        "ok": true
+      },
+      {
+        "name": "depth-anything-v2",
+        "ok": true
+      }
+    ],
+    "provider": "dml"
+  },
+  "packagedUi": {
+    "ok": true,
+    "checks": [
+      "Packaged renderer has no retired VLM status/planner bridge or Node integration",
+      "Version and parallax entry in packaged pipeline; PNG import via packaged IPC",
+      "Editable scene, undo/redo, animated camera and RAF stop in actual EXE"
+    ],
+    "exceptions": []
+  },
+  "pngWorkflow": {
+    "originalUnchanged": true,
+    "savedPixelsMatch": true,
+    "exceptions": []
+  },
+  "limitations": [
+    "First cold extraction takes longer than the previous 60-second UI harness timeout; the harness now waits up to 300 seconds.",
+    "Old model weights and old extraction caches outside this artifact are not claimed removed.",
+    "A clean Windows machine and GitHub CI for this commit were not tested locally."
+  ]
+}

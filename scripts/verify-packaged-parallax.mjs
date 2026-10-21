@@ -17,7 +17,8 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 let socket, evaluate, call; const exceptions = [], checks = [];
 try {
   let target;
-  for (let i = 0; i < 600; i++) { try { target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(t => t.url.includes('index.html')); if (target) break; } catch {} await pause(100); }
+  // A cold launch extracts the complete offline bundle before Electron can open its port.
+  for (let i = 0; i < 3000; i++) { try { target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(t => t.url.includes('index.html')); if (target) break; } catch {} await pause(100); }
   assert.ok(target, 'EXE opens its own renderer');
   socket = new WebSocket(target.webSocketDebuggerUrl); await new Promise(resolve => socket.addEventListener('open', resolve, { once: true }));
   let sequence = 0; const pending = new Map();
@@ -28,6 +29,8 @@ try {
   await call('Runtime.enable'); await call('Page.enable'); await call('Emulation.setDeviceMetricsOverride', { width: 1360, height: 900, deviceScaleFactor: 1, mobile: false });
   await wait('typeof spriteLabParallax === "object"'); await evaluate('if(!$("#userNameModal").classList.contains("hidden"))$("#closeUserName").click();setLocale("ru",{persist:false})');
   assert.equal(await evaluate('$("#versionBadge").textContent'), expectedVersion);
+  assert.equal(await evaluate("document.getElementById('criticStatus')===null && !('criticStatus' in window.spriteLab) && !('compareCopilots' in window.spriteLab) && !('planCopilot' in window.spriteLab) && typeof require==='undefined'"), true);
+  checks.push('Packaged renderer has no retired VLM status/planner bridge or Node integration');
   await evaluate('document.querySelector("#conveyorView [data-open-parallax]").click()'); await wait('$("#parallaxModal").open');
   await evaluate(`spriteLabParallax.add([${JSON.stringify(fixture)}])`); assert.equal(await evaluate('spriteLabParallax.snapshot().scene.layers.length'), 1); checks.push('Version and parallax entry in packaged pipeline; PNG import via packaged IPC');
   await evaluate('(()=>{const input=document.querySelector("[data-layer=parallaxX]");input.value="1";input.dispatchEvent(new Event("change"));})()');
